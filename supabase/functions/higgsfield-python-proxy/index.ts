@@ -7,8 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// URL để lấy token từ Higgsfield API
-const HIGGSFIELD_TOKEN_URL = 'https://api.higgsfield.ai/gettoken';
+// URL để lấy token từ API
+const HIGGSFIELD_TOKEN_URL = 'https://api.beautyapp.work/gettoken';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -43,7 +43,7 @@ serve(async (req) => {
 
     switch (action) {
       case 'test_connection': {
-        // 3. Lấy token tạm thời từ Higgsfield
+        // 3. Lấy token tạm thời từ API
         const tokenResponse = await fetch(HIGGSFIELD_TOKEN_URL, {
           method: 'POST',
           headers: {
@@ -51,7 +51,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             cookie: higgsfield_cookie,
-            clerk_context: higgsfield_clerk_context,
+            clerk_active_context: higgsfield_clerk_context,
           }),
         });
 
@@ -61,8 +61,8 @@ serve(async (req) => {
         }
 
         const tokenData = await tokenResponse.json();
-        if (!tokenData.token) {
-          throw new Error('Phản hồi từ Higgsfield không chứa token.');
+        if (!tokenData.jwt) {
+          throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
         }
 
         return new Response(JSON.stringify({ success: true, message: 'Kết nối thành công!' }), {
