@@ -80,7 +80,10 @@ const VideoTaskHistory = ({ model }) => {
   return (
     <Card>
       <CardHeader className="flex-row justify-between items-center">
-        <CardTitle>Lịch sử tạo</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          Lịch sử tạo
+          {!loading && <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">{tasks.length}</span>}
+        </CardTitle>
         <Button variant="ghost" size="icon" onClick={fetchTasks} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
