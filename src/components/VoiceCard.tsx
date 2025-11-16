@@ -14,7 +14,7 @@ const VoiceCard = ({ voice, isSelected, onSelect }) => {
       onClick={onSelect}
       className={`relative group p-3 border-2 rounded-lg cursor-pointer transition-all duration-200 ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-400 hover:shadow-md'}`}
     >
-      {voice.isCloned && <Badge className="absolute top-2 left-2 bg-green-500 text-white"><UserCheck className="w-3 h-3 mr-1" />Cloned</Badge>}
+      {voice.isCloned && <Badge className="absolute top-2 left-2 bg-green-500 text-white z-10"><UserCheck className="w-3 h-3 mr-1" />Cloned</Badge>}
       <div className="flex flex-col items-center space-y-2">
         <div className="relative">
           <img src={voice.cover_url || '/placeholder.svg'} alt={voice.voice_name} className="w-20 h-20 rounded-full object-cover bg-gray-200" />

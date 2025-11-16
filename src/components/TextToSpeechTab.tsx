@@ -12,7 +12,6 @@ import TaskItem from './TaskItem';
 
 const TextToSpeechTab = ({ apiKey }) => {
   const [text, setText] = useState('Chào bạn, đây là một thử nghiệm chuyển văn bản thành giọng nói.');
-  const [voices, setVoices] = useState([]);
   const [clonedVoices, setClonedVoices] = useState([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -24,17 +23,14 @@ const TextToSpeechTab = ({ apiKey }) => {
   const fetchVoices = useCallback(async () => {
     setIsLoadingVoices(true);
     try {
-      const [voicesRes, clonedRes] = await Promise.all([
-        supabase.functions.invoke('proxy-voice-api', { body: { path: 'v1m/voice/list', token: apiKey, method: 'POST', body: { page: 1, page_size: 100 } } }),
-        supabase.functions.invoke('proxy-voice-api', { body: { path: 'v1m/voice/clone', token: apiKey, method: 'GET' } })
-      ]);
-
-      if (voicesRes.data?.success) setVoices(voicesRes.data.data.voice_list);
-      else throw new Error(voicesRes.error?.message || voicesRes.data?.error || 'Failed to fetch voices');
+      const { data, error } = await supabase.functions.invoke('proxy-voice-api', { body: { path: 'v1m/voice/clone', token: apiKey, method: 'GET' } });
       
-      if (clonedRes.data?.success) setClonedVoices(clonedRes.data.data);
-      else throw new Error(clonedRes.error?.message || clonedRes.data?.error || 'Failed to fetch cloned voices');
-
+      if (error) throw error;
+      if (data.success) {
+        setClonedVoices(data.data);
+      } else {
+        throw new Error(data.error || 'Failed to fetch cloned voices');
+      }
     } catch (error) {
       showError(`Lỗi tải danh sách giọng nói: ${error.message}`);
     } finally {
@@ -120,7 +116,7 @@ const TextToSpeechTab = ({ apiKey }) => {
     }
   };
 
-  const allVoices = [...clonedVoices.map(v => ({...v, isCloned: true})), ...voices];
+  const allVoices = clonedVoices.map(v => ({...v, isCloned: true}));
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -134,12 +130,14 @@ const TextToSpeechTab = ({ apiKey }) => {
         <Card>
           <CardHeader><CardTitle>2. Chọn giọng nói</CardTitle></CardHeader>
           <CardContent>
-            {isLoadingVoices ? <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div> : (
+            {isLoadingVoices ? <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div> : allVoices.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[400px] overflow-y-auto p-1">
                 {allVoices.map(voice => (
                   <VoiceCard key={voice.voice_id} voice={voice} isSelected={selectedVoiceId === voice.voice_id} onSelect={() => setSelectedVoiceId(voice.voice_id)} />
                 ))}
               </div>
+            ) : (
+              <p className="text-center text-gray-500 pt-8">Bạn chưa có giọng nói clone nào. Hãy qua tab "Clone Voice" để tạo.</p>
             )}
           </CardContent>
         </Card>
