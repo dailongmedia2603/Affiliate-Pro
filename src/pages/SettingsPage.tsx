@@ -31,7 +31,7 @@ const SettingsPage = () => {
     setIsFetchingCredits(true);
     try {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'credits', token: apiKey },
+        body: { path: 'v1/credits', token: apiKey },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -148,7 +148,7 @@ const SettingsPage = () => {
     setVoiceConnectionStatus('idle');
     try {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'health-check', token: voiceApiKey },
+        body: { path: 'v1/health-check', token: voiceApiKey },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);

@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const API_BASE_URL = 'https://gateway.vivoo.work/v1'
+const API_BASE_URL = 'https://gateway.vivoo.work'
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -14,7 +14,30 @@ serve(async (req) => {
   }
 
   try {
-    const { path, token } = await req.json()
+    const isFormData = req.headers.get('content-type')?.includes('multipart/form-data');
+    let path, token, method, body;
+
+    if (isFormData) {
+      const formData = await req.formData();
+      path = formData.get('path');
+      token = formData.get('token');
+      method = formData.get('method') || 'POST';
+      
+      const forwardFormData = new FormData();
+      for (const [key, value] of formData.entries()) {
+        if (!['path', 'token', 'method'].includes(key)) {
+          forwardFormData.append(key, value);
+        }
+      }
+      body = forwardFormData;
+
+    } else {
+      const payload = await req.json();
+      path = payload.path;
+      token = payload.token;
+      method = payload.method || 'GET';
+      body = payload.body;
+    }
 
     if (!path || !token) {
       return new Response(JSON.stringify({ error: 'Thiếu các tham số bắt buộc: path hoặc token' }), {
@@ -23,29 +46,37 @@ serve(async (req) => {
       })
     }
 
-    const targetUrl = `${API_BASE_URL}/${path}`
+    const targetUrl = `${API_BASE_URL}/${path}`;
 
-    const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers: {
-        'xi-api-key': token,
-        'Content-Type': 'application/json',
-      },
-    })
+    const headers = { 'xi-api-key': token };
+    const fetchOptions = { method, headers };
 
-    const responseData = await response.json()
-
-    if (!response.ok) {
-      throw new Error(`Lỗi API: ${response.status} - ${JSON.stringify(responseData)}`)
+    if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+      if (isFormData) {
+        fetchOptions.body = body;
+      } else if (body) {
+        headers['Content-Type'] = 'application/json';
+        fetchOptions.body = JSON.stringify(body);
+      }
     }
+    
+    const response = await fetch(targetUrl, fetchOptions);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Lỗi API: ${response.status} - ${errorText}`);
+    }
+
+    const responseData = await response.json();
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    });
+
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    });
   }
 })
