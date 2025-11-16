@@ -50,7 +50,7 @@ const ImageTaskHistory = ({ model }) => {
           
           const apiStatus = data?.job_sets?.[0]?.status;
           if (apiStatus && apiStatus !== task.status) {
-            const resultUrl = data?.job_sets?.[0]?.jobs?.[0]?.result?.url;
+            const resultUrl = data?.job_sets?.[0]?.jobs?.[0]?.result?.images?.[0]?.url;
             const errorMessage = data?.job_sets?.[0]?.jobs?.[0]?.error;
             
             await supabase.from('image_tasks').update({ 
