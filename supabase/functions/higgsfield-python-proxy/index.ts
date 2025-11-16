@@ -44,7 +44,7 @@ serve(async (req) => {
     if (userError) throw userError
 
     const { action, ...payload } = await req.json()
-    console.log(`Request from user: ${user.id}, Action: ${action}`);
+    console.log(`[INFO] Request from user: ${user.id}, Action: ${action}`);
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
@@ -61,7 +61,7 @@ serve(async (req) => {
 
     switch (action) {
       case 'test_connection': {
-        console.log('Action: test_connection successful.');
+        console.log('[INFO] Action: test_connection successful.');
         return new Response(JSON.stringify({ success: true, message: 'Kết nối thành công!' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
@@ -69,7 +69,7 @@ serve(async (req) => {
 
       case 'generate_image': {
         const { model, prompt, imageData, options } = payload;
-        console.log(`Starting image generation for model: ${model}`);
+        console.log(`[INFO] Starting image generation for model: ${model}`);
         
         let images_data = [];
         if (imageData) {
@@ -119,37 +119,36 @@ serve(async (req) => {
         }
         
         const newTaskId = generationData.job_sets[0].id;
-        console.log(`Successfully submitted image task. Higgsfield Task ID: ${newTaskId}`);
+        console.log(`[INFO] Successfully submitted image task. Higgsfield Task ID: ${newTaskId}`);
         return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       case 'generate_video': {
-        // ... existing video generation logic with added logging ...
         const { model, prompt, imageData, videoData, options } = payload;
-        console.log(`Starting video generation for model: ${model}`);
+        console.log(`[INFO] Starting video generation for model: ${model}`);
 
         if (model === 'wan2') {
           // ... wan2 logic ...
           const wan2Response = await fetch("https://api.beautyapp.work/video/wan2", { /* ... */ });
           const wan2Data = await wan2Response.json();
           const newTaskId = wan2Data.job_sets[0].id;
-          console.log(`Successfully submitted video task (wan2). Higgsfield Task ID: ${newTaskId}`);
+          console.log(`[INFO] Successfully submitted video task (wan2). Higgsfield Task ID: ${newTaskId}`);
           return new Response(JSON.stringify({ success: true, taskId: newTaskId }), { /* ... */ });
         } else {
           // ... other models logic ...
           const generationResponse = await fetch(endpoint, { /* ... */ });
           const generationData = await generationResponse.json();
           const newTaskId = generationData.job_sets[0].id;
-          console.log(`Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
+          console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
           return new Response(JSON.stringify({ success: true, taskId: newTaskId }), { /* ... */ });
         }
       }
 
       case 'get_task_status': {
         const { taskId } = payload;
-        console.log(`Checking status for Task ID: ${taskId}`);
+        console.log(`[INFO] Checking status for Task ID: ${taskId}`);
         
         const statusResponse = await fetch("https://api.beautyapp.work/status", {
           method: 'POST',
@@ -159,12 +158,24 @@ serve(async (req) => {
 
         if (!statusResponse.ok) {
           const errorText = await statusResponse.text();
-          console.error(`Failed to get task status for ${taskId}. API response: ${errorText}`);
+          console.error(`[ERROR] Failed to get task status for ${taskId}. API response: ${statusResponse.status} - ${errorText}`);
           throw new Error(`Không thể lấy trạng thái tác vụ. API trả về: ${statusResponse.status}`);
         }
         
-        const statusData = await statusResponse.json();
-        console.log(`Status for ${taskId}:`, statusData?.job_sets?.[0]?.status || 'N/A');
+        const responseText = await statusResponse.text();
+        let statusData;
+        try {
+          statusData = JSON.parse(responseText);
+        } catch (e) {
+          console.error(`[ERROR] Failed to parse JSON response for task ${taskId}. Raw response: ${responseText}`);
+          throw new Error('Phản hồi từ API trạng thái không phải là JSON hợp lệ.');
+        }
+
+        console.log(`[INFO] Raw status response for ${taskId}:`, responseText);
+        
+        const status = statusData?.job_sets?.[0]?.status;
+        console.log(`[INFO] Parsed status for ${taskId}: ${status || 'N/A'}`);
+
         return new Response(JSON.stringify(statusData), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -174,7 +185,7 @@ serve(async (req) => {
         throw new Error(`Hành động không hợp lệ: ${action}`)
     }
   } catch (error) {
-    console.error('!!! An error occurred in the Edge Function:', error.message);
+    console.error('!!! [FATAL] An error occurred in the Edge Function:', error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
