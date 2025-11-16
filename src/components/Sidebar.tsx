@@ -34,7 +34,7 @@ const Sidebar = () => {
             onClick={() => setActiveIcon(name)}
             className={`w-10 h-10 flex items-center justify-center rounded-md transition-colors ${
               activeIcon === name
-                ? 'bg-gray-100 text-gray-900'
+                ? 'bg-orange-100 text-orange-600'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
             }`}
             aria-label={name}
@@ -50,7 +50,7 @@ const Sidebar = () => {
             onClick={() => setActiveIcon(name)}
             className={`w-10 h-10 flex items-center justify-center rounded-md transition-colors ${
               activeIcon === name
-                ? 'bg-gray-100 text-gray-900'
+                ? 'bg-orange-100 text-orange-600'
                 : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
             }`}
             aria-label={name}
