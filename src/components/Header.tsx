@@ -1,13 +1,41 @@
 import React, { useState } from 'react';
 
 const navItems = [
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/1jxzwqpc_expires_30_days.png", label: "Contacts" },
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/e3deuq39_expires_30_days.png", label: "Conversations" },
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/li9drns7_expires_30_days.png", label: "Marketing" },
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/qvwnbdep_expires_30_days.png", label: "Sales" },
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/5bojggco_expires_30_days.png", label: "Services" },
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/h59t4z2w_expires_30_days.png", label: "Automation" },
-  { icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/8plfi5m1_expires_30_days.png", label: "Reporting" },
+  { 
+    label: "Contacts", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/1jxzwqpc_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/s7lcb8v0_expires_30_days.png"
+  },
+  { 
+    label: "Conversations", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/e3deuq39_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/q9g5vj3p_expires_30_days.png"
+  },
+  { 
+    label: "Marketing", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/li9drns7_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/0h8j3f2m_expires_30_days.png"
+  },
+  { 
+    label: "Sales", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/qvwnbdep_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/5p8b8e9v_expires_30_days.png"
+  },
+  { 
+    label: "Services", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/5bojggco_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/b4k4f5hi_expires_30_days.png"
+  },
+  { 
+    label: "Automation", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/h59t4z2w_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/s2i1b78k_expires_30_days.png"
+  },
+  { 
+    label: "Reporting", 
+    icon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/8plfi5m1_expires_30_days.png",
+    activeIcon: "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/t1y6r2o1_expires_30_days.png"
+  },
 ];
 
 const Header = () => {
@@ -30,10 +58,12 @@ const Header = () => {
           <button
             key={index}
             onClick={() => setActiveItem(item.label)}
-            className="flex items-center py-2 px-3 gap-2 rounded-md transition-colors hover:bg-gray-100"
+            className={`flex items-center py-2 px-3 gap-2 rounded-md transition-colors ${
+              activeItem === item.label ? 'bg-gray-100' : 'hover:bg-gray-100'
+            }`}
           >
             <img
-              src={item.icon}
+              src={activeItem === item.label ? item.activeIcon : item.icon}
               className="w-5 h-5 object-fill"
               alt={`${item.label} icon`}
             />
