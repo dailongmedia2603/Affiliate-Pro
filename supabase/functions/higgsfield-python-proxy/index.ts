@@ -44,13 +44,14 @@ serve(async (req) => {
     switch (action) {
       case 'test_connection': {
         // 3. Lấy token tạm thời từ Higgsfield
+        // Sửa lỗi: Gửi cookie trong header thay vì body
         const tokenResponse = await fetch(HIGGSFIELD_TOKEN_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Cookie': higgsfield_cookie,
           },
           body: JSON.stringify({
-            cookie: higgsfield_cookie,
             clerk_context: higgsfield_clerk_context,
           }),
         });
@@ -69,10 +70,6 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
-
-      // Thêm các case khác cho image/video generation ở đây trong tương lai
-      // case 'generate_image': { ... }
-      // case 'generate_video': { ... }
 
       default:
         throw new Error(`Hành động không hợp lệ: ${action}`)
