@@ -54,18 +54,74 @@ serve(async (req) => {
       throw new Error('Không tìm thấy thông tin xác thực Higgsfield. Vui lòng kiểm tra lại cài đặt của bạn.')
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
+    
+    const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
     switch (action) {
       case 'test_connection': {
-        await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
         return new Response(JSON.stringify({ success: true, message: 'Kết nối thành công!' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
 
+      case 'generate_image': {
+        const { model, prompt, imageData, options } = payload;
+        
+        let images_data = [];
+        if (imageData) {
+          const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, file_data: [imageData] })
+          });
+          const uploadData = await uploadResponse.json();
+          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+            throw new Error('Tải ảnh lên thất bại.');
+          }
+          images_data = uploadData.data;
+        }
+
+        let endpoint = '';
+        let apiPayload = {};
+        const basePayload = { token, prompt, images_data, ...options };
+
+        switch (model) {
+          case 'banana':
+            endpoint = 'https://api.beautyapp.work/img/banana';
+            apiPayload = { ...basePayload, batch_size: 1, aspect_ratio: "auto" };
+            break;
+          case 'seedream':
+            endpoint = 'https://api.beautyapp.work/img/seedream';
+            apiPayload = { ...basePayload, batch_size: 1, aspect_ratio: "1:1", quality: "basic" };
+            break;
+          default:
+            throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
+        }
+
+        const generationResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload)
+        });
+
+        if (!generationResponse.ok) {
+          const errorText = await generationResponse.text();
+          throw new Error(`Tạo ảnh thất bại: ${errorText}`);
+        }
+
+        const generationData = await generationResponse.json();
+        if (!generationData.job_sets || generationData.job_sets.length === 0) {
+            throw new Error('Phản hồi từ API tạo ảnh không hợp lệ.');
+        }
+
+        return new Response(JSON.stringify({ success: true, taskId: generationData.job_sets[0].id }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'generate_video': {
+        // ... existing video generation logic ...
         const { model, prompt, imageData, videoData, options } = payload;
-        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
         if (model === 'wan2') {
           if (!imageData || !videoData) {
@@ -207,7 +263,6 @@ serve(async (req) => {
 
       case 'get_task_status': {
         const { taskId } = payload;
-        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
         
         const statusResponse = await fetch("https://api.beautyapp.work/status", {
           method: 'POST',
