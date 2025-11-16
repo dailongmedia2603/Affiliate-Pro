@@ -32,12 +32,16 @@ const ImageTaskHistory = ({ model }) => {
   }, [fetchTasks]);
 
   useEffect(() => {
-    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing');
-    if (pendingTasks.length === 0) return;
+    const tasksToPoll = tasks.filter(t => 
+      t.status === 'pending' || 
+      t.status === 'processing' ||
+      (t.status === 'completed' && !t.result_url)
+    );
+    if (tasksToPoll.length === 0) return;
 
     const interval = setInterval(async () => {
       let needsUpdate = false;
-      for (const task of pendingTasks) {
+      for (const task of tasksToPoll) {
         try {
           const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
             body: { action: 'get_task_status', taskId: task.higgsfield_task_id }
@@ -49,16 +53,18 @@ const ImageTaskHistory = ({ model }) => {
           }
           
           const apiStatus = data?.jobs?.[0]?.status;
-          if (apiStatus && apiStatus !== task.status) {
+          if (apiStatus && (apiStatus !== task.status || !task.result_url)) {
             const resultUrl = data?.jobs?.[0]?.results?.raw?.url;
             const errorMessage = data?.jobs?.[0]?.error;
             
-            await supabase.from('image_tasks').update({ 
-              status: apiStatus,
-              result_url: resultUrl,
-              error_message: errorMessage,
-            }).eq('id', task.id);
-            needsUpdate = true;
+            if (resultUrl || apiStatus !== task.status) {
+              await supabase.from('image_tasks').update({ 
+                status: apiStatus,
+                result_url: resultUrl,
+                error_message: errorMessage,
+              }).eq('id', task.id);
+              needsUpdate = true;
+            }
           }
         } catch (e) {
           console.error(`Lỗi nghiêm trọng khi kiểm tra tác vụ ${task.id}:`, e);
