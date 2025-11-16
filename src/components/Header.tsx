@@ -7,7 +7,10 @@ import {
   Mic,
   Settings,
   Package,
+  LogOut,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
 
 const navItems = [
   { label: "Quản lý kênh", Icon: Network },
@@ -20,6 +23,10 @@ const navItems = [
 ];
 
 const Header = ({ activeItem, setActiveItem }) => {
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+  };
+
   return (
     <header className="flex items-center self-stretch bg-white py-[13px] px-4">
       <div className="flex items-center w-[105px] mr-[18px] gap-3.5">
@@ -53,17 +60,10 @@ const Header = ({ activeItem, setActiveItem }) => {
         ))}
       </nav>
       <div className="flex-1 self-stretch"></div>
-      <div className="flex items-start gap-3">
-        <img
-          src={"https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/zfh9ri4j_expires_30_days.png"}
-          className="w-[30px] h-[30px] object-fill"
-          alt="icon 1"
-        />
-        <img
-          src={"https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/483uqjj3_expires_30_days.png"}
-          className="w-[30px] h-[30px] object-fill"
-          alt="icon 3"
-        />
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={handleSignOut} title="Đăng xuất">
+          <LogOut className="h-5 w-5 text-gray-600 hover:text-orange-500" />
+        </Button>
       </div>
     </header>
   );
