@@ -6,10 +6,12 @@ import {
   Image,
   Mic,
   Settings,
+  Package,
 } from 'lucide-react';
 
 const navItems = [
   { label: "Quản lý kênh", Icon: Network },
+  { label: "Sản phẩm", Icon: Package },
   { label: "Automation", Icon: Bot },
   { label: "Tạo Video", Icon: Video },
   { label: "Tạo Ảnh", Icon: Image },
