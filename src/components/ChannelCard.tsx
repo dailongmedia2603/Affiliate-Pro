@@ -1,41 +1,85 @@
 import React from 'react';
-import { Star, Settings, Trash2 } from 'lucide-react';
+import {
+  Users2,
+  DollarSign,
+  Presentation,
+  Paperclip,
+  CheckCircle2,
+  Clock,
+} from 'lucide-react';
 
-const typeStyles = {
-  Facebook: 'bg-blue-100 text-blue-600',
-  Instagram: 'bg-pink-100 text-pink-600',
-  Zalo: 'bg-cyan-100 text-cyan-600',
-  Website: 'bg-gray-100 text-gray-600',
+const StatusBadge = ({ status }) => {
+  if (status === 'updated') {
+    return (
+      <div className="flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-md">
+        <CheckCircle2 className="w-3.5 h-3.5" />
+        <span>All updated</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 text-xs font-semibold px-2 py-1 rounded-md">
+      <Clock className="w-3.5 h-3.5" />
+      <span>Task pending</span>
+    </div>
+  );
 };
 
 const ChannelCard = ({ channel }) => {
-  const typeStyle = typeStyles[channel.type] || typeStyles.Website;
-
   return (
-    <div className="relative bg-white rounded-lg border border-gray-200 p-4 flex flex-col items-center text-center transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
-      <div className="absolute top-3 left-3 bg-white px-2 py-1 rounded-full border border-gray-200 flex items-center gap-1 text-sm shadow-sm">
-        <Star className="w-4 h-4 text-orange-400 fill-orange-400" />
-        <span className="font-semibold text-gray-700">{channel.rating}</span>
+    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <img
+          src={channel.avatar}
+          alt={channel.name}
+          className="w-12 h-12 rounded-lg object-cover"
+        />
+        <div className="flex-1">
+          <h3 className="font-bold text-gray-800">{channel.name}</h3>
+          <p className="text-sm text-gray-500">{channel.category}</p>
+        </div>
+        <div className="flex -space-x-2">
+          <img className="inline-block h-7 w-7 rounded-full ring-2 ring-white" src="https://i.pravatar.cc/150?img=10" alt="member 1" />
+          <img className="inline-block h-7 w-7 rounded-full ring-2 ring-white" src="https://i.pravatar.cc/150?img=11" alt="member 2" />
+          <div className="h-7 w-7 rounded-full ring-2 ring-white bg-gray-200 flex items-center justify-center text-xs font-semibold text-gray-600">
+            +20
+          </div>
+        </div>
       </div>
-      <img
-        src={channel.avatar}
-        alt={channel.name}
-        className="w-24 h-24 rounded-full object-cover mt-8"
-      />
-      <h3 className="mt-4 font-bold text-lg text-gray-800">{channel.name}</h3>
-      <p className={`mt-2 text-xs font-bold px-3 py-1 rounded-full ${typeStyle}`}>
-        {channel.type.toUpperCase()}
-      </p>
-      <div className="mt-6 w-full border-t border-gray-200 pt-4 flex justify-around items-center text-gray-500">
-        <button className="flex items-center gap-2 text-sm hover:text-orange-500 transition-colors">
-          <Settings className="w-4 h-4" />
-          <span>Cài đặt</span>
-        </button>
-        <button className="flex items-center gap-2 text-sm hover:text-red-500 transition-colors">
-          <Trash2 className="w-4 h-4" />
-          <span>Xóa</span>
-        </button>
+
+      {/* Tags */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-1 rounded-md">
+          <Paperclip className="w-3.5 h-3.5" />
+          <span>{channel.attachments}</span>
+        </div>
+        <StatusBadge status={channel.status} />
       </div>
+
+      {/* Details */}
+      <div className="flex flex-col gap-2 text-sm">
+        <div className="flex items-center text-gray-500">
+          <Users2 className="w-4 h-4 mr-2" />
+          <span>Company Size</span>
+          <span className="ml-auto font-bold text-gray-800">{channel.companySize} Members</span>
+        </div>
+        <div className="flex items-center text-gray-500">
+          <DollarSign className="w-4 h-4 mr-2" />
+          <span>Revenue</span>
+          <span className="ml-auto font-bold text-gray-800">${channel.revenue}M /year</span>
+        </div>
+        <div className="flex items-center text-gray-500">
+          <Presentation className="w-4 h-4 mr-2" />
+          <span>Open projects</span>
+          <span className="ml-auto font-bold text-gray-800">{channel.openProjects} projects</span>
+        </div>
+      </div>
+
+      {/* Action Button */}
+      <button className="w-full mt-2 py-2.5 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">
+        Visit Company
+      </button>
     </div>
   );
 };

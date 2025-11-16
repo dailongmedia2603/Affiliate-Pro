@@ -3,14 +3,78 @@ import { Search } from 'lucide-react';
 import ChannelCard from './ChannelCard';
 
 const channels = [
-  { id: 1, name: 'Fanpage Thời Trang', type: 'Facebook', avatar: 'https://i.pravatar.cc/150?img=1', rating: 4.8 },
-  { id: 2, name: 'Mỹ phẩm chính hãng', type: 'Instagram', avatar: 'https://i.pravatar.cc/150?img=2', rating: 4.5 },
-  { id: 3, name: 'Zalo Shop Mẹ & Bé', type: 'Zalo', avatar: 'https://i.pravatar.cc/150?img=3', rating: 4.2 },
-  { id: 4, name: 'Website Giày Sneaker', type: 'Website', avatar: 'https://i.pravatar.cc/150?img=4', rating: 5.0 },
-  { id: 5, name: 'Kênh Bán Hàng Phụ Kiện', type: 'Facebook', avatar: 'https://i.pravatar.cc/150?img=5', rating: 4.9 },
-  { id: 6, name: 'Trang sức cao cấp', type: 'Instagram', avatar: 'https://i.pravatar.cc/150?img=6', rating: 4.7 },
-  { id: 7, name: 'Đồ gia dụng thông minh', type: 'Website', avatar: 'https://i.pravatar.cc/150?img=7', rating: 4.6 },
-  { id: 8, name: 'Cửa hàng Zalo', type: 'Zalo', avatar: 'https://i.pravatar.cc/150?img=8', rating: 4.4 },
+  { 
+    id: 1, 
+    name: 'Fanpage Thời Trang', 
+    type: 'Facebook', 
+    avatar: 'https://i.pravatar.cc/150?img=1', 
+    category: 'E-commerce',
+    attachments: 10,
+    status: 'updated',
+    companySize: 150,
+    revenue: 5,
+    openProjects: 10,
+  },
+  { 
+    id: 2, 
+    name: 'Mỹ phẩm chính hãng', 
+    type: 'Instagram', 
+    avatar: 'https://i.pravatar.cc/150?img=2', 
+    category: 'Beauty',
+    attachments: 5,
+    status: 'pending',
+    companySize: 80,
+    revenue: 2.5,
+    openProjects: 4,
+  },
+  { 
+    id: 3, 
+    name: 'Zalo Shop Mẹ & Bé', 
+    type: 'Zalo', 
+    avatar: 'https://i.pravatar.cc/150?img=3', 
+    category: 'Retail',
+    attachments: 12,
+    status: 'updated',
+    companySize: 45,
+    revenue: 1.2,
+    openProjects: 8,
+  },
+  { 
+    id: 4, 
+    name: 'Website Giày Sneaker', 
+    type: 'Website', 
+    avatar: 'https://i.pravatar.cc/150?img=4', 
+    category: 'Fashion',
+    attachments: 25,
+    status: 'pending',
+    companySize: 200,
+    revenue: 10,
+    openProjects: 15,
+  },
+  { 
+    id: 5, 
+    name: 'Kênh Bán Hàng Phụ Kiện', 
+    type: 'Facebook', 
+    avatar: 'https://i.pravatar.cc/150?img=5', 
+    category: 'Accessories',
+    attachments: 8,
+    status: 'updated',
+    companySize: 30,
+    revenue: 0.8,
+    openProjects: 3,
+  },
+  { 
+    id: 6, 
+    name: 'Trang sức cao cấp', 
+    type: 'Instagram', 
+    avatar: 'https://i.pravatar.cc/150?img=6', 
+    category: 'Luxury Goods',
+    attachments: 15,
+    status: 'pending',
+    companySize: 60,
+    revenue: 4,
+    openProjects: 6,
+  },
 ];
 
 const filters = ['Tất cả', 'Facebook', 'Instagram', 'Zalo', 'Website'];
@@ -26,7 +90,7 @@ const ChannelManagement = () => {
   }, [activeFilter, searchTerm]);
 
   return (
-    <div className="w-full p-6">
+    <div className="w-full p-6 bg-gray-50/50">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Quản lý kênh</h1>
@@ -62,7 +126,7 @@ const ChannelManagement = () => {
       </div>
 
       {/* Channel Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredChannels.length > 0 ? (
           filteredChannels.map(channel => (
             <ChannelCard key={channel.id} channel={channel} />
