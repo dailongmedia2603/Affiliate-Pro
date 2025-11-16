@@ -2,7 +2,7 @@ import React from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Trash2, AlertTriangle, Download } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Trash2, AlertTriangle, Download, Clock } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import {
   Tooltip,
@@ -24,6 +24,8 @@ const VideoTaskItem = ({ task, onTaskDeleted }) => {
 
   const renderStatus = () => {
     switch (task.status) {
+      case 'queued':
+        return <Badge variant="outline" className="text-gray-600 border-gray-300"><Clock className="w-3 h-3 mr-1" />Đang chờ</Badge>;
       case 'pending':
       case 'processing':
         return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang xử lý</Badge>;
