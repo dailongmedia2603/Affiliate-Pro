@@ -141,7 +141,7 @@ const SettingsPage = () => {
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.success && data.data.minimax === 'good') {
+      if (data.success && (data.data.minimax === 'good' || data.data.minimax === 'degraded')) {
         setVoiceConnectionStatus('success');
         showSuccess('Kết nối API Voice thành công!');
         fetchVoiceCredits(voiceApiKey);
