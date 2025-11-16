@@ -25,13 +25,16 @@ serve(async (req) => {
     }
 
     const targetUrl = `${API_BASE_URL}/${path}`
+    
+    // Tự động xác định 'Accept' header dựa trên đường dẫn
+    const acceptHeader = path.startsWith('text-to-speech') ? 'audio/mpeg' : 'application/json';
 
     const fetchOptions = {
       method: method,
       headers: {
         'xi-api-key': token,
         'Content-Type': 'application/json',
-        'Accept': 'audio/mpeg',
+        'Accept': acceptHeader,
       },
     }
 
