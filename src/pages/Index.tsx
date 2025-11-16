@@ -5,7 +5,6 @@ import ChannelManagement from '@/components/ChannelManagement';
 import SettingsPage from '@/pages/SettingsPage';
 import PlaceholderPage from '@/pages/PlaceholderPage';
 import ProductPage from '@/pages/ProductPage';
-import VoicePage from '@/pages/VoicePage';
 
 const Index = () => {
   const [activeItem, setActiveItem] = useState('Quản lý kênh');
@@ -16,8 +15,6 @@ const Index = () => {
         return <ChannelManagement />;
       case 'Sản phẩm':
         return <ProductPage />;
-      case 'Tạo Voice':
-        return <VoicePage />;
       case 'Cài Đặt':
         return <SettingsPage />;
       default:
