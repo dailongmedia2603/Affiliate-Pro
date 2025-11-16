@@ -130,21 +130,86 @@ serve(async (req) => {
         const { model, prompt, imageData, videoData, options } = payload;
         console.log(`[INFO] Starting video generation for model: ${model}`);
 
-        if (model === 'wan2') {
-          // ... wan2 logic ...
-          const wan2Response = await fetch("https://api.beautyapp.work/video/wan2", { /* ... */ });
-          const wan2Data = await wan2Response.json();
-          const newTaskId = wan2Data.job_sets[0].id;
-          console.log(`[INFO] Successfully submitted video task (wan2). Higgsfield Task ID: ${newTaskId}`);
-          return new Response(JSON.stringify({ success: true, taskId: newTaskId }), { /* ... */ });
-        } else {
-          // ... other models logic ...
-          const generationResponse = await fetch(endpoint, { /* ... */ });
-          const generationData = await generationResponse.json();
-          const newTaskId = generationData.job_sets[0].id;
-          console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
-          return new Response(JSON.stringify({ success: true, taskId: newTaskId }), { /* ... */ });
+        // Upload image if provided
+        let images_data = [];
+        if (imageData) {
+          const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, file_data: [imageData] })
+          });
+          const uploadData = await uploadResponse.json();
+          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+            console.error('[ERROR] Image upload failed. API Response:', JSON.stringify(uploadData));
+            throw new Error('Tải ảnh lên thất bại. Chi tiết đã được ghi lại trong log.');
+          }
+          images_data = uploadData.data;
         }
+
+        // Upload video if provided (for wan2)
+        let videos_data = [];
+        if (videoData) {
+          const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, file_data: [videoData], file_type: 'video' })
+          });
+          const uploadData = await uploadResponse.json();
+          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+            console.error('[ERROR] Video upload failed. API Response:', JSON.stringify(uploadData));
+            throw new Error('Tải video lên thất bại. Chi tiết đã được ghi lại trong log.');
+          }
+          videos_data = uploadData.data;
+        }
+
+        let endpoint = '';
+        let apiPayload = {};
+        
+        switch (model) {
+          case 'kling':
+            endpoint = 'https://api.beautyapp.work/video/kling';
+            apiPayload = { token, prompt, images_data, ...options };
+            break;
+          case 'sora':
+            endpoint = 'https://api.beautyapp.work/video/sora';
+            apiPayload = { token, prompt, images_data, ...options };
+            break;
+          case 'higg_life':
+            endpoint = 'https://api.beautyapp.work/video/higg_life';
+            apiPayload = { token, prompt, images_data, ...options };
+            break;
+          case 'wan2':
+            endpoint = 'https://api.beautyapp.work/video/wan2';
+            if (images_data.length === 0 || videos_data.length === 0) {
+              throw new Error('Model Wan2 yêu cầu cả ảnh và video đầu vào.');
+            }
+            apiPayload = { token, prompt, images_data, videos_data, ...options };
+            break;
+          default:
+            throw new Error(`Model video không được hỗ trợ: ${model}`);
+        }
+
+        const generationResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload)
+        });
+
+        if (!generationResponse.ok) {
+          const errorText = await generationResponse.text();
+          throw new Error(`Tạo video thất bại: ${errorText}`);
+        }
+
+        const generationData = await generationResponse.json();
+        if (!generationData.job_sets || generationData.job_sets.length === 0) {
+            throw new Error('Phản hồi từ API tạo video không hợp lệ.');
+        }
+        
+        const newTaskId = generationData.job_sets[0].id;
+        console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
+        return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       case 'get_task_status': {
