@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Network,
   Bot,
@@ -19,9 +19,7 @@ const navItems = [
   { label: "Cài Đặt", Icon: Settings },
 ];
 
-const Header = () => {
-  const [activeItem, setActiveItem] = useState('Quản lý kênh');
-
+const Header = ({ activeItem, setActiveItem }) => {
   return (
     <header className="flex items-center self-stretch bg-white py-[13px] px-4">
       <div className="flex items-center w-[105px] mr-[18px] gap-3.5">
