@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, UploadCloud, UserPlus, Trash2 } from 'lucide-react';
+import { Loader2, UserPlus, Trash2 } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import {
   AlertDialog,
@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import CustomAudioPlayer from './CustomAudioPlayer';
 
 const CloneVoiceTab = ({ apiKey }) => {
   const [file, setFile] = useState(null);
@@ -147,7 +148,7 @@ const CloneVoiceTab = ({ apiKey }) => {
                   <div key={voice.voice_id} className="relative group border rounded-lg p-4 flex flex-col items-center text-center space-y-2">
                     <img src={voice.cover_url || '/placeholder.svg'} alt={voice.voice_name} className="w-20 h-20 rounded-full object-cover bg-gray-200" />
                     <p className="font-semibold">{voice.voice_name}</p>
-                    <audio controls src={voice.sample_audio} className="w-full h-8" />
+                    <CustomAudioPlayer src={voice.sample_audio} />
                     <Button variant="destructive" size="icon" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity w-8 h-8" onClick={() => setVoiceToDelete(voice)}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
