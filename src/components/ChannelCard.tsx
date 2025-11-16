@@ -55,7 +55,7 @@ const ChannelCard = ({ channel, productName }) => {
 
       {/* Action Button */}
       <button className="w-full mt-2 py-2.5 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">
-        Visit Company
+        Video đã tạo
       </button>
     </div>
   );
