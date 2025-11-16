@@ -50,7 +50,7 @@ const VideoTaskItem = ({ task, onTaskDeleted }) => {
       <div className="flex justify-between items-start">
         <div className="flex-1 mr-2 space-y-1">
           {renderStatus()}
-          <p className="text-sm font-medium truncate" title={task.prompt}>{task.prompt}</p>
+          <p className="text-sm font-medium" title={task.prompt}>{task.prompt}</p>
           <p className="text-xs text-gray-500">Model: {task.model}</p>
         </div>
         <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
