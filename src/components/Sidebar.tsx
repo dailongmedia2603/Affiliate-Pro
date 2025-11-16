@@ -26,7 +26,7 @@ const Sidebar = () => {
   const [activeIcon, setActiveIcon] = useState(topIcons[0].name);
 
   return (
-    <aside className="flex flex-col items-center w-16 p-2 bg-white border-r">
+    <aside className="flex flex-col items-center w-16 p-2 bg-white border border-solid border-[#EDEDED] rounded-lg">
       <div className="flex flex-col items-center self-stretch flex-grow gap-3 pt-3">
         {topIcons.map(({ name, Icon }) => (
           <button
