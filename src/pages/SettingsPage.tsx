@@ -10,6 +10,7 @@ import { Sparkles, Film, CheckCircle, XCircle, Loader2 } from "lucide-react";
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [geminiApiUrl, setGeminiApiUrl] = useState('https://aquarius.qcv.vn/api/chat');
   const [higgsfieldApiKey, setHiggsfieldApiKey] = useState('');
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -23,7 +24,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, higgsfield_api_key')
+          .select('gemini_api_key, higgsfield_api_key, gemini_api_url')
           .eq('id', user.id)
           .single();
 
@@ -33,6 +34,7 @@ const SettingsPage = () => {
         if (data) {
           setGeminiApiKey(data.gemini_api_key || '');
           setHiggsfieldApiKey(data.higgsfield_api_key || '');
+          setGeminiApiUrl(data.gemini_api_url || 'https://aquarius.qcv.vn/api/chat');
         }
       }
     };
@@ -49,7 +51,7 @@ const SettingsPage = () => {
     }
 
     const updateData = apiKeyType === 'gemini'
-      ? { gemini_api_key: geminiApiKey }
+      ? { gemini_api_key: geminiApiKey, gemini_api_url: geminiApiUrl }
       : { higgsfield_api_key: higgsfieldApiKey };
 
     const { error } = await supabase
@@ -65,30 +67,38 @@ const SettingsPage = () => {
   };
 
   const handleTestApi = async () => {
-    if (!geminiApiKey) {
+    if (!geminiApiKey || !geminiApiUrl) {
       setConnectionStatus('error');
-      setTestResult('Vui lòng nhập API key trước khi kiểm tra.');
+      setTestResult('Vui lòng nhập API key và URL trước khi kiểm tra.');
       return;
     }
     setIsLoadingApiTest(true);
     setConnectionStatus('idle');
     setTestResult('');
-    const formData = new FormData();
-    formData.append('prompt', testPrompt);
-    formData.append('token', geminiApiKey);
+
     try {
-      const response = await fetch('https://aquarius.qcv.vn/api/chat', { method: 'POST', body: formData });
-      const resultText = await response.text();
-      if (response.ok) {
-        setConnectionStatus('success');
-        setTestResult(resultText);
-      } else {
-        setConnectionStatus('error');
-        setTestResult(`Lỗi: ${response.status} - ${resultText}`);
+      const { data, error } = await supabase.functions.invoke('proxy-gemini-api', {
+        body: {
+          apiUrl: geminiApiUrl,
+          prompt: testPrompt,
+          token: geminiApiKey,
+        },
+      });
+
+      if (error) {
+        throw error;
       }
+      
+      if (data.error) {
+         throw new Error(data.error);
+      }
+      
+      setConnectionStatus('success');
+      setTestResult(data);
+
     } catch (error) {
       setConnectionStatus('error');
-      setTestResult(`Lỗi kết nối mạng: ${error.message}`);
+      setTestResult(`Lỗi: ${error.message}`);
     } finally {
       setIsLoadingApiTest(false);
     }
@@ -110,10 +120,16 @@ const SettingsPage = () => {
           <div className="p-6 border rounded-lg bg-white space-y-6">
             <div>
               <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Gemini</h2>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập API key của bạn để kết nối với dịch vụ của Google Gemini.</p>
-              <div className="space-y-2 max-w-md">
-                <label htmlFor="gemini-api-key" className="text-sm font-medium text-gray-700">Gemini API Key</label>
-                <Input id="gemini-api-key" type="password" placeholder="Nhập API key của bạn..." value={geminiApiKey} onChange={(e) => { setGeminiApiKey(e.target.value); setConnectionStatus('idle'); }} />
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập API key và URL của bạn để kết nối với dịch vụ của Google Gemini.</p>
+              <div className="space-y-4 max-w-md">
+                <div className="space-y-2">
+                  <label htmlFor="gemini-api-url" className="text-sm font-medium text-gray-700">Gemini API URL</label>
+                  <Input id="gemini-api-url" type="text" placeholder="https://example.com/api/chat" value={geminiApiUrl} onChange={(e) => setGeminiApiUrl(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="gemini-api-key" className="text-sm font-medium text-gray-700">Gemini API Key</label>
+                  <Input id="gemini-api-key" type="password" placeholder="Nhập API key của bạn..." value={geminiApiKey} onChange={(e) => { setGeminiApiKey(e.target.value); setConnectionStatus('idle'); }} />
+                </div>
               </div>
               <div className="flex items-center gap-4 mt-4">
                 <Button onClick={handleTestApi} disabled={isLoadingApiTest} variant="outline">
@@ -125,7 +141,7 @@ const SettingsPage = () => {
               </div>
             </div>
             {connectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Gemini thành công.</AlertDescription></Alert>)}
-            {connectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API key.</AlertDescription></Alert>)}
+            {connectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API key và URL.</AlertDescription></Alert>)}
             <div className="border-t pt-6">
               <h2 className="text-lg font-semibold text-gray-700">Kiểm tra Prompt</h2>
               <p className="text-sm text-gray-500 mt-1 mb-4">Gửi một prompt để kiểm tra đầu ra của API.</p>
@@ -133,7 +149,7 @@ const SettingsPage = () => {
                 <label htmlFor="test-prompt" className="text-sm font-medium text-gray-700">Prompt</label>
                 <Textarea id="test-prompt" placeholder="Nhập prompt của bạn ở đây..." value={testPrompt} onChange={(e) => setTestPrompt(e.target.value)} className="min-h-[100px]" />
               </div>
-              <Button onClick={handleTestApi} disabled={isLoadingApiTest || !geminiApiKey} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+              <Button onClick={handleTestApi} disabled={isLoadingApiTest || !geminiApiKey || !geminiApiUrl} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">
                 {isLoadingApiTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt
               </Button>
               {testResult && !isLoadingApiTest && (<div className="mt-4"><h3 className="text-sm font-semibold text-gray-700 mb-2">Kết quả:</h3><div className="bg-gray-900 text-white p-4 rounded-lg max-h-60 overflow-y-auto"><pre className="whitespace-pre-wrap text-sm font-mono">{testResult}</pre></div></div>)}
