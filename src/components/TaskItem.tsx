@@ -10,6 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import CustomAudioPlayer from './CustomAudioPlayer';
 
 const TaskItem = ({ task, apiKey, onTaskDeleted }) => {
   const handleDelete = async () => {
@@ -61,7 +62,7 @@ const TaskItem = ({ task, apiKey, onTaskDeleted }) => {
         <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
       </div>
       {task.status === 'done' && task.metadata?.audio_url && (
-        <audio controls src={task.metadata.audio_url} className="w-full h-8" />
+        <CustomAudioPlayer src={task.metadata.audio_url} />
       )}
       <div className="flex justify-between items-center text-xs text-gray-500">
         <span>{new Date(task.created_at).toLocaleString()}</span>
