@@ -11,7 +11,8 @@ import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2 } from "lucide-react
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [geminiApiUrl, setGeminiApiUrl] = useState('https://aquarius.qcv.vn/api/chat');
-  const [higgsfieldApiKey, setHiggsfieldApiKey] = useState('');
+  const [higgsfieldCookie, setHiggsfieldCookie] = useState('');
+  const [higgsfieldClerkContext, setHiggsfieldClerkContext] = useState('');
   const [voiceApiKey, setVoiceApiKey] = useState('');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
@@ -22,6 +23,8 @@ const SettingsPage = () => {
   const [isCheckingVoiceConnection, setIsCheckingVoiceConnection] = useState(false);
   const [isFetchingCredits, setIsFetchingCredits] = useState(false);
   const [voiceConnectionStatus, setVoiceConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTestingHiggsfield, setIsTestingHiggsfield] = useState(false);
+  const [higgsfieldConnectionStatus, setHiggsfieldConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const fetchVoiceCredits = async (apiKey: string) => {
     if (!apiKey) return;
@@ -51,7 +54,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, higgsfield_api_key, gemini_api_url, voice_api_key')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context')
           .eq('id', user.id)
           .single();
 
@@ -60,9 +63,10 @@ const SettingsPage = () => {
         }
         if (data) {
           setGeminiApiKey(data.gemini_api_key || '');
-          setHiggsfieldApiKey(data.higgsfield_api_key || '');
           setGeminiApiUrl(data.gemini_api_url || 'https://aquarius.qcv.vn/api/chat');
           setVoiceApiKey(data.voice_api_key || '');
+          setHiggsfieldCookie(data.higgsfield_cookie || '');
+          setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
           if (data.voice_api_key) {
             fetchVoiceCredits(data.voice_api_key);
           }
@@ -81,11 +85,18 @@ const SettingsPage = () => {
       return;
     }
 
-    const updateData = apiKeyType === 'gemini'
-      ? { gemini_api_key: geminiApiKey, gemini_api_url: geminiApiUrl }
-      : apiKeyType === 'higgsfield'
-      ? { higgsfield_api_key: higgsfieldApiKey }
-      : { voice_api_key: voiceApiKey };
+    let updateData;
+    switch (apiKeyType) {
+      case 'gemini':
+        updateData = { gemini_api_key: geminiApiKey, gemini_api_url: geminiApiUrl };
+        break;
+      case 'higgsfield':
+        updateData = { higgsfield_cookie: higgsfieldCookie, higgsfield_clerk_context: higgsfieldClerkContext };
+        break;
+      case 'voice':
+        updateData = { voice_api_key: voiceApiKey };
+        break;
+    }
 
     const { error } = await supabase
       .from('user_settings')
@@ -156,6 +167,34 @@ const SettingsPage = () => {
     }
   };
 
+  const handleTestHiggsfieldConnection = async () => {
+    if (!higgsfieldCookie || !higgsfieldClerkContext) {
+      setHiggsfieldConnectionStatus('error');
+      showError('Vui lòng nhập đầy đủ Cookie và Clerk Context.');
+      return;
+    }
+    setIsTestingHiggsfield(true);
+    setHiggsfieldConnectionStatus('idle');
+    try {
+      const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
+        body: { action: 'test_connection' },
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      if (data.success) {
+        setHiggsfieldConnectionStatus('success');
+        showSuccess('Kết nối API Higgsfield thành công!');
+      } else {
+        throw new Error('Kiểm tra kết nối thất bại.');
+      }
+    } catch (error) {
+      setHiggsfieldConnectionStatus('error');
+      showError(`Lỗi kết nối Higgsfield: ${error.message}`);
+    } finally {
+      setIsTestingHiggsfield(false);
+    }
+  };
+
   return (
     <div className="w-full p-6 bg-gray-50/50">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Cài Đặt</h1>
@@ -191,11 +230,27 @@ const SettingsPage = () => {
           </div>
         </TabsContent>
         <TabsContent value="higgsfield" className="mt-6">
-          <div className="p-6 border rounded-lg bg-white">
-            <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Higgsfield</h2>
-            <p className="text-sm text-gray-500 mt-1 mb-4">Nhập API key của bạn để kết nối với dịch vụ của Higgsfield.</p>
-            <div className="space-y-2 max-w-md"><label htmlFor="higgsfield-api-key" className="text-sm font-medium text-gray-700">Higgsfield API Key</label><Input id="higgsfield-api-key" type="password" placeholder="Nhập API key của bạn..." value={higgsfieldApiKey} onChange={(e) => setHiggsfieldApiKey(e.target.value)} /></div>
-            <Button onClick={() => handleSaveSettings('higgsfield')} disabled={isSaving} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+          <div className="p-6 border rounded-lg bg-white space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Higgsfield</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin xác thực để kết nối với dịch vụ của Higgsfield.</p>
+              <div className="space-y-4 max-w-lg">
+                <div className="space-y-2">
+                  <label htmlFor="higgsfield-cookie" className="text-sm font-medium text-gray-700">Higgsfield Cookie</label>
+                  <Textarea id="higgsfield-cookie" placeholder="Nhập Cookie của bạn..." value={higgsfieldCookie} onChange={(e) => { setHiggsfieldCookie(e.target.value); setHiggsfieldConnectionStatus('idle'); }} className="min-h-[100px] font-mono text-xs" />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="higgsfield-clerk-context" className="text-sm font-medium text-gray-700">Higgsfield Clerk Context</label>
+                  <Textarea id="higgsfield-clerk-context" placeholder="Nhập Clerk Context của bạn..." value={higgsfieldClerkContext} onChange={(e) => { setHiggsfieldClerkContext(e.target.value); setHiggsfieldConnectionStatus('idle'); }} className="min-h-[100px] font-mono text-xs" />
+                </div>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <Button onClick={handleTestHiggsfieldConnection} disabled={isTestingHiggsfield} variant="outline">{isTestingHiggsfield ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
+                <Button onClick={() => handleSaveSettings('higgsfield')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+              </div>
+            </div>
+            {higgsfieldConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Higgsfield thành công.</AlertDescription></Alert>)}
+            {higgsfieldConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Cookie và Clerk Context.</AlertDescription></Alert>)}
           </div>
         </TabsContent>
         <TabsContent value="voice" className="mt-6">
