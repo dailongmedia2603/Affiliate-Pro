@@ -62,7 +62,7 @@ const ChannelCard = ({ channel }) => {
         <div className="flex items-center text-gray-500">
           <Users2 className="w-4 h-4 mr-2" />
           <span>Company Size</span>
-          <span className="ml-auto font-bold text-gray-800">{channel.companySize} Members</span>
+          <span className="ml-auto font-bold text-gray-800">{channel.company_size} Members</span>
         </div>
         <div className="flex items-center text-gray-500">
           <DollarSign className="w-4 h-4 mr-2" />
@@ -72,7 +72,7 @@ const ChannelCard = ({ channel }) => {
         <div className="flex items-center text-gray-500">
           <Presentation className="w-4 h-4 mr-2" />
           <span>Open projects</span>
-          <span className="ml-auto font-bold text-gray-800">{channel.openProjects} projects</span>
+          <span className="ml-auto font-bold text-gray-800">{channel.open_projects} projects</span>
         </div>
       </div>
 
