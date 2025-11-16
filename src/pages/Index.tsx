@@ -4,6 +4,7 @@ import Sidebar from '@/components/Sidebar';
 import ChannelManagement from '@/components/ChannelManagement';
 import SettingsPage from '@/pages/SettingsPage';
 import PlaceholderPage from '@/pages/PlaceholderPage';
+import ProductPage from '@/pages/ProductPage';
 
 const Index = () => {
   const [activeItem, setActiveItem] = useState('Quản lý kênh');
@@ -12,6 +13,8 @@ const Index = () => {
     switch (activeItem) {
       case 'Quản lý kênh':
         return <ChannelManagement />;
+      case 'Sản phẩm':
+        return <ProductPage />;
       case 'Cài Đặt':
         return <SettingsPage />;
       default:
