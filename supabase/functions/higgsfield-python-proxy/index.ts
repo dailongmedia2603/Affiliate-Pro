@@ -71,7 +71,7 @@ serve(async (req) => {
         const { model, prompt, imageData, options } = payload;
         console.log(`[INFO] Starting image generation for model: ${model}`);
         
-        let images_data = [];
+        let processed_images = [];
         if (imageData) {
           const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
             method: 'POST',
@@ -83,12 +83,12 @@ serve(async (req) => {
             console.error('[ERROR] Image upload failed. API Response:', JSON.stringify(uploadData));
             throw new Error('Tải ảnh lên thất bại. Chi tiết đã được ghi lại trong log.');
           }
-          images_data = uploadData.data;
+          processed_images = uploadData.data;
         }
 
         let endpoint = '';
         let apiPayload = {};
-        const basePayload = { token, prompt, input_images: images_data, ...options };
+        const basePayload = { token, prompt, images_data: processed_images, ...options };
 
         switch (model) {
           case 'banana':
