@@ -12,7 +12,7 @@ import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 const VideoGenerationForm = ({ model, onTaskCreated }) => {
-  const [prompt, setPrompt] = useState('A beautiful girl in a beautiful dress');
+  const [prompt, setPrompt] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -88,7 +88,7 @@ const VideoGenerationForm = ({ model, onTaskCreated }) => {
     kling: { title: "Text/Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     sora: { title: "Text/Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     higg_life: { title: "Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
-    wan2: { title: "Image + Video to Video", input: "Ảnh (bắt buộc) và Video (bắt buộc, dưới 5MB)." },
+    wan2: { title: "Image + Video to Video", input: "Ảnh (bắt buộc), Video (bắt buộc, dưới 5MB) và Prompt (tùy chọn)." },
   };
 
   return (
@@ -105,8 +105,8 @@ const VideoGenerationForm = ({ model, onTaskCreated }) => {
         </Alert>
 
         <div className="space-y-2">
-          <Label htmlFor="prompt">Prompt</Label>
-          <Textarea id="prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder="e.g., a cinematic shot of a panda drinking bubble tea" className="min-h-[120px]" />
+          <Label htmlFor="prompt">Prompt {model === 'wan2' && '(Tùy chọn)'}</Label>
+          <Textarea id="prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={model === 'wan2' ? "Nhập prompt nếu muốn..." : "e.g., a cinematic shot of a panda drinking bubble tea"} className="min-h-[120px]" />
         </div>
 
         <div className={`grid grid-cols-1 ${model === 'wan2' ? 'md:grid-cols-2' : ''} gap-6`}>
