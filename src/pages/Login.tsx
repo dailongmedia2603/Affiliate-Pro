@@ -48,7 +48,7 @@ const Login = () => {
               message: 'text-sm text-red-600',
             },
           }}
-          providers={['google', 'github']}
+          providers={[]}
           theme="light"
           localization={{
             variables: {
