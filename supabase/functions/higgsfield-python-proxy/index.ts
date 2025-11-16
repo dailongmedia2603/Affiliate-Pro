@@ -260,7 +260,7 @@ serve(async (req) => {
         const statusResponse = await fetch("https://api.beautyapp.work/status", {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, taskid: taskId })
+          body: JSON.stringify({ token, taskid: taskId }) // Sửa lỗi: taskId -> taskid
         });
 
         if (!statusResponse.ok) {
