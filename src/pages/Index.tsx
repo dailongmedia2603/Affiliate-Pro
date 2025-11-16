@@ -1,7 +1,6 @@
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
-import AIPanel from '@/components/AIPanel';
-import ContentPanel from '@/components/ContentPanel';
+import ChannelManagement from '@/components/ChannelManagement';
 
 const Index = () => {
   return (
@@ -11,8 +10,7 @@ const Index = () => {
         <main className="flex flex-1 items-stretch my-3 mx-3 gap-3">
           <Sidebar />
           <div className="flex items-start bg-white flex-1 rounded-lg border border-solid border-[#EDEDED]">
-            <AIPanel />
-            <ContentPanel />
+            <ChannelManagement />
           </div>
         </main>
       </div>
