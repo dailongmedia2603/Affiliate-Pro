@@ -87,7 +87,7 @@ serve(async (req) => {
 
         let endpoint = '';
         let apiPayload = {};
-        const basePayload = { token, prompt, images_data, ...options };
+        const basePayload = { token, prompt, input_images: images_data, ...options };
 
         switch (model) {
           case 'banana':
@@ -173,7 +173,7 @@ serve(async (req) => {
 
         console.log(`[INFO] Raw status response for ${taskId}:`, responseText);
         
-        const status = statusData?.job_sets?.[0]?.status;
+        const status = statusData?.jobs?.[0]?.status;
         console.log(`[INFO] Parsed status for ${taskId}: ${status || 'N/A'}`);
 
         return new Response(JSON.stringify(statusData), {
