@@ -3,26 +3,7 @@ import {
   Users,
   ThumbsUp,
   Video,
-  CheckCircle2,
-  Clock,
 } from 'lucide-react';
-
-const StatusBadge = ({ status }) => {
-  if (status === 'updated') {
-    return (
-      <div className="flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-md">
-        <CheckCircle2 className="w-3.5 h-3.5" />
-        <span>All updated</span>
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1.5 bg-orange-100 text-orange-600 text-xs font-semibold px-2 py-1 rounded-md">
-      <Clock className="w-3.5 h-3.5" />
-      <span>Task pending</span>
-    </div>
-  );
-};
 
 const ChannelCard = ({ channel, productName }) => {
   return (
@@ -42,16 +23,15 @@ const ChannelCard = ({ channel, productName }) => {
 
       {/* Tags */}
       <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-1 rounded-md">
+          <Video className="w-3.5 h-3.5" />
+          <span>{channel.attachments}</span>
+        </div>
         {productName && (
           <div className="bg-orange-100 text-orange-700 text-xs font-semibold px-2 py-1 rounded-md">
             {productName}
           </div>
         )}
-        <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-1 rounded-md">
-          <Video className="w-3.5 h-3.5" />
-          <span>{channel.attachments}</span>
-        </div>
-        <StatusBadge status={channel.status} />
       </div>
 
       {/* Details */}
