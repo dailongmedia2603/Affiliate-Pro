@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,11 +15,34 @@ serve(async (req) => {
   }
 
   try {
-    const reqBody = await req.json()
-    const { path, token, method = 'GET', body: payload } = reqBody
+    // 1. Xác thực người dùng và tạo Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    )
 
-    if (!path || !token) {
-      return new Response(JSON.stringify({ error: 'Thiếu các tham số bắt buộc: path hoặc token' }), {
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    if (userError) throw userError
+
+    // 2. Lấy API key của người dùng từ database
+    const { data: settings, error: settingsError } = await supabaseClient
+      .from('user_settings')
+      .select('voice_api_key')
+      .eq('id', user.id)
+      .single()
+
+    if (settingsError || !settings || !settings.voice_api_key) {
+      throw new Error('Không tìm thấy API Key cho Voice. Vui lòng kiểm tra lại cài đặt của bạn.')
+    }
+    const token = settings.voice_api_key;
+
+    // 3. Xử lý request từ client
+    const reqBody = await req.json()
+    const { path, method = 'GET', body: payload } = reqBody
+
+    if (!path) {
+      return new Response(JSON.stringify({ error: 'Thiếu tham số bắt buộc: path' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -26,13 +50,12 @@ serve(async (req) => {
 
     const targetUrl = `${API_BASE_URL}/${path}`
     
-    // Tự động xác định 'Accept' header dựa trên đường dẫn
     const acceptHeader = path.startsWith('text-to-speech') ? 'audio/mpeg' : 'application/json';
 
     const fetchOptions = {
       method: method,
       headers: {
-        'xi-api-key': token,
+        'xi-api-key': token, // Sử dụng key lấy từ database
         'Content-Type': 'application/json',
         'Accept': acceptHeader,
       },

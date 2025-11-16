@@ -26,12 +26,12 @@ const SettingsPage = () => {
   const [isTestingHiggsfield, setIsTestingHiggsfield] = useState(false);
   const [higgsfieldConnectionStatus, setHiggsfieldConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
-  const fetchVoiceCredits = async (apiKey: string) => {
-    if (!apiKey) return;
+  const fetchVoiceCredits = async () => {
+    if (!voiceApiKey) return;
     setIsFetchingCredits(true);
     try {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'credits', token: apiKey },
+        body: { path: 'credits' },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -68,7 +68,7 @@ const SettingsPage = () => {
           setHiggsfieldCookie(data.higgsfield_cookie || '');
           setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
           if (data.voice_api_key) {
-            fetchVoiceCredits(data.voice_api_key);
+            fetchVoiceCredits();
           }
         }
       }
@@ -107,7 +107,7 @@ const SettingsPage = () => {
     } else {
       showSuccess("Đã lưu cài đặt thành công!");
       if (apiKeyType === 'voice') {
-        fetchVoiceCredits(voiceApiKey);
+        fetchVoiceCredits();
       }
     }
     setIsSaving(false);
@@ -148,14 +148,14 @@ const SettingsPage = () => {
     setVoiceConnectionStatus('idle');
     try {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'health-check', token: voiceApiKey },
+        body: { path: 'health-check' },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
       if (data.success && (data.data.minimax === 'good' || data.data.minimax === 'degraded')) {
         setVoiceConnectionStatus('success');
         showSuccess('Kết nối API Voice thành công!');
-        fetchVoiceCredits(voiceApiKey);
+        fetchVoiceCredits();
       } else {
         throw new Error(`Dịch vụ không khả dụng: ${JSON.stringify(data.data)}`);
       }

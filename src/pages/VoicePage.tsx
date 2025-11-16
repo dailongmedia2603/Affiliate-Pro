@@ -24,8 +24,8 @@ const VoicePage = () => {
   const [selectedVoice, setSelectedVoice] = useState<Voice | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [loadingVoices, setLoadingVoices] = useState(true);
-  const [voiceApiKey, setVoiceApiKey] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [hasApiKey, setHasApiKey] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('loading');
 
   const [text, setText] = useState('Xin chào, đây là một thử nghiệm tạo giọng nói bằng trí tuệ nhân tạo.');
   const [stability, setStability] = useState(50);
@@ -34,7 +34,8 @@ const VoicePage = () => {
   const [generatedAudioUrl, setGeneratedAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
+    const checkApiKey = async () => {
+      setConnectionStatus('loading');
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data, error } = await supabase
@@ -43,32 +44,34 @@ const VoicePage = () => {
           .eq('id', user.id)
           .single();
 
-        if (error && error.code !== 'PGRST116') {
-          showError('Không thể tải cài đặt API key.');
-          setConnectionStatus('error');
-        }
         if (data && data.voice_api_key) {
-          setVoiceApiKey(data.voice_api_key);
+          setHasApiKey(true);
           setConnectionStatus('success');
         } else {
+          setHasApiKey(false);
           setConnectionStatus('error');
+          if (error && error.code !== 'PGRST116') {
+            showError('Không thể tải cài đặt API key.');
+          }
         }
+      } else {
+        setConnectionStatus('error');
       }
     };
-    fetchSettings();
+    checkApiKey();
   }, []);
 
   useEffect(() => {
-    if (connectionStatus === 'success' && voiceApiKey) {
+    if (connectionStatus === 'success') {
       fetchVoices();
     }
-  }, [connectionStatus, voiceApiKey]);
+  }, [connectionStatus]);
 
   const fetchVoices = async () => {
     setLoadingVoices(true);
     try {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'voices', token: voiceApiKey, method: 'GET' },
+        body: { path: 'voices', method: 'GET' },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
@@ -85,7 +88,7 @@ const VoicePage = () => {
   };
 
   const handleGenerate = async () => {
-    if (!selectedVoice || !text || !voiceApiKey) {
+    if (!selectedVoice || !text) {
       showError('Vui lòng chọn giọng nói và nhập văn bản.');
       return;
     }
@@ -97,7 +100,6 @@ const VoicePage = () => {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
         body: {
           path: `text-to-speech/${selectedVoice.voice_id}`,
-          token: voiceApiKey,
           method: 'POST',
           body: {
             text: text,
@@ -133,6 +135,14 @@ const VoicePage = () => {
   };
 
   const filteredVoices = useMemo(() => voices.filter(v => v.name.toLowerCase().includes(searchTerm.toLowerCase())), [voices, searchTerm]);
+
+  if (connectionStatus === 'loading') {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <Loader2 className="w-10 h-10 animate-spin text-orange-500" />
+      </div>
+    );
+  }
 
   if (connectionStatus === 'error') {
     return (
