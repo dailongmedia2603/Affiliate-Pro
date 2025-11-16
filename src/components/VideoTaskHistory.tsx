@@ -33,6 +33,7 @@ const VideoTaskHistory = ({ model }) => {
 
   useEffect(() => {
     const tasksToPoll = tasks.filter(t => 
+      t.status === 'queued' ||
       t.status === 'pending' || 
       t.status === 'processing' ||
       (t.status === 'completed' && !t.result_url)
@@ -77,18 +78,20 @@ const VideoTaskHistory = ({ model }) => {
   }, [tasks, fetchTasks]);
 
   return (
-    <Card className="flex flex-col h-full min-h-[600px]">
+    <Card>
       <CardHeader className="flex-row justify-between items-center">
         <CardTitle>Lịch sử tạo</CardTitle>
         <Button variant="ghost" size="icon" onClick={fetchTasks} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto space-y-3">
+      <CardContent>
         {loading && tasks.length === 0 ? (
           <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
         ) : tasks.length > 0 ? (
-          tasks.map(task => <VideoTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {tasks.map(task => <VideoTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)}
+          </div>
         ) : (
           <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào cho model này.</p>
         )}
