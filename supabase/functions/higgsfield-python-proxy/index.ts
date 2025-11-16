@@ -118,7 +118,7 @@ serve(async (req) => {
           const wan2Payload = {
             token,
             flowId: "flow-animate-2025-09-21",
-            type: "animate",
+            type: options.type || "animate", // Use type from options
             model: "wan2_2_animate_mix",
             prompt: prompt || "",
             resolution: "480p",

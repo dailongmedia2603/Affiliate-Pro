@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Wand2, Loader2, Upload, Info } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -18,6 +19,7 @@ const VideoGenerationForm = ({ model, onTaskCreated }) => {
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [duration, setDuration] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [wan2Type, setWan2Type] = useState('animate');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = e.target.files?.[0];
@@ -58,7 +60,7 @@ const VideoGenerationForm = ({ model, onTaskCreated }) => {
         kling: { duration, width: 1024, height: 576, resolution: "1080p" },
         sora: { duration, width: 1024, height: 576, resolution: "1080p", aspect_ratio: "16:9" },
         higg_life: { width: 1024, height: 576, steps: 30, frames: 81 },
-        wan2: {},
+        wan2: { type: wan2Type },
       };
 
       const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
@@ -130,6 +132,22 @@ const VideoGenerationForm = ({ model, onTaskCreated }) => {
         
         {(model === 'kling' || model === 'sora') && (
           <div className="space-y-2"><Label>Thời lượng (giây): {duration}</Label><Slider value={[duration]} onValueChange={([v]) => setDuration(v)} min={1} max={10} step={1} /></div>
+        )}
+
+        {model === 'wan2' && (
+          <div className="space-y-2">
+            <Label>Chế độ tạo</Label>
+            <RadioGroup defaultValue="animate" value={wan2Type} onValueChange={setWan2Type} className="flex items-center gap-6 pt-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="animate" id="r-animate" />
+                <Label htmlFor="r-animate" className="cursor-pointer">Animate (Chuyển động)</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="rep" id="r-rep" />
+                <Label htmlFor="r-rep" className="cursor-pointer">Repaint (Vẽ lại)</Label>
+              </div>
+            </RadioGroup>
+          </div>
         )}
 
         <Button onClick={handleSubmit} disabled={isGenerating} size="lg" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
