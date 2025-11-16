@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 const topIcons = [
   "https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/gscw16ey_expires_30_days.png",
@@ -14,6 +14,8 @@ const bottomIcons = [
 ];
 
 const Sidebar = () => {
+  const [activeIcon, setActiveIcon] = useState(topIcons[0]);
+
   return (
     <aside className="flex flex-col items-center w-8">
       <img
@@ -23,12 +25,24 @@ const Sidebar = () => {
       />
       <div className="flex flex-col items-center self-stretch flex-grow gap-3">
         {topIcons.map((src, index) => (
-          <img key={index} src={src} className="w-8 h-8 object-fill" alt={`icon ${index + 1}`} />
+          <button
+            key={`top-${index}`}
+            onClick={() => setActiveIcon(src)}
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${activeIcon === src ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
+          >
+            <img src={src} className="w-full h-full object-fill" alt={`icon ${index + 1}`} />
+          </button>
         ))}
       </div>
       <div className="flex flex-col items-center self-stretch gap-3 mt-4">
         {bottomIcons.map((src, index) => (
-          <img key={index} src={src} className="w-8 h-8 object-fill" alt={`bottom icon ${index + 1}`} />
+          <button
+            key={`bottom-${index}`}
+            onClick={() => setActiveIcon(src)}
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-colors ${activeIcon === src ? 'bg-gray-200' : 'hover:bg-gray-100'}`}
+          >
+            <img src={src} className="w-full h-full object-fill" alt={`bottom icon ${index + 1}`} />
+          </button>
         ))}
       </div>
     </aside>
