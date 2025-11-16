@@ -190,12 +190,18 @@ const ProductPage = () => {
         <div className="flex-1 p-6 overflow-y-auto">
           {selectedProduct ? (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-800">{selectedProduct.name}</h2>
-                <p className="text-gray-600 mt-1">{selectedProduct.description || 'Chưa có mô tả cho sản phẩm này.'}</p>
-                <div className="flex justify-end gap-2 pt-4 border-b pb-4 mb-4">
-                  <Button variant="outline" className="text-red-600 border-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => handleDeleteRequest(selectedProduct)}>Xóa</Button>
-                  <Button className="bg-orange-500 hover:bg-orange-600 text-white" onClick={() => handleEdit(selectedProduct)}>Chỉnh sửa</Button>
+              <div className="flex justify-between items-start border-b pb-4">
+                <div className="mr-4">
+                  <h2 className="text-3xl font-bold text-gray-800">{selectedProduct.name}</h2>
+                  <p className="text-gray-600 mt-1">{selectedProduct.description || 'Chưa có mô tả cho sản phẩm này.'}</p>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleEdit(selectedProduct)}>
+                    <Edit className="w-4 h-4 text-gray-600" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="w-8 h-8" onClick={() => handleDeleteRequest(selectedProduct)}>
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                  </Button>
                 </div>
               </div>
               <div className="flex justify-between items-center">
