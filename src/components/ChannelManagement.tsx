@@ -100,6 +100,12 @@ const ChannelManagement = () => {
     }
   };
 
+  const productMap = useMemo(() => {
+    const map = new Map<string, string>();
+    products.forEach(p => map.set(p.id, p.name));
+    return map;
+  }, [products]);
+
   const filteredChannels = useMemo(() => {
     return channels
       .filter(channel => activeProductId === 'all' || channel.product_id === activeProductId)
@@ -160,7 +166,11 @@ const ChannelManagement = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredChannels.length > 0 ? (
               filteredChannels.map(channel => (
-                <ChannelCard key={channel.id} channel={channel} />
+                <ChannelCard
+                  key={channel.id}
+                  channel={channel}
+                  productName={channel.product_id ? productMap.get(channel.product_id) : undefined}
+                />
               ))
             ) : (
               <p className="col-span-full text-center text-gray-500 py-10">Không tìm thấy kênh nào phù hợp.</p>
