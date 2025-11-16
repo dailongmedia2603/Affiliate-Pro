@@ -1,26 +1,24 @@
 import React, { useState } from 'react';
 import {
-  Users,
-  MessageSquare,
-  Lightbulb,
-  BarChart3,
-  Briefcase,
+  Network,
   Bot,
-  ClipboardList,
+  Video,
+  Image,
+  Mic,
+  Settings,
 } from 'lucide-react';
 
 const navItems = [
-  { label: "Contacts", Icon: Users },
-  { label: "Conversations", Icon: MessageSquare },
-  { label: "Marketing", Icon: Lightbulb },
-  { label: "Sales", Icon: BarChart3 },
-  { label: "Services", Icon: Briefcase },
+  { label: "Quản lý kênh", Icon: Network },
   { label: "Automation", Icon: Bot },
-  { label: "Reporting", Icon: ClipboardList },
+  { label: "Tạo Video", Icon: Video },
+  { label: "Tạo Ảnh", Icon: Image },
+  { label: "Tạo Voice", Icon: Mic },
+  { label: "Cài Đặt", Icon: Settings },
 ];
 
 const Header = () => {
-  const [activeItem, setActiveItem] = useState('Sales');
+  const [activeItem, setActiveItem] = useState('Quản lý kênh');
 
   return (
     <header className="flex items-center self-stretch bg-white py-[13px] px-4">
