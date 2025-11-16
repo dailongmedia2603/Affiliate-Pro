@@ -120,7 +120,6 @@ serve(async (req) => {
       }
 
       case 'generate_video': {
-        // ... existing video generation logic ...
         const { model, prompt, imageData, videoData, options } = payload;
 
         if (model === 'wan2') {
@@ -128,7 +127,6 @@ serve(async (req) => {
             throw new Error('Model Wan2 yêu cầu cả ảnh và video đầu vào.');
           }
 
-          // 1. Upload image
           const uploadImageResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -144,13 +142,11 @@ serve(async (req) => {
             type: "media_input"
           };
 
-          // 2. Get video project URL
           const projectResponse = await fetch("https://api.beautyapp.work/video/video_project");
           const projectData = await projectResponse.json();
           const uploadUrl = projectData.upload_url;
           const videoId = projectData.id;
 
-          // 3. Upload video
           const videoBuffer = Uint8Array.from(atob(videoData), c => c.charCodeAt(0));
           const videoUploadResponse = await fetch(uploadUrl, {
             method: 'PUT',
@@ -161,7 +157,6 @@ serve(async (req) => {
             throw new Error(`Tải video lên thất bại: ${videoUploadResponse.statusText}`);
           }
 
-          // 4. Confirm video upload
           const confirmResponse = await fetch("https://api.beautyapp.work/video/video_comfirm_ul", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -170,11 +165,10 @@ serve(async (req) => {
           const confirmData = await confirmResponse.json();
           const input_video = { id: videoId, url: uploadUrl, type: "video_input" };
 
-          // 5. Call wan2 endpoint
           const wan2Payload = {
             token,
             flowId: "flow-animate-2025-09-21",
-            type: options.type || "animate", // Use type from options
+            type: options.type || "animate",
             model: "wan2_2_animate_mix",
             prompt: prompt || "",
             resolution: "480p",
@@ -203,7 +197,6 @@ serve(async (req) => {
           });
 
         } else {
-          // Logic for Kling, Sora, Higg Life
           let input_image = null;
           if (imageData) {
             const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
