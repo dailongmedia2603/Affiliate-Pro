@@ -80,7 +80,8 @@ serve(async (req) => {
           });
           const uploadData = await uploadResponse.json();
           if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
-            throw new Error('Tải ảnh lên thất bại.');
+            console.error('[ERROR] Image upload failed. API Response:', JSON.stringify(uploadData));
+            throw new Error('Tải ảnh lên thất bại. Chi tiết đã được ghi lại trong log.');
           }
           images_data = uploadData.data;
         }

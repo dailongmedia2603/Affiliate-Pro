@@ -33,6 +33,7 @@ const ImageTaskHistory = ({ model }) => {
 
   useEffect(() => {
     const tasksToPoll = tasks.filter(t => 
+      t.status === 'queued' ||
       t.status === 'pending' || 
       t.status === 'processing' ||
       (t.status === 'completed' && !t.result_url)
