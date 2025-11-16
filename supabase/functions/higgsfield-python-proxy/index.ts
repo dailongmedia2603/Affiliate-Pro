@@ -64,63 +64,145 @@ serve(async (req) => {
       }
 
       case 'generate_video': {
-        const { model, prompt, imageData, options } = payload;
+        const { model, prompt, imageData, videoData, options } = payload;
         const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
-        let input_image = null;
-        if (imageData) {
-          const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
+        if (model === 'wan2') {
+          if (!imageData || !videoData) {
+            throw new Error('Model Wan2 yêu cầu cả ảnh và video đầu vào.');
+          }
+
+          // 1. Upload image
+          const uploadImageResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token, file_data: [imageData] })
           });
-          const uploadData = await uploadResponse.json();
-          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+          const uploadImageData = await uploadImageResponse.json();
+          if (!uploadImageData.status || !uploadImageData.data || uploadImageData.data.length === 0) {
             throw new Error('Tải ảnh lên thất bại.');
           }
-          input_image = uploadData.data;
+          const input_image = {
+            id: uploadImageData.data[0].id,
+            url: uploadImageData.data[0].url,
+            type: "media_input"
+          };
+
+          // 2. Get video project URL
+          const projectResponse = await fetch("https://api.beautyapp.work/video/video_project");
+          const projectData = await projectResponse.json();
+          const uploadUrl = projectData.upload_url;
+          const videoId = projectData.id;
+
+          // 3. Upload video
+          const videoBuffer = Uint8Array.from(atob(videoData), c => c.charCodeAt(0));
+          const videoUploadResponse = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'video/mp4' },
+            body: videoBuffer
+          });
+          if (!videoUploadResponse.ok) {
+            throw new Error(`Tải video lên thất bại: ${videoUploadResponse.statusText}`);
+          }
+
+          // 4. Confirm video upload
+          const confirmResponse = await fetch("https://api.beautyapp.work/video/video_comfirm_ul", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: videoId })
+          });
+          const confirmData = await confirmResponse.json();
+          const input_video = { id: videoId, url: uploadUrl, type: "video_input" };
+
+          // 5. Call wan2 endpoint
+          const wan2Payload = {
+            token,
+            flowId: "flow-animate-2025-09-21",
+            type: "animate",
+            model: "wan2_2_animate_mix",
+            prompt: prompt || "",
+            resolution: "480p",
+            input_image,
+            input_video,
+            height: confirmData.height,
+            width: confirmData.width,
+            mode: "move"
+          };
+          const wan2Response = await fetch("https://api.beautyapp.work/video/wan2", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(wan2Payload)
+          });
+
+          if (!wan2Response.ok) {
+            const errorText = await wan2Response.text();
+            throw new Error(`Tạo video Wan2 thất bại: ${errorText}`);
+          }
+          const wan2Data = await wan2Response.json();
+          if (!wan2Data.job_sets || wan2Data.job_sets.length === 0) {
+            throw new Error('Phản hồi từ API Wan2 không hợp lệ.');
+          }
+          return new Response(JSON.stringify({ success: true, taskId: wan2Data.job_sets[0].id }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+
+        } else {
+          // Logic for Kling, Sora, Higg Life
+          let input_image = null;
+          if (imageData) {
+            const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token, file_data: [imageData] })
+            });
+            const uploadData = await uploadResponse.json();
+            if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+              throw new Error('Tải ảnh lên thất bại.');
+            }
+            input_image = uploadData.data;
+          }
+
+          let endpoint = '';
+          let apiPayload = {};
+          const basePayload = { token, prompt, input_image, ...options };
+
+          switch (model) {
+            case 'kling':
+              endpoint = 'https://api.beautyapp.work/video/kling2.1';
+              apiPayload = { ...basePayload, model: "kling-v2-5-turbo", ...options };
+              break;
+            case 'sora':
+              endpoint = 'https://api.beautyapp.work/video/sora';
+              apiPayload = basePayload;
+              break;
+            case 'higg_life':
+              endpoint = 'https://api.beautyapp.work/video/higg_life';
+              apiPayload = { ...basePayload, model: "standard", ...options };
+              break;
+            default:
+              throw new Error(`Model không được hỗ trợ: ${model}`);
+          }
+
+          const generationResponse = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(apiPayload)
+          });
+
+          if (!generationResponse.ok) {
+            const errorText = await generationResponse.text();
+            throw new Error(`Tạo video thất bại: ${errorText}`);
+          }
+
+          const generationData = await generationResponse.json();
+          if (!generationData.job_sets || generationData.job_sets.length === 0) {
+              throw new Error('Phản hồi từ API không hợp lệ.');
+          }
+
+          return new Response(JSON.stringify({ success: true, taskId: generationData.job_sets[0].id }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
         }
-
-        let endpoint = '';
-        let apiPayload = {};
-        const basePayload = { token, prompt, input_image, ...options };
-
-        switch (model) {
-          case 'kling':
-            endpoint = 'https://api.beautyapp.work/video/kling2.1';
-            apiPayload = { ...basePayload, model: "kling-v2-5-turbo", ...options };
-            break;
-          case 'sora':
-            endpoint = 'https://api.beautyapp.work/video/sora';
-            apiPayload = basePayload;
-            break;
-          case 'higg_life':
-            endpoint = 'https://api.beautyapp.work/video/higg_life';
-            apiPayload = { ...basePayload, model: "standard", ...options };
-            break;
-          default:
-            throw new Error(`Model không được hỗ trợ: ${model}`);
-        }
-
-        const generationResponse = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(apiPayload)
-        });
-
-        if (!generationResponse.ok) {
-          const errorText = await generationResponse.text();
-          throw new Error(`Tạo video thất bại: ${errorText}`);
-        }
-
-        const generationData = await generationResponse.json();
-        if (!generationData.job_sets || generationData.job_sets.length === 0) {
-            throw new Error('Phản hồi từ API không hợp lệ.');
-        }
-
-        return new Response(JSON.stringify({ success: true, taskId: generationData.job_sets[0].id }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
       }
 
       case 'get_task_status': {

@@ -6,7 +6,7 @@ import { RefreshCw, Loader2 } from 'lucide-react';
 import { showError } from '@/utils/toast';
 import VideoTaskItem from './VideoTaskItem';
 
-const VideoTaskHistory = () => {
+const VideoTaskHistory = ({ model }) => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -15,16 +15,17 @@ const VideoTaskHistory = () => {
     const { data, error } = await supabase
       .from('video_tasks')
       .select('*')
+      .eq('model', model)
       .order('created_at', { ascending: false })
       .limit(20);
     
     if (error) {
-      showError('Không thể tải lịch sử tác vụ.');
+      showError(`Không thể tải lịch sử cho model ${model}.`);
     } else {
-      setTasks(data);
+      setTasks(data || []);
     }
     setLoading(false);
-  }, []);
+  }, [model]);
 
   useEffect(() => {
     fetchTasks();
@@ -64,13 +65,13 @@ const VideoTaskHistory = () => {
         }
       }
       if (needsUpdate) fetchTasks();
-    }, 10000); // Poll every 10 seconds
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [tasks, fetchTasks]);
 
   return (
-    <Card className="flex flex-col h-full">
+    <Card className="flex flex-col h-full min-h-[600px]">
       <CardHeader className="flex-row justify-between items-center">
         <CardTitle>Lịch sử tạo</CardTitle>
         <Button variant="ghost" size="icon" onClick={fetchTasks} disabled={loading}>
@@ -83,7 +84,7 @@ const VideoTaskHistory = () => {
         ) : tasks.length > 0 ? (
           tasks.map(task => <VideoTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)
         ) : (
-          <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào.</p>
+          <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào cho model này.</p>
         )}
       </CardContent>
     </Card>
