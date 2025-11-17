@@ -62,9 +62,9 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated.");
 
     const body = await req.json();
-    const { model, prompt, imageData, options } = body;
+    const { model, prompt, imageUrl, options } = body;
     const { aspectRatio } = options;
-    console.log(`[INFO] User ${user.id} requested image generation for model: ${model} with aspect ratio: ${aspectRatio}`);
+    console.log(`[INFO] User ${user.id} requested image generation for model: ${model}`);
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
@@ -84,36 +84,40 @@ serve(async (req) => {
     }
 
     let images_data = [];
-    if (imageData) {
-        console.log('[INFO] Step 1: Uploading image base64 data to /img/uploadmedia...');
+    if (imageUrl) {
+        console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
         const uploadPayload = {
             token: token,
-            file_data: [imageData]
+            url: imageUrl,
+            cookie: higgsfield_cookie,
+            clerk_active_context: higgsfield_clerk_context
         };
-        
-        const uploadResponse = await fetch(`${API_BASE}/img/uploadmedia`, {
+        console.log('[DEBUG] Sending URL registration request. Payload:', { ...uploadPayload, cookie: '...cookie...', clerk_active_context: '...context...' });
+
+        const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(uploadPayload)
         });
 
         const responseText = await uploadResponse.text();
+        console.log(`[DEBUG] Received response from /img/uploadmediav2. Status: ${uploadResponse.status}, Body: ${responseText}`);
+
         if (!uploadResponse.ok) {
-            throw new Error(`Lỗi tải ảnh lên: ${responseText}`);
+            throw new Error(`Lỗi đăng ký URL ảnh: ${responseText}`);
         }
         
         const uploadData = JSON.parse(responseText);
         if (uploadData && uploadData.status === true && uploadData.data) {
             images_data = uploadData.data;
-            console.log('[INFO] Image uploaded successfully.');
+            console.log('[INFO] Image URL registered successfully.');
         } else {
-            throw new Error(`Tải ảnh lên thất bại: ${JSON.stringify(uploadData)}`);
+            throw new Error(`Đăng ký URL ảnh thất bại: ${JSON.stringify(uploadData)}`);
         }
     }
 
     let endpoint = '';
     let apiPayload = {};
-    // Use a default width/height, but provide the crucial aspect_ratio
     const basePayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio: aspectRatio };
 
     switch (model) {
@@ -129,7 +133,7 @@ serve(async (req) => {
         throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
     }
 
-    console.log(`[INFO] Step 2: Sending generation request to ${endpoint} with payload:`, { ...apiPayload, token: '...', images_data: '...' });
+    console.log(`[INFO] Step 2: Sending generation request to ${endpoint}`);
     const generationResponse = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
