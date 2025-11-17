@@ -62,7 +62,7 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated.");
 
     const body = await req.json();
-    const { model, prompt, imageUrl, options } = body;
+    const { model, prompt, imageData, options } = body;
     console.log(`[INFO] User ${user.id} requested image generation for model: ${model}`);
 
     const { data: settings, error: settingsError } = await supabaseClient
@@ -82,39 +82,44 @@ serve(async (req) => {
         throw new Error("Model and prompt are required for generation.");
     }
 
-    let images_data = [];
-    if (imageUrl) {
-        console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
+    // Step 1: Upload image via base64 to Higgsfield's dedicated endpoint if it exists
+    let images_data = []; // Default to empty array as per Python script
+    if (imageData) {
+        console.log('[INFO] Step 1: Uploading image base64 data to /img/uploadmedia...');
         const uploadPayload = {
             token: token,
-            url: imageUrl,
-            cookie: higgsfield_cookie,
-            clerk_active_context: higgsfield_clerk_context // Add the missing clerk_active_context parameter
+            file_data: [imageData] // API expects an array of base64 strings
         };
-        console.log('[DEBUG] Sending URL registration request. Payload:', { ...uploadPayload, cookie: '...cookie...', clerk_active_context: '...context...' });
-
-        const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
+        
+        const uploadResponse = await fetch(`${API_BASE}/img/uploadmedia`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(uploadPayload)
         });
 
         const responseText = await uploadResponse.text();
-        console.log(`[DEBUG] Received response from /img/uploadmediav2. Status: ${uploadResponse.status}, Body: ${responseText}`);
+        console.log(`[DEBUG] Received response from /img/uploadmedia. Status: ${uploadResponse.status}, Body: ${responseText}`);
 
         if (!uploadResponse.ok) {
-            throw new Error(`Lỗi đăng ký URL ảnh: ${responseText}`);
+            throw new Error(`Lỗi tải ảnh lên: ${responseText}`);
         }
         
-        const uploadData = JSON.parse(responseText);
+        let uploadData;
+        try {
+            uploadData = JSON.parse(responseText);
+        } catch (e) {
+            throw new Error(`Không thể phân tích phản hồi JSON từ API tải ảnh lên. Phản hồi: ${responseText}`);
+        }
+
         if (uploadData && uploadData.status === true && uploadData.data) {
             images_data = uploadData.data;
-            console.log('[INFO] Image URL registered successfully.');
+            console.log('[INFO] Image uploaded successfully. Received processed image data.');
         } else {
-            throw new Error(`Đăng ký URL ảnh thất bại: ${JSON.stringify(uploadData)}`);
+            throw new Error(`Tải ảnh lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
         }
     }
 
+    // Step 2: Call the final generation API with the processed image data
     let endpoint = '';
     let apiPayload = {};
     const basePayload = { token, prompt, images_data, ...options };
