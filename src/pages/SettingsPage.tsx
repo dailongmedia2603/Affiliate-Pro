@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud } from "lucide-react";
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -14,6 +14,8 @@ const SettingsPage = () => {
   const [higgsfieldCookie, setHiggsfieldCookie] = useState('');
   const [higgsfieldClerkContext, setHiggsfieldClerkContext] = useState('');
   const [voiceApiKey, setVoiceApiKey] = useState('');
+  const [gcpProjectId, setGcpProjectId] = useState('');
+  const [vertexAiApiKey, setVertexAiApiKey] = useState('');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -25,6 +27,8 @@ const SettingsPage = () => {
   const [voiceConnectionStatus, setVoiceConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTestingHiggsfield, setIsTestingHiggsfield] = useState(false);
   const [higgsfieldConnectionStatus, setHiggsfieldConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTestingVertexAi, setIsTestingVertexAi] = useState(false);
+  const [vertexAiConnectionStatus, setVertexAiConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const fetchVoiceCredits = async (apiKey: string) => {
     if (!apiKey) return;
@@ -54,7 +58,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, gcp_project_id, vertex_ai_api_key')
           .eq('id', user.id)
           .single();
 
@@ -67,13 +71,15 @@ const SettingsPage = () => {
           setVoiceApiKey(data.voice_api_key || '');
           setHiggsfieldCookie(data.higgsfield_cookie || '');
           setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
+          setGcpProjectId(data.gcp_project_id || '');
+          setVertexAiApiKey(data.vertex_ai_api_key || '');
         }
       }
     };
     fetchSettings();
   }, []);
 
-  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice') => {
+  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai') => {
     setIsSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -92,6 +98,9 @@ const SettingsPage = () => {
         break;
       case 'voice':
         updateData = { voice_api_key: voiceApiKey };
+        break;
+      case 'vertex_ai':
+        updateData = { gcp_project_id: gcpProjectId, vertex_ai_api_key: vertexAiApiKey };
         break;
     }
 
@@ -125,16 +134,9 @@ const SettingsPage = () => {
         body: { apiUrl: geminiApiUrl, prompt: testPrompt, token: geminiApiKey },
       });
       
-      if (error) { // Network or function execution error
-        throw error;
-      }
+      if (error) { throw error; }
+      if (data && data.error) { throw new Error(data.error); }
 
-      // The function returns { error: '...' } on failure
-      if (data && data.error) {
-        throw new Error(data.error);
-      }
-
-      // On success, it returns the plain text response
       setGeminiConnectionStatus('success');
       setTestResult(data);
     } catch (error) {
@@ -142,6 +144,36 @@ const SettingsPage = () => {
       setTestResult(`Lỗi: ${error.message}`);
     } finally {
       setIsLoadingApiTest(false);
+    }
+  };
+
+  const handleTestVertexAiApi = async () => {
+    if (!gcpProjectId || !vertexAiApiKey) {
+      setVertexAiConnectionStatus('error');
+      setTestResult('Vui lòng nhập GCP Project ID và Vertex AI API Key.');
+      return;
+    }
+    setIsTestingVertexAi(true);
+    setVertexAiConnectionStatus('idle');
+    setTestResult('');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('proxy-vertex-ai', {
+        body: { prompt: testPrompt },
+      });
+
+      if (error) throw error;
+      if (data.success) {
+        setVertexAiConnectionStatus('success');
+        setTestResult(data.data);
+      } else {
+        throw new Error(data.error || 'Đã xảy ra lỗi không xác định.');
+      }
+    } catch (error) {
+      setVertexAiConnectionStatus('error');
+      setTestResult(`Lỗi: ${error.message}`);
+    } finally {
+      setIsTestingVertexAi(false);
     }
   };
 
@@ -207,6 +239,7 @@ const SettingsPage = () => {
       <Tabs defaultValue="gemini">
         <TabsList className="bg-gray-100 p-1 rounded-lg h-auto">
           <TabsTrigger value="gemini" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Sparkles className="w-4 h-4 mr-2" /> API Gemini</TabsTrigger>
+          <TabsTrigger value="vertex_ai" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Cloud className="w-4 h-4 mr-2" /> API Vertex AI</TabsTrigger>
           <TabsTrigger value="higgsfield" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Film className="w-4 h-4 mr-2" /> API Higgsfield</TabsTrigger>
           <TabsTrigger value="voice" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Mic className="w-4 h-4 mr-2" /> API Voice</TabsTrigger>
         </TabsList>
@@ -232,6 +265,31 @@ const SettingsPage = () => {
               <div className="space-y-2"><label htmlFor="test-prompt" className="text-sm font-medium text-gray-700">Prompt</label><Textarea id="test-prompt" placeholder="Nhập prompt của bạn ở đây..." value={testPrompt} onChange={(e) => setTestPrompt(e.target.value)} className="min-h-[100px]" /></div>
               <Button onClick={handleTestGeminiApi} disabled={isLoadingApiTest || !geminiApiKey || !geminiApiUrl} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isLoadingApiTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt</Button>
               {testResult && !isLoadingApiTest && (<div className="mt-4"><h3 className="text-sm font-semibold text-gray-700 mb-2">Kết quả:</h3><div className="bg-gray-900 text-white p-4 rounded-lg max-h-60 overflow-y-auto"><pre className="whitespace-pre-wrap text-sm font-mono">{testResult}</pre></div></div>)}
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="vertex_ai" className="mt-6">
+          <div className="p-6 border rounded-lg bg-white space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Vertex AI</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin Project ID và API Key để kết nối với Google Cloud Vertex AI.</p>
+              <div className="space-y-4 max-w-md">
+                <div className="space-y-2"><label htmlFor="gcp-project-id" className="text-sm font-medium text-gray-700">GCP Project ID</label><Input id="gcp-project-id" type="text" placeholder="ví dụ: my-gcp-project-12345" value={gcpProjectId} onChange={(e) => { setGcpProjectId(e.target.value); setVertexAiConnectionStatus('idle'); }} /></div>
+                <div className="space-y-2"><label htmlFor="vertex-ai-api-key" className="text-sm font-medium text-gray-700">Vertex AI API Key</label><Input id="vertex-ai-api-key" type="password" placeholder="Nhập API key của bạn..." value={vertexAiApiKey} onChange={(e) => { setVertexAiApiKey(e.target.value); setVertexAiConnectionStatus('idle'); }} /></div>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi} variant="outline">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
+                <Button onClick={() => handleSaveSettings('vertex_ai')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+              </div>
+            </div>
+            {vertexAiConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Vertex AI thành công.</AlertDescription></Alert>)}
+            {vertexAiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Project ID và API Key.</AlertDescription></Alert>)}
+            <div className="border-t pt-6">
+              <h2 className="text-lg font-semibold text-gray-700">Kiểm tra Prompt</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Gửi một prompt để kiểm tra đầu ra của API.</p>
+              <div className="space-y-2"><label htmlFor="test-prompt-vertex" className="text-sm font-medium text-gray-700">Prompt</label><Textarea id="test-prompt-vertex" placeholder="Nhập prompt của bạn ở đây..." value={testPrompt} onChange={(e) => setTestPrompt(e.target.value)} className="min-h-[100px]" /></div>
+              <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi || !gcpProjectId || !vertexAiApiKey} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt</Button>
+              {testResult && !isTestingVertexAi && (<div className="mt-4"><h3 className="text-sm font-semibold text-gray-700 mb-2">Kết quả:</h3><div className="bg-gray-900 text-white p-4 rounded-lg max-h-60 overflow-y-auto"><pre className="whitespace-pre-wrap text-sm font-mono">{testResult}</pre></div></div>)}
             </div>
           </div>
         </TabsContent>
