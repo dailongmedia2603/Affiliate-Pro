@@ -67,9 +67,6 @@ const SettingsPage = () => {
           setVoiceApiKey(data.voice_api_key || '');
           setHiggsfieldCookie(data.higgsfield_cookie || '');
           setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
-          if (data.voice_api_key) {
-            fetchVoiceCredits(data.voice_api_key);
-          }
         }
       }
     };
