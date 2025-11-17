@@ -95,10 +95,7 @@ serve(async (req) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 token: token,
-                cookie: higgsfield_cookie,
-                clerk_active_context: higgsfield_clerk_context,
-                url: [imageData],
-                file_type: 'image'
+                file_data: [imageData]
             })
         });
 

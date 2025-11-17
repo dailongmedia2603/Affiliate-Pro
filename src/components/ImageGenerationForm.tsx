@@ -39,8 +39,8 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      // SỬA LỖI: Gửi toàn bộ Data URI, không cắt bỏ phần đầu
-      reader.onload = () => resolve(reader.result as string);
+      // The API expects raw base64 data, so we strip the Data URI prefix.
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
       reader.onerror = error => reject(error);
     });
   };
