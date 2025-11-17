@@ -9,13 +9,37 @@ import { Wand2, Loader2, Upload, Info } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
+const SUPPORTED_ASPECT_RATIOS = [
+  "1:1", "4:3", "16:9", "21:9", "5:4", "3:2",
+  "2:3", "9:16", "3:4", "4:5"
+];
+
+// Helper function to find the closest aspect ratio
+const findClosestAspectRatio = (width: number, height: number): string => {
+  const originalRatio = width / height;
+  let closestRatio = "1:1";
+  let minDifference = Infinity;
+
+  SUPPORTED_ASPECT_RATIOS.forEach(ratioStr => {
+    const [w, h] = ratioStr.split(':').map(Number);
+    const supportedRatio = w / h;
+    const difference = Math.abs(originalRatio - supportedRatio);
+
+    if (difference < minDifference) {
+      minDifference = difference;
+      closestRatio = ratioStr;
+    }
+  });
+
+  return closestRatio;
+};
+
 const ImageGenerationForm = ({ model, onTaskCreated }) => {
   const [prompt, setPrompt] = useState('A cat wearing a superhero cape');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [width, setWidth] = useState(1024);
-  const [height, setHeight] = useState(1024);
+  const [aspectRatio, setAspectRatio] = useState('1:1');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -26,8 +50,8 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
         setImagePreview(reader.result as string);
         const img = new Image();
         img.onload = () => {
-          setWidth(img.width);
-          setHeight(img.height);
+          const closestRatio = findClosestAspectRatio(img.width, img.height);
+          setAspectRatio(closestRatio);
         };
         img.src = reader.result as string;
       };
@@ -41,7 +65,6 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
       reader.readAsDataURL(file);
       reader.onload = () => {
         const result = reader.result as string;
-        // Remove the data URI prefix (e.g., "data:image/jpeg;base64,")
         const base64 = result.split(',')[1];
         resolve(base64);
       };
@@ -65,7 +88,7 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
       }
 
       const { data, error } = await supabase.functions.invoke('generate-image', {
-        body: { model, prompt, imageData, options: { width, height } },
+        body: { model, prompt, imageData, options: { aspectRatio } },
       });
 
       if (error) throw error;
@@ -117,15 +140,9 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
           </div>
         </div>
         
-        <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-                <Label htmlFor="width">Width</Label>
-                <Input id="width" type="number" value={width} onChange={(e) => setWidth(parseInt(e.target.value, 10))} />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="height">Height</Label>
-                <Input id="height" type="number" value={height} onChange={(e) => setHeight(parseInt(e.target.value, 10))} />
-            </div>
+        <div className="space-y-2">
+          <Label>Tỷ lệ khung hình (tự động chọn)</Label>
+          <Input type="text" value={aspectRatio} readOnly className="bg-gray-100" />
         </div>
 
         <Button onClick={handleSubmit} disabled={isGenerating} size="lg" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
