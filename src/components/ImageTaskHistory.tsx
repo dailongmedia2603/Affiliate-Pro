@@ -32,17 +32,12 @@ const ImageTaskHistory = ({ model }) => {
   }, [fetchTasks]);
 
   useEffect(() => {
-    const tasksToPoll = tasks.filter(t => 
-      t.status === 'queued' ||
-      t.status === 'pending' || 
-      t.status === 'processing' ||
-      (t.status === 'completed' && !t.result_url)
-    );
-    if (tasksToPoll.length === 0) return;
+    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing');
+    if (pendingTasks.length === 0) return;
 
     const interval = setInterval(async () => {
       let needsUpdate = false;
-      for (const task of tasksToPoll) {
+      for (const task of pendingTasks) {
         try {
           const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
             body: { action: 'get_task_status', taskId: task.higgsfield_task_id }
@@ -54,18 +49,16 @@ const ImageTaskHistory = ({ model }) => {
           }
           
           const apiStatus = data?.jobs?.[0]?.status;
-          if (apiStatus && (apiStatus !== task.status || !task.result_url)) {
+          if (apiStatus && apiStatus !== task.status) {
             const resultUrl = data?.jobs?.[0]?.results?.raw?.url;
             const errorMessage = data?.jobs?.[0]?.error;
             
-            if (resultUrl || apiStatus !== task.status) {
-              await supabase.from('image_tasks').update({ 
-                status: apiStatus,
-                result_url: resultUrl,
-                error_message: errorMessage,
-              }).eq('id', task.id);
-              needsUpdate = true;
-            }
+            await supabase.from('image_tasks').update({ 
+              status: apiStatus,
+              result_url: resultUrl,
+              error_message: errorMessage,
+            }).eq('id', task.id);
+            needsUpdate = true;
           }
         } catch (e) {
           console.error(`Lỗi nghiêm trọng khi kiểm tra tác vụ ${task.id}:`, e);
@@ -78,23 +71,18 @@ const ImageTaskHistory = ({ model }) => {
   }, [tasks, fetchTasks]);
 
   return (
-    <Card>
+    <Card className="flex flex-col h-full min-h-[600px]">
       <CardHeader className="flex-row justify-between items-center">
-        <CardTitle className="flex items-center gap-2">
-          Lịch sử tạo
-          {!loading && <span className="text-sm font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">{tasks.length}</span>}
-        </CardTitle>
+        <CardTitle>Lịch sử tạo</CardTitle>
         <Button variant="ghost" size="icon" onClick={fetchTasks} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 overflow-y-auto space-y-3">
         {loading && tasks.length === 0 ? (
           <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
         ) : tasks.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {tasks.map(task => <ImageTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)}
-          </div>
+          tasks.map(task => <ImageTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)
         ) : (
           <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào cho model này.</p>
         )}

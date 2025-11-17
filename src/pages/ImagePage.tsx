@@ -70,9 +70,13 @@ const ImagePage = () => {
         </TabsList>
         {models.map(model => (
           <TabsContent key={model.id} value={model.id} className="mt-6">
-            <div className="space-y-6">
-              <ImageGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} />
-              <ImageTaskHistory model={model.id} key={`${model.id}-${refreshTrigger}`} />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <ImageGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} />
+              </div>
+              <div className="lg:col-span-1">
+                <ImageTaskHistory model={model.id} key={`${model.id}-${refreshTrigger}`} />
+              </div>
             </div>
           </TabsContent>
         ))}
