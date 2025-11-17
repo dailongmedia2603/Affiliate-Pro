@@ -11,19 +11,36 @@ const API_BASE = "https://api.beautyapp.work";
 
 // Helper function to get a temporary token from Higgsfield API
 async function getHiggsfieldToken(cookie, clerk_active_context) {
+  console.log('[INFO] Attempting to get Higgsfield token...');
   const tokenResponse = await fetch(`${API_BASE}/gettoken`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cookie, clerk_active_context }),
   });
+
   if (!tokenResponse.ok) {
     const errorText = await tokenResponse.text();
     throw new Error(`Lỗi khi lấy token từ Higgsfield: ${tokenResponse.status} - ${errorText}`);
   }
-  const tokenData = await tokenResponse.json();
-  if (!tokenData.jwt) {
-    throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
+
+  const responseText = await tokenResponse.text();
+  if (!responseText) {
+    throw new Error('Không thể lấy token: API Higgsfield đã trả về phản hồi trống.');
   }
+
+  let tokenData;
+  try {
+    tokenData = JSON.parse(responseText);
+  } catch (e) {
+    throw new Error(`Không thể lấy token: Phản hồi từ API Higgsfield không phải JSON. Phản hồi: ${responseText.slice(0, 200)}`);
+  }
+
+  if (!tokenData || !tokenData.jwt) {
+    console.error('[ERROR] Failed to get JWT. API Response:', JSON.stringify(tokenData));
+    throw new Error('Phản hồi từ Higgsfield không chứa token (jwt). Điều này có thể do Cookie hoặc Clerk Context không hợp lệ hoặc đã hết hạn.');
+  }
+
+  console.log('[INFO] Successfully retrieved Higgsfield token.');
   return tokenData.jwt;
 }
 
@@ -81,6 +98,7 @@ serve(async (req) => {
       }
       
       const statusData = await statusResponse.json();
+      console.log(`[INFO] API Status Response for Task ID ${taskId}:`, JSON.stringify(statusData, null, 2));
       return new Response(JSON.stringify(statusData), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -154,6 +172,7 @@ serve(async (req) => {
     }
 
     const generationData = await generationResponse.json();
+    console.log(`[INFO] API Generation Response:`, JSON.stringify(generationData, null, 2));
     if (!generationData.job_sets || generationData.job_sets.length === 0) {
         throw new Error('Phản hồi từ API tạo ảnh không hợp lệ.');
     }
