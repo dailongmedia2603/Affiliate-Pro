@@ -2,6 +2,7 @@
 # The job below is set to run every minute.
 
 [cron.jobs.update_all_task_statuses]
-schedule = "* * * * *"
+# Tạm thời đổi lịch trình thành mỗi 2 phút để reset
+schedule = "*/2 * * * *"
 function = "update-task-statuses"
 header.Authorization = "Bearer ${CRON_SECRET}"
