@@ -88,9 +88,10 @@ serve(async (req) => {
         const uploadPayload = {
             token: token,
             url: imageUrl,
-            cookie: higgsfield_cookie // Add the missing cookie parameter
+            cookie: higgsfield_cookie,
+            clerk_active_context: higgsfield_clerk_context // Add the missing clerk_active_context parameter
         };
-        console.log('[DEBUG] Sending URL registration request. Payload:', { ...uploadPayload, cookie: '...cookie...' });
+        console.log('[DEBUG] Sending URL registration request. Payload:', { ...uploadPayload, cookie: '...cookie...', clerk_active_context: '...context...' });
 
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
