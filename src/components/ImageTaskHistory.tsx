@@ -4,16 +4,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { showError } from '@/utils/toast';
-import VideoTaskItem from './VideoTaskItem';
+import ImageTaskItem from './ImageTaskItem';
 
-const VideoTaskHistory = ({ model }) => {
+const ImageTaskHistory = ({ model }) => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
-      .from('video_tasks')
+      .from('image_tasks')
       .select('*')
       .eq('model', model)
       .order('created_at', { ascending: false })
@@ -53,7 +53,7 @@ const VideoTaskHistory = ({ model }) => {
             const resultUrl = data?.jobs?.[0]?.results?.raw?.url;
             const errorMessage = data?.jobs?.[0]?.error;
             
-            await supabase.from('video_tasks').update({ 
+            await supabase.from('image_tasks').update({ 
               status: apiStatus,
               result_url: resultUrl,
               error_message: errorMessage,
@@ -82,7 +82,7 @@ const VideoTaskHistory = ({ model }) => {
         {loading && tasks.length === 0 ? (
           <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
         ) : tasks.length > 0 ? (
-          tasks.map(task => <VideoTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)
+          tasks.map(task => <ImageTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)
         ) : (
           <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào cho model này.</p>
         )}
@@ -91,4 +91,4 @@ const VideoTaskHistory = ({ model }) => {
   );
 };
 
-export default VideoTaskHistory;
+export default ImageTaskHistory;
