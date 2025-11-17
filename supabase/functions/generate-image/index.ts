@@ -88,22 +88,40 @@ serve(async (req) => {
     let images_data = []; // Default to empty array as per Python script
     if (imageData) {
         console.log('[INFO] Step 1: Uploading image to /img/uploadmedia...');
+        
+        const uploadPayload = {
+            token: token,
+            file_data: [imageData] // API expects an array of base64 strings
+        };
+        
+        // ADDED LOG: Log the request payload structure
+        console.log('[DEBUG] Sending upload request to /img/uploadmedia. Payload structure:', {
+            token: '...token...',
+            file_data: [`${imageData.substring(0, 50)}...`]
+        });
+
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmedia`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                token: token,
-                file_data: [imageData] // API expects an array of base64 strings
-            })
+            body: JSON.stringify(uploadPayload)
         });
 
+        // ADDED LOG: Log the full response from the upload API
+        const responseText = await uploadResponse.text();
+        console.log(`[DEBUG] Received response from /img/uploadmedia. Status: ${uploadResponse.status}, Body: ${responseText}`);
+
         if (!uploadResponse.ok) {
-            const errorText = await uploadResponse.text();
-            throw new Error(`Lỗi tải ảnh lên: ${errorText}`);
+            // Now the error message will include the full response body
+            throw new Error(`Lỗi tải ảnh lên: ${responseText}`);
         }
         
-        const uploadData = await uploadResponse.json();
-        // Based on Python script: if data['status']: imgs = data['data']
+        let uploadData;
+        try {
+            uploadData = JSON.parse(responseText);
+        } catch (e) {
+            throw new Error(`Không thể phân tích phản hồi JSON từ API tải ảnh lên. Phản hồi: ${responseText}`);
+        }
+
         if (uploadData && uploadData.status === true && uploadData.data) {
             images_data = uploadData.data;
             console.log('[INFO] Image uploaded successfully. Received processed image data.');
