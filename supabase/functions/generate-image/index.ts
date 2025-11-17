@@ -12,10 +12,14 @@ const API_BASE = "https://api.beautyapp.work";
 // Helper function to get a temporary token from Higgsfield API
 async function getHiggsfieldToken(cookie, clerk_active_context) {
   console.log('[INFO] Attempting to get Higgsfield token...');
+  const body = new URLSearchParams();
+  body.append('cookie', cookie);
+  body.append('clerk_active_context', clerk_active_context);
+
   const tokenResponse = await fetch(`${API_BASE}/gettoken`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookie, clerk_active_context }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
   });
 
   if (!tokenResponse.ok) {

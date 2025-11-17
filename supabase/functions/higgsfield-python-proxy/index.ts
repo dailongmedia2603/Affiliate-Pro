@@ -11,19 +11,38 @@ const HIGGSFIELD_TOKEN_URL = 'https://api.beautyapp.work/gettoken';
 
 // Helper function to get a temporary token
 async function getHiggsfieldToken(cookie, clerk_active_context) {
+  const body = new URLSearchParams();
+  body.append('cookie', cookie);
+  body.append('clerk_active_context', clerk_active_context);
+
   const tokenResponse = await fetch(HIGGSFIELD_TOKEN_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookie, clerk_active_context }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
   });
+
   if (!tokenResponse.ok) {
     const errorText = await tokenResponse.text();
     throw new Error(`Lỗi khi lấy token từ Higgsfield: ${tokenResponse.status} - ${errorText}`);
   }
-  const tokenData = await tokenResponse.json();
-  if (!tokenData.jwt) {
-    throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
+
+  const responseText = await tokenResponse.text();
+  if (!responseText) {
+    throw new Error('Không thể lấy token: API Higgsfield đã trả về phản hồi trống.');
   }
+
+  let tokenData;
+  try {
+    tokenData = JSON.parse(responseText);
+  } catch (e) {
+    throw new Error(`Không thể lấy token: Phản hồi từ API Higgsfield không phải JSON. Phản hồi: ${responseText.slice(0, 200)}`);
+  }
+
+  if (!tokenData || !tokenData.jwt) {
+    console.error('[ERROR] Failed to get JWT. API Response:', JSON.stringify(tokenData));
+    throw new Error('Phản hồi từ Higgsfield không chứa token (jwt). Điều này có thể do Cookie hoặc Clerk Context không hợp lệ hoặc đã hết hạn.');
+  }
+
   return tokenData.jwt;
 }
 
