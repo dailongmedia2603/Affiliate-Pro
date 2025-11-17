@@ -1,5 +1,6 @@
 // @ts-nocheck
 // This function is designed to be run by a Cron Job to update the status of pending image and video tasks.
+// Redeploying to load the latest environment variables.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
