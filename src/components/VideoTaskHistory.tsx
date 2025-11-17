@@ -48,10 +48,10 @@ const VideoTaskHistory = ({ model }) => {
             continue;
           }
           
-          const apiStatus = data?.jobs?.[0]?.status;
+          const apiStatus = data?.job_sets?.[0]?.status;
           if (apiStatus && apiStatus !== task.status) {
-            const resultUrl = data?.jobs?.[0]?.results?.raw?.url;
-            const errorMessage = data?.jobs?.[0]?.error;
+            const resultUrl = data?.job_sets?.[0]?.jobs?.[0]?.result?.url;
+            const errorMessage = data?.job_sets?.[0]?.jobs?.[0]?.error;
             
             await supabase.from('video_tasks').update({ 
               status: apiStatus,
