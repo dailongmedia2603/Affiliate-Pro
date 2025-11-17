@@ -87,9 +87,10 @@ serve(async (req) => {
         console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
         const uploadPayload = {
             token: token,
-            url: imageUrl
+            url: imageUrl,
+            cookie: higgsfield_cookie // Add the missing cookie parameter
         };
-        console.log('[DEBUG] Sending URL registration request. Payload:', uploadPayload);
+        console.log('[DEBUG] Sending URL registration request. Payload:', { ...uploadPayload, cookie: '...cookie...' });
 
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
