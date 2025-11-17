@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
+import { encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,16 +85,24 @@ serve(async (req) => {
     }
 
     let images_data = [];
-    console.log('[DEBUG] Received imageUrl for processing:', imageUrl);
     if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
-        console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
+        console.log(`[INFO] Step 1: Fetching image data from URL: ${imageUrl}`);
+        
+        const imageResponse = await fetch(imageUrl);
+        if (!imageResponse.ok) {
+            throw new Error(`Không thể tải ảnh từ URL: ${imageResponse.statusText}`);
+        }
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = encode(imageBuffer);
+
+        console.log('[INFO] Image data fetched and encoded. Now registering with /img/uploadmediav2...');
+        
         const uploadPayload = {
             token: token,
-            url: imageUrl,
+            file_data: [base64Image],
             cookie: higgsfield_cookie,
             clerk_active_context: higgsfield_clerk_context,
         };
-        console.log('[DEBUG] Sending URL registration request.');
 
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
@@ -105,19 +114,19 @@ serve(async (req) => {
         console.log(`[DEBUG] Received response from /img/uploadmediav2. Status: ${uploadResponse.status}, Body: ${responseText}`);
 
         if (!uploadResponse.ok) {
-            throw new Error(`Lỗi đăng ký URL ảnh: ${responseText}`);
+            throw new Error(`Lỗi đăng ký media: ${responseText}`);
         }
         
         if (!responseText || responseText.trim() === 'null') {
-          throw new Error(`Đăng ký URL ảnh thất bại: API trả về phản hồi rỗng hoặc null. Vui lòng kiểm tra xem URL ảnh có công khai và có thể truy cập được không.`);
+          throw new Error(`Đăng ký media thất bại: API trả về phản hồi rỗng hoặc null.`);
         }
 
         const uploadData = JSON.parse(responseText);
         if (uploadData && uploadData.status === true && uploadData.data) {
             images_data = uploadData.data;
-            console.log('[INFO] Image URL registered successfully.');
+            console.log('[INFO] Media registered successfully.');
         } else {
-            throw new Error(`Đăng ký URL ảnh thất bại: ${JSON.stringify(uploadData)}`);
+            throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadData)}`);
         }
     }
 
