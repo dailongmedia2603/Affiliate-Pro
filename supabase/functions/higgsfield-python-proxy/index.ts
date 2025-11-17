@@ -76,10 +76,10 @@ serve(async (req) => {
           const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, file_data: [imageData] })
+            body: JSON.stringify({ token, url: imageData })
           });
           const uploadData = await uploadResponse.json();
-          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+          if (uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
             console.error('[ERROR] Image upload failed. API Response:', JSON.stringify(uploadData));
             throw new Error('Tải ảnh lên thất bại. Chi tiết đã được ghi lại trong log.');
           }
@@ -136,10 +136,10 @@ serve(async (req) => {
           const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, file_data: [imageData] })
+            body: JSON.stringify({ token, url: imageData })
           });
           const uploadData = await uploadResponse.json();
-          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+          if (uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
             console.error('[ERROR] Image upload failed. API Response:', JSON.stringify(uploadData));
             throw new Error('Tải ảnh lên thất bại. Chi tiết đã được ghi lại trong log.');
           }
@@ -152,10 +152,10 @@ serve(async (req) => {
           const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, file_data: [videoData], file_type: 'video' })
+            body: JSON.stringify({ token, url: videoData, file_type: 'video' })
           });
           const uploadData = await uploadResponse.json();
-          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+          if (uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
             console.error('[ERROR] Video upload failed. API Response:', JSON.stringify(uploadData));
             throw new Error('Tải video lên thất bại. Chi tiết đã được ghi lại trong log.');
           }
