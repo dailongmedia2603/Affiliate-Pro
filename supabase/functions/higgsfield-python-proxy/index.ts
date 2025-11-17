@@ -73,7 +73,7 @@ serve(async (req) => {
         let images_data = null;
         if (imageData) {
             console.log('[INFO] Uploading image for image generation...');
-            const uploadResponse = await fetch('https://api.beautyapp.work/img/uploadmedia', {
+            const uploadResponse = await fetch('https://api.beautyapp.work/img/uploadmediav2', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -143,7 +143,7 @@ serve(async (req) => {
         const uploadMediaForVideo = async (mediaData) => {
             if (!mediaData) return null;
             console.log('[INFO] Uploading media for video generation...');
-            const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
+            const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmediav2", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ token, file_data: [mediaData] })
