@@ -86,13 +86,12 @@ serve(async (req) => {
     let images_data = [];
     if (imageUrl) {
         console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
+        // Payload để đăng ký URL chỉ cần token và chính URL đó.
         const uploadPayload = {
             token: token,
             url: imageUrl,
-            cookie: higgsfield_cookie,
-            clerk_active_context: higgsfield_clerk_context
         };
-        console.log('[DEBUG] Sending URL registration request. Payload:', { ...uploadPayload, cookie: '...cookie...', clerk_active_context: '...context...' });
+        console.log('[DEBUG] Sending URL registration request.');
 
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
