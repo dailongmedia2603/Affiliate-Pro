@@ -28,7 +28,7 @@ async function getHiggsfieldToken(cookie, clerk_active_context) {
 }
 
 serve(async (req) => {
-  console.log('--- New Image Generation Request Received ---');
+  console.log('--- Image Function Request Received ---');
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -45,8 +45,6 @@ serve(async (req) => {
     if (userError) throw userError;
     if (!user) throw new Error("User not authenticated.");
 
-    console.log(`[INFO] Request from user: ${user.id}`);
-
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
       .select('higgsfield_cookie, higgsfield_clerk_context')
@@ -58,17 +56,42 @@ serve(async (req) => {
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
 
-    // 2. Get payload from request
-    const { model, prompt, imageData, options } = await req.json();
+    // 2. Get payload and determine action
+    const { action, ...payload } = await req.json();
+    const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
+
+    if (action === 'get_task_status') {
+      // --- STATUS CHECK LOGIC ---
+      const { taskId } = payload;
+      if (!taskId) throw new Error("taskId is required for get_task_status action.");
+      
+      console.log(`[INFO] Checking status for Image Task ID: ${taskId}`);
+      
+      const statusResponse = await fetch(`${API_BASE}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, taskid: taskId })
+      });
+
+      if (!statusResponse.ok) {
+        const errorText = await statusResponse.text();
+        throw new Error(`Failed to get task status: ${errorText}`);
+      }
+      
+      const statusData = await statusResponse.json();
+      return new Response(JSON.stringify(statusData), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } 
+    
+    // --- GENERATION LOGIC (default action) ---
+    const { model, prompt, imageData, options } = payload;
     if (!model || !prompt) {
-        throw new Error("Model and prompt are required.");
+        throw new Error("Model and prompt are required for generation.");
     }
     console.log(`[INFO] Starting image generation for model: ${model}`);
 
-    // 3. Get Higgsfield JWT
-    const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-
-    // 4. Upload image if provided
+    // Upload image if provided
     let images_data = null;
     if (imageData) {
         console.log('[INFO] Uploading image for generation...');
@@ -79,7 +102,7 @@ serve(async (req) => {
                 token: token,
                 cookie: higgsfield_cookie,
                 clerk_active_context: higgsfield_clerk_context,
-                url: [imageData], // imageData is a data URI
+                url: [imageData],
                 file_type: 'image'
             })
         });
@@ -89,18 +112,8 @@ serve(async (req) => {
             throw new Error(`Lỗi tải ảnh lên: ${errorText}`);
         }
         
-        const responseText = await uploadResponse.text();
-        if (!responseText) throw new Error('Tải ảnh lên thất bại: API đã trả về một phản hồi trống.');
-        
-        let uploadData;
-        try {
-          uploadData = JSON.parse(responseText);
-        } catch (e) {
-          throw new Error(`Tải ảnh lên thất bại: API đã trả về phản hồi không phải JSON. Phản hồi: ${responseText.slice(0, 200)}`);
-        }
-
+        const uploadData = await uploadResponse.json();
         if (!uploadData || uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
-            console.error(`[ERROR] Image upload failed. API Response:`, JSON.stringify(uploadData));
             throw new Error(`Tải image lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
         }
         
@@ -108,7 +121,7 @@ serve(async (req) => {
         console.log('[INFO] Image uploaded successfully.');
     }
 
-    // 5. Call the generation API
+    // Call the generation API
     let endpoint = '';
     let apiPayload = {};
     const basePayload = { token, prompt, images_data: images_data || [], ...options };
@@ -146,7 +159,6 @@ serve(async (req) => {
     const newTaskId = generationData.job_sets[0].id;
     console.log(`[INFO] Successfully submitted image task. Higgsfield Task ID: ${newTaskId}`);
 
-    // 6. Return the task ID to the client
     return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

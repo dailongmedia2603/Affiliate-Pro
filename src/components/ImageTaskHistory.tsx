@@ -39,7 +39,7 @@ const ImageTaskHistory = ({ model }) => {
       let needsUpdate = false;
       for (const task of pendingTasks) {
         try {
-          const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
+          const { data, error } = await supabase.functions.invoke('generate-image', {
             body: { action: 'get_task_status', taskId: task.higgsfield_task_id }
           });
 
