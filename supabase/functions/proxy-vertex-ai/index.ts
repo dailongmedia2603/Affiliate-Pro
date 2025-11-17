@@ -9,7 +9,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
-// Hàm lấy Access Token từ Google, dựa trên code bạn cung cấp
 async function getGoogleAccessToken(credentials) {
   const privateKey = await jose.importPKCS8(credentials.private_key, 'RS256');
   
@@ -47,7 +46,6 @@ serve(async (req) => {
   }
 
   try {
-    // 1. Xác thực người dùng Supabase
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -56,25 +54,28 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error("Xác thực người dùng thất bại.");
 
-    // 2. Lấy thông tin từ request body và cài đặt của người dùng
     const { prompt } = await req.json();
     if (!prompt) throw new Error("Thiếu tham số bắt buộc: prompt");
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
-      .select('gcp_project_id, vertex_ai_service_account')
+      .select('vertex_ai_service_account')
       .eq('id', user.id)
       .single();
 
-    if (settingsError || !settings || !settings.gcp_project_id || !settings.vertex_ai_service_account) {
-      throw new Error('Không tìm thấy GCP Project ID hoặc Service Account. Vui lòng kiểm tra lại cài đặt.');
+    if (settingsError || !settings || !settings.vertex_ai_service_account) {
+      throw new Error('Không tìm thấy Service Account. Vui lòng kiểm tra lại cài đặt.');
     }
-    const { gcp_project_id, vertex_ai_service_account } = settings;
+    const { vertex_ai_service_account } = settings;
+    
+    // Tự động lấy project_id từ file JSON
+    const gcp_project_id = vertex_ai_service_account.project_id;
+    if (!gcp_project_id) {
+        throw new Error("File JSON Service Account không chứa 'project_id'.");
+    }
 
-    // 3. Lấy Access Token
     const accessToken = await getGoogleAccessToken(vertex_ai_service_account);
 
-    // 4. Gọi API Vertex AI
     const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`;
     
     const vertexResponse = await fetch(vertexUrl, {
@@ -100,7 +101,6 @@ serve(async (req) => {
       throw new Error('Không thể phân tích phản hồi từ API Vertex AI.');
     }
 
-    // 5. Trả về kết quả
     return new Response(JSON.stringify({ success: true, data: generatedText }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -109,7 +109,7 @@ serve(async (req) => {
   } catch (err) {
     console.error('!!! [FATAL] An error occurred in the proxy-vertex-ai function:', err.message);
     return new Response(JSON.stringify({ success: false, error: err.message }), {
-      status: 500, // Trả về 500 cho lỗi server
+      status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   }
