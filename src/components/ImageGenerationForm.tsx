@@ -59,8 +59,8 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
 
       const options = { width, height };
 
-      const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
-        body: { action: 'generate_image', model, prompt, imageData, options },
+      const { data, error } = await supabase.functions.invoke('generate-image', {
+        body: { model, prompt, imageData, options },
       });
 
       if (error) throw error;
