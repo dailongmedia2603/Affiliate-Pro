@@ -11,41 +11,24 @@ const API_BASE = "https://api.beautyapp.work";
 
 // Helper function to get a temporary token from Higgsfield API
 async function getHiggsfieldToken(cookie, clerk_active_context) {
-  console.log('[INFO] Attempting to get Higgsfield token...');
   const tokenResponse = await fetch(`${API_BASE}/gettoken`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cookie, clerk_active_context }),
   });
-
   if (!tokenResponse.ok) {
     const errorText = await tokenResponse.text();
     throw new Error(`Lỗi khi lấy token từ Higgsfield: ${tokenResponse.status} - ${errorText}`);
   }
-
-  const responseText = await tokenResponse.text();
-  if (!responseText) {
-    throw new Error('Không thể lấy token: API Higgsfield đã trả về phản hồi trống.');
-  }
-
-  let tokenData;
-  try {
-    tokenData = JSON.parse(responseText);
-  } catch (e) {
-    throw new Error(`Không thể lấy token: Phản hồi từ API Higgsfield không phải JSON. Phản hồi: ${responseText.slice(0, 200)}`);
-  }
-
+  const tokenData = await tokenResponse.json();
   if (!tokenData || !tokenData.jwt) {
-    console.error('[ERROR] Failed to get JWT. API Response:', JSON.stringify(tokenData));
     throw new Error('Phản hồi từ Higgsfield không chứa token (jwt). Điều này có thể do Cookie hoặc Clerk Context không hợp lệ hoặc đã hết hạn.');
   }
-
-  console.log('[INFO] Successfully retrieved Higgsfield token.');
   return tokenData.jwt;
 }
 
 serve(async (req) => {
-  console.log('--- Image Function Request Received ---');
+  console.log('--- Image Generation Request Received ---');
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -62,10 +45,6 @@ serve(async (req) => {
     if (userError) throw userError;
     if (!user) throw new Error("User not authenticated.");
 
-    const body = await req.json();
-    const { action, ...payload } = body;
-    console.log(`[INFO] User ${user.id} requested action: "${action || 'generate_image'}"`);
-
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
       .select('higgsfield_cookie, higgsfield_clerk_context')
@@ -78,34 +57,9 @@ serve(async (req) => {
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-
-    if (action === 'get_task_status') {
-      // --- STATUS CHECK LOGIC ---
-      const { taskId } = payload;
-      if (!taskId) throw new Error("taskId is required for get_task_status action.");
-      
-      console.log(`[INFO] Checking status for Image Task ID: ${taskId}`);
-      
-      const statusResponse = await fetch(`${API_BASE}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, taskid: taskId })
-      });
-
-      if (!statusResponse.ok) {
-        const errorText = await statusResponse.text();
-        throw new Error(`Failed to get task status: ${errorText}`);
-      }
-      
-      const statusData = await statusResponse.json();
-      console.log(`[INFO] API Status Response for Task ID ${taskId}:`, JSON.stringify(statusData, null, 2));
-      return new Response(JSON.stringify(statusData), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } 
     
-    // --- GENERATION LOGIC (default action) ---
-    const { model, prompt, imageData, options } = payload;
+    // --- GENERATION LOGIC ---
+    const { model, prompt, imageData, options } = await req.json();
     if (!model || !prompt) {
         throw new Error("Model and prompt are required for generation.");
     }

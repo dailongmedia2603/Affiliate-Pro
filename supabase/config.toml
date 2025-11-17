@@ -1,0 +1,4 @@
+[cron.jobs.update_tasks]
+schedule = "* * * * *"
+function = "update-task-statuses"
+header.Authorization = "Bearer ${CRON_SECRET}"
