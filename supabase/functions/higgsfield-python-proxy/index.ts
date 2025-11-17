@@ -82,7 +82,7 @@ serve(async (req) => {
                     token: token,
                     cookie: higgsfield_cookie,
                     clerk_active_context: higgsfield_clerk_context,
-                    url: [imageData], // SỬA LỖI: Bọc imageData trong một mảng
+                    url: [imageData],
                     file_type: 'image'
                 })
             });
@@ -92,11 +92,24 @@ serve(async (req) => {
                 throw new Error(`Lỗi tải ảnh lên: ${errorText}`);
             }
 
-            const uploadData = await uploadResponse.json();
-            if (uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
-                console.error(`[ERROR] Image upload failed. API Response:`, JSON.stringify(uploadData));
-                throw new Error(`Tải image lên thất bại. Chi tiết đã được ghi lại trong log.`);
+            // SỬA LỖI: Xử lý phản hồi một cách an toàn
+            const responseText = await uploadResponse.text();
+            if (!responseText) {
+              throw new Error('Tải ảnh lên thất bại: API đã trả về một phản hồi trống (empty response).');
             }
+
+            let uploadData;
+            try {
+              uploadData = JSON.parse(responseText);
+            } catch (e) {
+              throw new Error(`Tải ảnh lên thất bại: API đã trả về phản hồi không phải JSON. Phản hồi: ${responseText.slice(0, 200)}`);
+            }
+
+            if (!uploadData || uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
+                console.error(`[ERROR] Image upload failed. API Response:`, JSON.stringify(uploadData));
+                throw new Error(`Tải image lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
+            }
+            
             images_data = uploadData.data;
             console.log('[INFO] Image uploaded successfully for image generation.');
         }
