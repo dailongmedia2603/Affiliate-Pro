@@ -1,3 +1,6 @@
+# This file configures the Cron Job for the application.
+# The job below is set to run every minute.
+
 [cron.jobs.update_tasks]
 schedule = "* * * * *"
 function = "update-task-statuses"
