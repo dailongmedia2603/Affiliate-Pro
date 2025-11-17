@@ -1,4 +1,5 @@
 // @ts-nocheck
+// This function is designed to be run by a Cron Job to update the status of pending image and video tasks.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
@@ -31,11 +32,13 @@ serve(async (req) => {
   // Security check: Only allow requests from the Cron Job
   const authHeader = req.headers.get('Authorization');
   if (authHeader !== `Bearer ${Deno.env.get('CRON_SECRET')}`) {
+    console.error('[CRON] Unauthorized attempt to run job. Missing or incorrect CRON_SECRET.');
     return new Response('Unauthorized', { status: 401 });
   }
+  
+  console.log(`[CRON] Job invoked successfully at ${new Date().toISOString()}. Starting process...`);
 
   try {
-    console.log('[CRON] Starting task status update job...');
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
