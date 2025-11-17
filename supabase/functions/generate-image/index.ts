@@ -63,9 +63,8 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated.");
 
     const body = await req.json();
-    // The 'action' property is no longer needed as this function only generates images.
     const { model, prompt, imageData, options } = body;
-    console.log(`[INFO] User ${user.id} requested image generation`);
+    console.log(`[INFO] User ${user.id} requested image generation for model: ${model}`);
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
@@ -84,18 +83,17 @@ serve(async (req) => {
     if (!model || !prompt) {
         throw new Error("Model and prompt are required for generation.");
     }
-    console.log(`[INFO] Starting image generation for model: ${model}`);
 
-    // Upload image if provided
-    let images_data = null;
+    // Step 1: Upload image to Higgsfield's dedicated endpoint if it exists
+    let images_data = []; // Default to empty array as per Python script
     if (imageData) {
-        console.log('[INFO] Uploading image for generation...');
-        const uploadResponse = await fetch(`${API_BASE}/video/uploadmediav2`, {
+        console.log('[INFO] Step 1: Uploading image to /img/uploadmedia...');
+        const uploadResponse = await fetch(`${API_BASE}/img/uploadmedia`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 token: token,
-                file_data: [imageData]
+                file_data: [imageData] // API expects an array of base64 strings
             })
         });
 
@@ -105,18 +103,19 @@ serve(async (req) => {
         }
         
         const uploadData = await uploadResponse.json();
-        if (!uploadData || uploadData.status === false || !uploadData.data || uploadData.data.length === 0) {
-            throw new Error(`Tải image lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
+        // Based on Python script: if data['status']: imgs = data['data']
+        if (uploadData && uploadData.status === true && uploadData.data) {
+            images_data = uploadData.data;
+            console.log('[INFO] Image uploaded successfully. Received processed image data.');
+        } else {
+            throw new Error(`Tải ảnh lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
         }
-        
-        images_data = uploadData.data;
-        console.log('[INFO] Image uploaded successfully.');
     }
 
-    // Call the generation API
+    // Step 2: Call the final generation API with the processed image data
     let endpoint = '';
     let apiPayload = {};
-    const basePayload = { token, prompt, images_data: images_data || [], ...options };
+    const basePayload = { token, prompt, images_data, ...options };
 
     switch (model) {
       case 'banana':
@@ -131,7 +130,7 @@ serve(async (req) => {
         throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
     }
 
-    console.log(`[INFO] Sending generation request to ${endpoint}`);
+    console.log(`[INFO] Step 2: Sending generation request to ${endpoint}`);
     const generationResponse = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
