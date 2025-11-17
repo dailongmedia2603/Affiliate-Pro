@@ -84,21 +84,21 @@ serve(async (req) => {
 
     let images_data = [];
     if (imageUrl) {
-        console.log(`[INFO] Step 1: Registering image URL with /img/uploadmedia: ${imageUrl}`);
+        console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
         const uploadPayload = {
             token: token,
             url: imageUrl
         };
         console.log('[DEBUG] Sending URL registration request. Payload:', uploadPayload);
 
-        const uploadResponse = await fetch(`${API_BASE}/img/uploadmedia`, {
+        const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(uploadPayload)
         });
 
         const responseText = await uploadResponse.text();
-        console.log(`[DEBUG] Received response from /img/uploadmedia. Status: ${uploadResponse.status}, Body: ${responseText}`);
+        console.log(`[DEBUG] Received response from /img/uploadmediav2. Status: ${uploadResponse.status}, Body: ${responseText}`);
 
         if (!uploadResponse.ok) {
             throw new Error(`Lỗi đăng ký URL ảnh: ${responseText}`);
