@@ -79,13 +79,19 @@ serve(async (req) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    token: token, // SỬA LỖI: Thêm token vào đây
+                    token: token,
                     cookie: higgsfield_cookie,
                     clerk_active_context: higgsfield_clerk_context,
-                    url: imageData,
+                    url: [imageData], // SỬA LỖI: Bọc imageData trong một mảng
                     file_type: 'image'
                 })
             });
+
+            if (!uploadResponse.ok) {
+                const errorText = await uploadResponse.text();
+                throw new Error(`Lỗi tải ảnh lên: ${errorText}`);
+            }
+
             const uploadData = await uploadResponse.json();
             if (uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
                 console.error(`[ERROR] Image upload failed. API Response:`, JSON.stringify(uploadData));
