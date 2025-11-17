@@ -7,8 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Sử dụng endpoint của Google AI Gemini API, model này tương đương gemini 1.5 pro trên Vertex AI
-const GOOGLE_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent';
+// Cập nhật để sử dụng model gemini-2.5-pro theo yêu cầu
+const GOOGLE_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -25,7 +25,6 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError) throw userError;
 
-    // Chỉ cần lấy vertex_ai_api_key, không cần gcp_project_id
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
       .select('vertex_ai_api_key')
