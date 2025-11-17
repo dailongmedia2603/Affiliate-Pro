@@ -1,7 +1,7 @@
 # This file configures the Cron Job for the application.
 # The job below is set to run every minute.
 
-[cron.jobs.update_tasks]
+[cron.jobs.update_all_task_statuses]
 schedule = "* * * * *"
 function = "update-task-statuses"
 header.Authorization = "Bearer ${CRON_SECRET}"
