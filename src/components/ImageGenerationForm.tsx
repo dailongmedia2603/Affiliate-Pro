@@ -35,16 +35,6 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      // The API expects raw base64 data, so we strip the Data URI prefix.
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-      reader.onerror = error => reject(error);
-    });
-  };
-
   const handleSubmit = async () => {
     if (!prompt) {
       showError('Vui lòng nhập prompt.');
@@ -55,12 +45,28 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
-      let imageData = imageFile ? await fileToBase64(imageFile) : null;
+      let imageUrl = null;
+      // Step 1: Upload image to Supabase Storage if a file is selected
+      if (imageFile) {
+        const filePath = `${user.id}/${Date.now()}_${imageFile.name}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('images')
+          .upload(filePath, imageFile);
 
-      const options = { width, height };
+        if (uploadError) {
+          throw new Error(`Lỗi tải ảnh lên Supabase: ${uploadError.message}`);
+        }
 
+        const { data: urlData } = supabase.storage
+          .from('images')
+          .getPublicUrl(uploadData.path);
+        
+        imageUrl = urlData.publicUrl;
+      }
+
+      // Step 2: Call the edge function with the image URL
       const { data, error } = await supabase.functions.invoke('generate-image', {
-        body: { model, prompt, imageData, options },
+        body: { model, prompt, imageUrl, options: { width, height } },
       });
 
       if (error) throw error;

@@ -51,7 +51,6 @@ serve(async (req) => {
   }
 
   try {
-    // 1. Authenticate user and get their settings
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -63,7 +62,7 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated.");
 
     const body = await req.json();
-    const { model, prompt, imageData, options } = body;
+    const { model, prompt, imageUrl, options } = body;
     console.log(`[INFO] User ${user.id} requested image generation for model: ${model}`);
 
     const { data: settings, error: settingsError } = await supabaseClient
@@ -79,26 +78,18 @@ serve(async (req) => {
     
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
     
-    // --- GENERATION LOGIC ---
     if (!model || !prompt) {
         throw new Error("Model and prompt are required for generation.");
     }
 
-    // Step 1: Upload image to Higgsfield's dedicated endpoint if it exists
-    let images_data = []; // Default to empty array as per Python script
-    if (imageData) {
-        console.log('[INFO] Step 1: Uploading image to /img/uploadmedia...');
-        
+    let images_data = [];
+    if (imageUrl) {
+        console.log(`[INFO] Step 1: Registering image URL with /img/uploadmedia: ${imageUrl}`);
         const uploadPayload = {
             token: token,
-            file_data: [imageData] // API expects an array of base64 strings
+            url: imageUrl
         };
-        
-        // ADDED LOG: Log the request payload structure
-        console.log('[DEBUG] Sending upload request to /img/uploadmedia. Payload structure:', {
-            token: '...token...',
-            file_data: [`${imageData.substring(0, 50)}...`]
-        });
+        console.log('[DEBUG] Sending URL registration request. Payload:', uploadPayload);
 
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmedia`, {
             method: 'POST',
@@ -106,31 +97,22 @@ serve(async (req) => {
             body: JSON.stringify(uploadPayload)
         });
 
-        // ADDED LOG: Log the full response from the upload API
         const responseText = await uploadResponse.text();
         console.log(`[DEBUG] Received response from /img/uploadmedia. Status: ${uploadResponse.status}, Body: ${responseText}`);
 
         if (!uploadResponse.ok) {
-            // Now the error message will include the full response body
-            throw new Error(`Lỗi tải ảnh lên: ${responseText}`);
+            throw new Error(`Lỗi đăng ký URL ảnh: ${responseText}`);
         }
         
-        let uploadData;
-        try {
-            uploadData = JSON.parse(responseText);
-        } catch (e) {
-            throw new Error(`Không thể phân tích phản hồi JSON từ API tải ảnh lên. Phản hồi: ${responseText}`);
-        }
-
+        const uploadData = JSON.parse(responseText);
         if (uploadData && uploadData.status === true && uploadData.data) {
             images_data = uploadData.data;
-            console.log('[INFO] Image uploaded successfully. Received processed image data.');
+            console.log('[INFO] Image URL registered successfully.');
         } else {
-            throw new Error(`Tải ảnh lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
+            throw new Error(`Đăng ký URL ảnh thất bại: ${JSON.stringify(uploadData)}`);
         }
     }
 
-    // Step 2: Call the final generation API with the processed image data
     let endpoint = '';
     let apiPayload = {};
     const basePayload = { token, prompt, images_data, ...options };
@@ -161,7 +143,6 @@ serve(async (req) => {
     }
 
     const generationData = await generationResponse.json();
-    console.log(`[INFO] API Generation Response:`, JSON.stringify(generationData, null, 2));
     if (!generationData.job_sets || generationData.job_sets.length === 0) {
         throw new Error('Phản hồi từ API tạo ảnh không hợp lệ.');
     }
