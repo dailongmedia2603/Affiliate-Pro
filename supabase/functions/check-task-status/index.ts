@@ -60,7 +60,7 @@ serve(async (req) => {
     const { data: imageTasks, error: imageError } = await supabaseAdmin
       .from('image_tasks')
       .select('id, user_id, higgsfield_task_id, status')
-      .in('status', ['pending', 'processing']);
+      .in('status', ['pending', 'processing', 'queued']);
 
     const { data: videoTasks, error: videoError } = await supabaseAdmin
       .from('video_tasks')
