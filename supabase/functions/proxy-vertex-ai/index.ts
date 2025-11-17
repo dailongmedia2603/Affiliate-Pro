@@ -7,8 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Cập nhật để sử dụng model gemini-2.5-pro theo yêu cầu
-const GOOGLE_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent';
+const REGION = 'us-central1';
+const MODEL_ID = 'gemini-1.5-pro-latest'; // Sử dụng phiên bản mới nhất của 1.5 Pro
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -27,27 +27,28 @@ serve(async (req) => {
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
-      .select('vertex_ai_api_key')
+      .select('gcp_project_id, vertex_ai_api_key')
       .eq('id', user.id)
       .single();
 
-    if (settingsError || !settings || !settings.vertex_ai_api_key) {
-      throw new Error('Không tìm thấy Vertex AI API Key. Vui lòng kiểm tra lại cài đặt.');
+    if (settingsError || !settings || !settings.gcp_project_id || !settings.vertex_ai_api_key) {
+      throw new Error('Không tìm thấy GCP Project ID hoặc Vertex AI API Key. Vui lòng kiểm tra lại cài đặt.');
     }
     
-    const { vertex_ai_api_key } = settings;
+    const { gcp_project_id, vertex_ai_api_key } = settings;
     const { prompt } = await req.json();
     if (!prompt) {
       throw new Error('Thiếu tham số bắt buộc: prompt');
     }
 
-    const requestUrl = `${GOOGLE_API_URL}?key=${vertex_ai_api_key}`;
+    // Xây dựng URL đúng cho Vertex AI và thêm API key vào query string
+    const apiUrl = `https://${REGION}-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/${REGION}/publishers/google/models/${MODEL_ID}:generateContent?key=${vertex_ai_api_key}`;
 
     const requestBody = {
       contents: [{ parts: [{ text: prompt }] }]
     };
 
-    const response = await fetch(requestUrl, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -57,13 +58,13 @@ serve(async (req) => {
 
     const responseText = await response.text();
     if (!response.ok) {
-      console.error(`[ERROR] Google Gemini API returned an error. Status: ${response.status}, Body: ${responseText}`);
+      console.error(`[ERROR] Vertex AI API returned an error. Status: ${response.status}, Body: ${responseText}`);
       try {
         const errorJson = JSON.parse(responseText);
         const errorMessage = errorJson?.error?.message || responseText;
-        throw new Error(`Lỗi từ API Gemini: ${response.status} - ${errorMessage}`);
+        throw new Error(`Lỗi từ API Vertex AI: ${response.status} - ${errorMessage}`);
       } catch (e) {
-        throw new Error(`Lỗi từ API Gemini: ${response.status} - ${responseText}`);
+        throw new Error(`Lỗi từ API Vertex AI: ${response.status} - ${responseText}`);
       }
     }
 
@@ -71,8 +72,8 @@ serve(async (req) => {
     const generatedText = responseJson?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (generatedText === undefined) {
-      console.error('[ERROR] Could not parse generated text from Gemini API response. Body:', responseText);
-      throw new Error('Không thể phân tích phản hồi từ API Gemini.');
+      console.error('[ERROR] Could not parse generated text from Vertex AI response. Body:', responseText);
+      throw new Error('Không thể phân tích phản hồi từ API Vertex AI.');
     }
 
     return new Response(JSON.stringify({ success: true, data: generatedText }), {
