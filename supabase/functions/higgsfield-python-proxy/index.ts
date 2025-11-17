@@ -70,6 +70,8 @@ serve(async (req) => {
         const { model, prompt, imageData, options } = payload;
         console.log(`[INFO] Starting image generation for model: ${model}`);
         
+        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
+        
         let images_data = null;
         if (imageData) {
             console.log('[INFO] Uploading image for image generation...');
@@ -77,6 +79,7 @@ serve(async (req) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    token: token, // SỬA LỖI: Thêm token vào đây
                     cookie: higgsfield_cookie,
                     clerk_active_context: higgsfield_clerk_context,
                     url: imageData,
@@ -91,8 +94,6 @@ serve(async (req) => {
             images_data = uploadData.data;
             console.log('[INFO] Image uploaded successfully for image generation.');
         }
-
-        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
         let endpoint = '';
         let apiPayload = {};
