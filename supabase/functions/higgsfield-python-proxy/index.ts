@@ -8,6 +8,7 @@ const corsHeaders = {
 }
 
 const HIGGSFIELD_TOKEN_URL = 'https://api.beautyapp.work/gettoken';
+const HIGGSFIELD_UPLOAD_URL = 'https://api.beautyapp.work/img/uploadmedia';
 
 // Helper function to get a temporary token
 async function getHiggsfieldToken(cookie, clerk_active_context) {
@@ -25,6 +26,26 @@ async function getHiggsfieldToken(cookie, clerk_active_context) {
     throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
   }
   return tokenData.jwt;
+}
+
+// Helper function to upload media
+async function uploadMedia(token, mediaData, fileType = 'image') {
+  if (!mediaData) return null;
+
+  const uploadResponse = await fetch(HIGGSFIELD_UPLOAD_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, url: mediaData, file_type: fileType })
+  });
+
+  const uploadData = await uploadResponse.json();
+  if (uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
+    console.error(`[ERROR] ${fileType} upload failed. API Response:`, JSON.stringify(uploadData));
+    throw new Error(`Tải ${fileType} lên thất bại. Chi tiết đã được ghi lại trong log.`);
+  }
+  
+  console.log(`[INFO] Successfully uploaded ${fileType}.`);
+  return uploadData.data;
 }
 
 serve(async (req) => {
@@ -71,23 +92,11 @@ serve(async (req) => {
         const { model, prompt, imageData, options } = payload;
         console.log(`[INFO] Starting image generation for model: ${model}`);
         
-        let images_data = [];
-        if (imageData) {
-          const uploadResponse = await fetch("https://api.beautyapp.work/img/uploadmedia", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, file_data: [imageData] })
-          });
-          const uploadData = await uploadResponse.json();
-          if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
-            throw new Error('Tải ảnh lên thất bại.');
-          }
-          images_data = uploadData.data;
-        }
+        const images_data = await uploadMedia(token, imageData, 'image');
 
         let endpoint = '';
         let apiPayload = {};
-        const basePayload = { token, prompt, images_data, ...options };
+        const basePayload = { token, prompt, images_data: images_data || [], ...options };
 
         switch (model) {
           case 'banana':
@@ -129,21 +138,57 @@ serve(async (req) => {
         const { model, prompt, imageData, videoData, options } = payload;
         console.log(`[INFO] Starting video generation for model: ${model}`);
 
-        if (model === 'wan2') {
-          // ... wan2 logic ...
-          const wan2Response = await fetch("https://api.beautyapp.work/video/wan2", { /* ... */ });
-          const wan2Data = await wan2Response.json();
-          const newTaskId = wan2Data.job_sets[0].id;
-          console.log(`[INFO] Successfully submitted video task (wan2). Higgsfield Task ID: ${newTaskId}`);
-          return new Response(JSON.stringify({ success: true, taskId: newTaskId }), { /* ... */ });
-        } else {
-          // ... other models logic ...
-          const generationResponse = await fetch(endpoint, { /* ... */ });
-          const generationData = await generationResponse.json();
-          const newTaskId = generationData.job_sets[0].id;
-          console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
-          return new Response(JSON.stringify({ success: true, taskId: newTaskId }), { /* ... */ });
+        const images_data = await uploadMedia(token, imageData, 'image');
+        const videos_data = await uploadMedia(token, videoData, 'video');
+
+        let endpoint = '';
+        let apiPayload = {};
+        
+        switch (model) {
+          case 'kling':
+            endpoint = 'https://api.beautyapp.work/video/kling';
+            apiPayload = { token, prompt, images_data: images_data || [], ...options };
+            break;
+          case 'sora':
+            endpoint = 'https://api.beautyapp.work/video/sora';
+            apiPayload = { token, prompt, images_data: images_data || [], ...options };
+            break;
+          case 'higg_life':
+            endpoint = 'https://api.beautyapp.work/video/higg_life';
+            apiPayload = { token, prompt, images_data: images_data || [], ...options };
+            break;
+          case 'wan2':
+            endpoint = 'https://api.beautyapp.work/video/wan2';
+            if (!images_data || !videos_data) {
+              throw new Error('Model Wan2 yêu cầu cả ảnh và video đầu vào.');
+            }
+            apiPayload = { token, prompt, images_data, videos_data, ...options };
+            break;
+          default:
+            throw new Error(`Model video không được hỗ trợ: ${model}`);
         }
+
+        const generationResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload)
+        });
+
+        if (!generationResponse.ok) {
+          const errorText = await generationResponse.text();
+          throw new Error(`Tạo video thất bại: ${errorText}`);
+        }
+
+        const generationData = await generationResponse.json();
+        if (!generationData.job_sets || generationData.job_sets.length === 0) {
+            throw new Error('Phản hồi từ API tạo video không hợp lệ.');
+        }
+        
+        const newTaskId = generationData.job_sets[0].id;
+        console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
+        return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
 
       case 'get_task_status': {
@@ -173,7 +218,7 @@ serve(async (req) => {
 
         console.log(`[INFO] Raw status response for ${taskId}:`, responseText);
         
-        const status = statusData?.job_sets?.[0]?.status;
+        const status = statusData?.jobs?.[0]?.status;
         console.log(`[INFO] Parsed status for ${taskId}: ${status || 'N/A'}`);
 
         return new Response(JSON.stringify(statusData), {
