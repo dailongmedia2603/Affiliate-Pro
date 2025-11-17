@@ -7,15 +7,20 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
+  console.log(`[INFO] Received request: ${req.method} ${req.url}`);
+
   // Xử lý yêu cầu preflight CORS
   if (req.method === 'OPTIONS') {
+    console.log('[INFO] Handling OPTIONS request');
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
     const { apiUrl, prompt, token } = await req.json()
+    console.log(`[INFO] Processing request for apiUrl: ${apiUrl}`);
 
     if (!apiUrl || !prompt || !token) {
+      console.error('[ERROR] Missing required parameters: apiUrl, prompt, or token');
       return new Response(JSON.stringify({ error: 'Thiếu các tham số bắt buộc: apiUrl, prompt, hoặc token' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -26,21 +31,26 @@ serve(async (req) => {
     formData.append('prompt', prompt)
     formData.append('token', token)
 
+    console.log(`[INFO] Sending POST request to Gemini API proxy at ${apiUrl}`);
     const response = await fetch(apiUrl, {
       method: 'POST',
       body: formData,
     })
 
     const responseData = await response.text()
+    console.log(`[INFO] Received response from Gemini API proxy. Status: ${response.status}`);
 
     if (!response.ok) {
-      throw new Error(`Lỗi API: ${response.status} - ${responseData}`)
+      console.error(`[ERROR] Gemini API proxy returned an error. Status: ${response.status}, Body: ${responseData}`);
+      throw new Error(`Lỗi từ API Gemini: ${response.status} - ${responseData}`)
     }
 
+    console.log('[INFO] Successfully proxied request to Gemini API.');
     return new Response(responseData, {
       headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' },
     })
   } catch (error) {
+    console.error('!!! [FATAL] An error occurred in the proxy-gemini-api function:', error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
