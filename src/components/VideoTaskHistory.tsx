@@ -32,7 +32,7 @@ const VideoTaskHistory = ({ model }) => {
   }, [fetchTasks]);
 
   useEffect(() => {
-    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing');
+    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing' || t.status === 'in_progress');
     if (pendingTasks.length === 0) return;
 
     const interval = setInterval(async () => {

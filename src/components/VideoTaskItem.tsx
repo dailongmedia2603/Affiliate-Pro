@@ -26,6 +26,7 @@ const VideoTaskItem = ({ task, onTaskDeleted }) => {
     switch (task.status) {
       case 'pending':
       case 'processing':
+      case 'in_progress':
         return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang xử lý</Badge>;
       case 'completed':
         return <Badge variant="outline" className="text-green-600 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" />Hoàn thành</Badge>;
