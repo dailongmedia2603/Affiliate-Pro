@@ -84,7 +84,8 @@ serve(async (req) => {
     }
 
     let images_data = [];
-    if (imageUrl) {
+    console.log('[DEBUG] Received imageUrl for processing:', imageUrl);
+    if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
         console.log(`[INFO] Step 1: Registering image URL with /img/uploadmediav2: ${imageUrl}`);
         const uploadPayload = {
             token: token,
@@ -107,6 +108,10 @@ serve(async (req) => {
             throw new Error(`Lỗi đăng ký URL ảnh: ${responseText}`);
         }
         
+        if (!responseText || responseText.trim() === 'null') {
+          throw new Error(`Đăng ký URL ảnh thất bại: API trả về phản hồi rỗng hoặc null. Vui lòng kiểm tra xem URL ảnh có công khai và có thể truy cập được không.`);
+        }
+
         const uploadData = JSON.parse(responseText);
         if (uploadData && uploadData.status === true && uploadData.data) {
             images_data = uploadData.data;
