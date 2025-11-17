@@ -29,23 +29,46 @@ const ImageTaskHistory = ({ model }) => {
 
   useEffect(() => {
     fetchTasks();
+  }, [fetchTasks]);
 
-    const channel = supabase
-      .channel(`image_tasks_changes_${model}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'image_tasks', filter: `model=eq.${model}` },
-        (payload) => {
-          console.log('Realtime update received for image_tasks:', payload);
-          fetchTasks(); // Refetch the list on any change
+  useEffect(() => {
+    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing');
+    if (pendingTasks.length === 0) return;
+
+    const interval = setInterval(async () => {
+      let needsUpdate = false;
+      for (const task of pendingTasks) {
+        try {
+          const { data, error } = await supabase.functions.invoke('generate-image', {
+            body: { action: 'get_task_status', taskId: task.higgsfield_task_id }
+          });
+
+          if (error || (data && data.error)) {
+            console.error(`Lỗi kiểm tra tác vụ ${task.id}:`, error || data.error);
+            continue;
+          }
+          
+          const apiStatus = data?.jobs?.[0]?.status;
+          if (apiStatus && apiStatus !== task.status) {
+            const resultUrl = data?.jobs?.[0]?.results?.raw?.url;
+            const errorMessage = data?.jobs?.[0]?.error;
+            
+            await supabase.from('image_tasks').update({ 
+              status: apiStatus,
+              result_url: resultUrl,
+              error_message: errorMessage,
+            }).eq('id', task.id);
+            needsUpdate = true;
+          }
+        } catch (e) {
+          console.error(`Lỗi nghiêm trọng khi kiểm tra tác vụ ${task.id}:`, e);
         }
-      )
-      .subscribe();
+      }
+      if (needsUpdate) fetchTasks();
+    }, 10000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [fetchTasks, model]);
+    return () => clearInterval(interval);
+  }, [tasks, fetchTasks]);
 
   return (
     <Card className="flex flex-col h-full min-h-[600px]">
