@@ -2,7 +2,7 @@ import React from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Trash2, AlertTriangle, Download } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Trash2, Download } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import {
   Tooltip,
@@ -24,24 +24,24 @@ const ImageTaskItem = ({ task, onTaskDeleted }) => {
 
   const renderStatus = () => {
     switch (task.status) {
-      case 'pending':
-      case 'processing':
-        return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang xử lý</Badge>;
       case 'completed':
         return <Badge variant="outline" className="text-green-600 border-green-300"><CheckCircle2 className="w-3 h-3 mr-1" />Hoàn thành</Badge>;
       case 'failed':
+      case 'nsfw':
         return (
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger>
-                <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Lỗi</Badge>
+                <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" />Thất bại</Badge>
               </TooltipTrigger>
-              <TooltipContent><p>{task.error_message || 'Lỗi không xác định'}</p></TooltipContent>
+              <TooltipContent><p>{task.error_message || `Trạng thái: ${task.status}`}</p></TooltipContent>
             </Tooltip>
           </TooltipProvider>
         );
+      case 'pending':
+      case 'processing':
       default:
-        return <Badge variant="secondary"><AlertTriangle className="w-3 h-3 mr-1" />{task.status}</Badge>;
+        return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang xử lý</Badge>;
     }
   };
 
