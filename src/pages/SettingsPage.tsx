@@ -15,7 +15,7 @@ const SettingsPage = () => {
   const [higgsfieldClerkContext, setHiggsfieldClerkContext] = useState('');
   const [voiceApiKey, setVoiceApiKey] = useState('');
   const [gcpProjectId, setGcpProjectId] = useState('');
-  const [vertexAiApiKey, setVertexAiApiKey] = useState('');
+  const [vertexAiServiceAccount, setVertexAiServiceAccount] = useState('');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -58,7 +58,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, gcp_project_id, vertex_ai_api_key')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, gcp_project_id, vertex_ai_service_account')
           .eq('id', user.id)
           .single();
 
@@ -72,7 +72,7 @@ const SettingsPage = () => {
           setHiggsfieldCookie(data.higgsfield_cookie || '');
           setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
           setGcpProjectId(data.gcp_project_id || '');
-          setVertexAiApiKey(data.vertex_ai_api_key || '');
+          setVertexAiServiceAccount(data.vertex_ai_service_account ? JSON.stringify(data.vertex_ai_service_account, null, 2) : '');
         }
       }
     };
@@ -100,7 +100,14 @@ const SettingsPage = () => {
         updateData = { voice_api_key: voiceApiKey };
         break;
       case 'vertex_ai':
-        updateData = { gcp_project_id: gcpProjectId, vertex_ai_api_key: vertexAiApiKey };
+        try {
+          const parsedServiceAccount = JSON.parse(vertexAiServiceAccount);
+          updateData = { gcp_project_id: gcpProjectId, vertex_ai_service_account: parsedServiceAccount };
+        } catch (e) {
+          showError("Nội dung Service Account không phải là một file JSON hợp lệ.");
+          setIsSaving(false);
+          return;
+        }
         break;
     }
 
@@ -148,9 +155,9 @@ const SettingsPage = () => {
   };
 
   const handleTestVertexAiApi = async () => {
-    if (!gcpProjectId || !vertexAiApiKey) {
+    if (!gcpProjectId || !vertexAiServiceAccount) {
       setVertexAiConnectionStatus('error');
-      setTestResult('Vui lòng nhập GCP Project ID và Vertex AI API Key.');
+      setTestResult('Vui lòng nhập GCP Project ID và dán nội dung file Service Account.');
       return;
     }
     setIsTestingVertexAi(true);
@@ -272,10 +279,10 @@ const SettingsPage = () => {
           <div className="p-6 border rounded-lg bg-white space-y-6">
             <div>
               <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Vertex AI</h2>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin Project ID và API Key để kết nối với Google Cloud Vertex AI.</p>
-              <div className="space-y-4 max-w-md">
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập Project ID và dán toàn bộ nội dung file JSON Service Account của bạn.</p>
+              <div className="space-y-4 max-w-lg">
                 <div className="space-y-2"><label htmlFor="gcp-project-id" className="text-sm font-medium text-gray-700">GCP Project ID</label><Input id="gcp-project-id" type="text" placeholder="ví dụ: my-gcp-project-12345" value={gcpProjectId} onChange={(e) => { setGcpProjectId(e.target.value); setVertexAiConnectionStatus('idle'); }} /></div>
-                <div className="space-y-2"><label htmlFor="vertex-ai-api-key" className="text-sm font-medium text-gray-700">Vertex AI API Key</label><Input id="vertex-ai-api-key" type="password" placeholder="Nhập API key của bạn..." value={vertexAiApiKey} onChange={(e) => { setVertexAiApiKey(e.target.value); setVertexAiConnectionStatus('idle'); }} /></div>
+                <div className="space-y-2"><label htmlFor="vertex-ai-service-account" className="text-sm font-medium text-gray-700">Nội dung Service Account (JSON)</label><Textarea id="vertex-ai-service-account" placeholder="Dán toàn bộ nội dung file JSON của bạn vào đây..." value={vertexAiServiceAccount} onChange={(e) => { setVertexAiServiceAccount(e.target.value); setVertexAiConnectionStatus('idle'); }} className="min-h-[200px] font-mono text-xs" /></div>
               </div>
               <div className="flex items-center gap-4 mt-4">
                 <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi} variant="outline">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
@@ -283,12 +290,12 @@ const SettingsPage = () => {
               </div>
             </div>
             {vertexAiConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Vertex AI thành công.</AlertDescription></Alert>)}
-            {vertexAiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Project ID và API Key.</AlertDescription></Alert>)}
+            {vertexAiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Project ID và nội dung Service Account.</AlertDescription></Alert>)}
             <div className="border-t pt-6">
               <h2 className="text-lg font-semibold text-gray-700">Kiểm tra Prompt</h2>
               <p className="text-sm text-gray-500 mt-1 mb-4">Gửi một prompt để kiểm tra đầu ra của API.</p>
               <div className="space-y-2"><label htmlFor="test-prompt-vertex" className="text-sm font-medium text-gray-700">Prompt</label><Textarea id="test-prompt-vertex" placeholder="Nhập prompt của bạn ở đây..." value={testPrompt} onChange={(e) => setTestPrompt(e.target.value)} className="min-h-[100px]" /></div>
-              <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi || !gcpProjectId || !vertexAiApiKey} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt</Button>
+              <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi || !gcpProjectId || !vertexAiServiceAccount} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt</Button>
               {testResult && !isTestingVertexAi && (<div className="mt-4"><h3 className="text-sm font-semibold text-gray-700 mb-2">Kết quả:</h3><div className="bg-gray-900 text-white p-4 rounded-lg max-h-60 overflow-y-auto"><pre className="whitespace-pre-wrap text-sm font-mono">{testResult}</pre></div></div>)}
             </div>
           </div>
