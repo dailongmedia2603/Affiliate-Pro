@@ -12,9 +12,15 @@ const VideoTaskHistory = ({ model }) => {
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from('video_tasks')
       .select('*')
+      .eq('user_id', user.id)
       .eq('model', model)
       .order('created_at', { ascending: false })
       .limit(20);
@@ -29,46 +35,24 @@ const VideoTaskHistory = ({ model }) => {
 
   useEffect(() => {
     fetchTasks();
-  }, [fetchTasks]);
 
-  useEffect(() => {
-    const pendingTasks = tasks.filter(t => t.status === 'pending' || t.status === 'processing' || t.status === 'in_progress');
-    if (pendingTasks.length === 0) return;
-
-    const interval = setInterval(async () => {
-      let needsUpdate = false;
-      for (const task of pendingTasks) {
-        try {
-          const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
-            body: { action: 'get_task_status', taskId: task.higgsfield_task_id }
-          });
-
-          if (error || (data && data.error)) {
-            console.error(`Lỗi kiểm tra tác vụ ${task.id}:`, error || data.error);
-            continue;
+    const channel = supabase
+      .channel(`video_tasks_changes_for_${model}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'video_tasks' },
+        (payload) => {
+          if ((payload.new as any)?.model === model || (payload.old as any)?.model === model) {
+            fetchTasks();
           }
-          
-          const apiStatus = data?.jobs?.[0]?.status;
-          if (apiStatus && apiStatus !== task.status) {
-            const resultUrl = data?.jobs?.[0]?.results?.raw?.url;
-            const errorMessage = data?.jobs?.[0]?.error;
-            
-            await supabase.from('video_tasks').update({ 
-              status: apiStatus,
-              result_url: resultUrl,
-              error_message: errorMessage,
-            }).eq('id', task.id);
-            needsUpdate = true;
-          }
-        } catch (e) {
-          console.error(`Lỗi nghiêm trọng khi kiểm tra tác vụ ${task.id}:`, e);
         }
-      }
-      if (needsUpdate) fetchTasks();
-    }, 10000);
+      )
+      .subscribe();
 
-    return () => clearInterval(interval);
-  }, [tasks, fetchTasks]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchTasks, model]);
 
   return (
     <Card className="flex flex-col h-full min-h-[600px]">

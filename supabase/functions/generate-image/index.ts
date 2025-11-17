@@ -63,8 +63,9 @@ serve(async (req) => {
     if (!user) throw new Error("User not authenticated.");
 
     const body = await req.json();
-    const { action, ...payload } = body;
-    console.log(`[INFO] User ${user.id} requested action: "${action || 'generate_image'}"`);
+    // The 'action' property is no longer needed as this function only generates images.
+    const { model, prompt, imageData, options } = body;
+    console.log(`[INFO] User ${user.id} requested image generation`);
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
@@ -78,34 +79,8 @@ serve(async (req) => {
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-
-    if (action === 'get_task_status') {
-      // --- STATUS CHECK LOGIC ---
-      const { taskId } = payload;
-      if (!taskId) throw new Error("taskId is required for get_task_status action.");
-      
-      console.log(`[INFO] Checking status for Image Task ID: ${taskId}`);
-      
-      const statusResponse = await fetch(`${API_BASE}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, taskid: taskId })
-      });
-
-      if (!statusResponse.ok) {
-        const errorText = await statusResponse.text();
-        throw new Error(`Failed to get task status: ${errorText}`);
-      }
-      
-      const statusData = await statusResponse.json();
-      console.log(`[INFO] API Status Response for Task ID ${taskId}:`, JSON.stringify(statusData, null, 2));
-      return new Response(JSON.stringify(statusData), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } 
     
-    // --- GENERATION LOGIC (default action) ---
-    const { model, prompt, imageData, options } = payload;
+    // --- GENERATION LOGIC ---
     if (!model || !prompt) {
         throw new Error("Model and prompt are required for generation.");
     }
