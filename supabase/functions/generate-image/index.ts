@@ -90,7 +90,7 @@ serve(async (req) => {
     let images_data = null;
     if (imageData) {
         console.log('[INFO] Uploading image for generation...');
-        const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
+        const uploadResponse = await fetch(`${API_BASE}/video/uploadmediav2`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -105,7 +105,7 @@ serve(async (req) => {
         }
         
         const uploadData = await uploadResponse.json();
-        if (!uploadData || uploadData.success === false || !uploadData.data || uploadData.data.length === 0) {
+        if (!uploadData || uploadData.status === false || !uploadData.data || uploadData.data.length === 0) {
             throw new Error(`Tải image lên thất bại. Phản hồi từ API không hợp lệ: ${JSON.stringify(uploadData)}`);
         }
         
