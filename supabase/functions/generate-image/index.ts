@@ -45,6 +45,10 @@ serve(async (req) => {
     if (userError) throw userError;
     if (!user) throw new Error("User not authenticated.");
 
+    const body = await req.json();
+    const { action, ...payload } = body;
+    console.log(`[INFO] User ${user.id} requested action: "${action || 'generate_image'}"`);
+
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
       .select('higgsfield_cookie, higgsfield_clerk_context')
@@ -55,9 +59,7 @@ serve(async (req) => {
       throw new Error('Không tìm thấy thông tin xác thực Higgsfield. Vui lòng kiểm tra lại cài đặt của bạn.')
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
-
-    // 2. Get payload and determine action
-    const { action, ...payload } = await req.json();
+    
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
     if (action === 'get_task_status') {

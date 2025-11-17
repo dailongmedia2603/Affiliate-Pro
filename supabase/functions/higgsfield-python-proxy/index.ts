@@ -210,43 +210,6 @@ serve(async (req) => {
         }
       }
 
-      case 'get_task_status': {
-        const { taskId } = payload;
-        console.log(`[INFO] Checking status for Task ID: ${taskId}`);
-        
-        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-        
-        const statusResponse = await fetch("https://api.beautyapp.work/status", {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, taskid: taskId })
-        });
-
-        if (!statusResponse.ok) {
-          const errorText = await statusResponse.text();
-          console.error(`[ERROR] Failed to get task status for ${taskId}. API response: ${statusResponse.status} - ${errorText}`);
-          throw new Error(`Không thể lấy trạng thái tác vụ. API trả về: ${statusResponse.status}`);
-        }
-        
-        const responseText = await statusResponse.text();
-        let statusData;
-        try {
-          statusData = JSON.parse(responseText);
-        } catch (e) {
-          console.error(`[ERROR] Failed to parse JSON response for task ${taskId}. Raw response: ${responseText}`);
-          throw new Error('Phản hồi từ API trạng thái không phải là JSON hợp lệ.');
-        }
-
-        console.log(`[INFO] Raw status response for ${taskId}:`, responseText);
-        
-        const status = statusData?.jobs?.[0]?.status;
-        console.log(`[INFO] Parsed status for ${taskId}: ${status || 'N/A'}`);
-
-        return new Response(JSON.stringify(statusData), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
       default:
         throw new Error(`Hành động không hợp lệ: ${action}`)
     }
