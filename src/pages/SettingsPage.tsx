@@ -124,8 +124,17 @@ const SettingsPage = () => {
       const { data, error } = await supabase.functions.invoke('proxy-gemini-api', {
         body: { apiUrl: geminiApiUrl, prompt: testPrompt, token: geminiApiKey },
       });
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      
+      if (error) { // Network or function execution error
+        throw error;
+      }
+
+      // The function returns { error: '...' } on failure
+      if (data && data.error) {
+        throw new Error(data.error);
+      }
+
+      // On success, it returns the plain text response
       setGeminiConnectionStatus('success');
       setTestResult(data);
     } catch (error) {

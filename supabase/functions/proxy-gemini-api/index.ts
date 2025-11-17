@@ -9,7 +9,6 @@ const corsHeaders = {
 serve(async (req) => {
   console.log(`[INFO] Received request: ${req.method} ${req.url}`);
 
-  // Xử lý yêu cầu preflight CORS
   if (req.method === 'OPTIONS') {
     console.log('[INFO] Handling OPTIONS request');
     return new Response('ok', { headers: corsHeaders })
@@ -19,22 +18,27 @@ serve(async (req) => {
     const { apiUrl, prompt, token } = await req.json()
     console.log(`[INFO] Processing request for apiUrl: ${apiUrl}`);
 
-    if (!apiUrl || !prompt || !token) {
-      console.error('[ERROR] Missing required parameters: apiUrl, prompt, or token');
-      return new Response(JSON.stringify({ error: 'Thiếu các tham số bắt buộc: apiUrl, prompt, hoặc token' }), {
+    if (!apiUrl || !prompt) {
+      console.error('[ERROR] Missing required parameters: apiUrl or prompt');
+      return new Response(JSON.stringify({ error: 'Thiếu các tham số bắt buộc: apiUrl hoặc prompt' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    const formData = new FormData()
-    formData.append('prompt', prompt)
-    formData.append('token', token)
+    const body = new URLSearchParams();
+    body.append('prompt', prompt);
+    if (token) {
+      body.append('token', token);
+    }
 
-    console.log(`[INFO] Sending POST request to Gemini API proxy at ${apiUrl}`);
+    console.log(`[INFO] Sending POST request to Gemini API proxy at ${apiUrl} with urlencoded data.`);
     const response = await fetch(apiUrl, {
       method: 'POST',
-      body: formData,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
     })
 
     const responseData = await response.text()
@@ -42,7 +46,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error(`[ERROR] Gemini API proxy returned an error. Status: ${response.status}, Body: ${responseData}`);
-      throw new Error(`Lỗi từ API Gemini: ${response.status} - ${responseData}`)
+      throw new Error(`Lỗi từ API proxy: ${response.status} - ${responseData}`)
     }
 
     console.log('[INFO] Successfully proxied request to Gemini API.');
