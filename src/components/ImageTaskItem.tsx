@@ -47,7 +47,7 @@ const ImageTaskItem = ({ task, onTaskDeleted, onImageClick }) => {
   return (
     <div className="border rounded-lg p-3 space-y-2 bg-gray-50">
       <div className="flex justify-between items-start">
-        <div className="flex-1 mr-2 space-y-1">
+        <div className="flex-1 mr-2 space-y-1 min-w-0">
           {renderStatus()}
           <p className="text-sm font-medium truncate" title={task.prompt}>{task.prompt}</p>
           <p className="text-xs text-gray-500">Model: {task.model}</p>
