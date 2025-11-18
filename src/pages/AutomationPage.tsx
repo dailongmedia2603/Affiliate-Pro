@@ -5,17 +5,13 @@ import { Input } from '@/components/ui/input';
 import { Loader2, Search, Settings, Play, Bot } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import AutomationConfigDialog from '@/components/AutomationConfigDialog';
+import AutomationRunHistory from '@/components/AutomationRunHistory';
 
 type Channel = {
   id: string;
   name: string;
   avatar: string;
   user_id: string;
-};
-
-type AutomationRun = {
-  id: string;
-  status: string;
 };
 
 const AutomationPage = () => {
@@ -172,11 +168,7 @@ const AutomationPage = () => {
                 <p className="text-sm text-gray-500">Xem lại các lần chạy tự động hóa cho kênh này.</p>
               </div>
               <div className="flex-1 overflow-y-auto p-6">
-                <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 border-2 border-dashed rounded-lg">
-                  <Bot className="w-16 h-16 mb-4" />
-                  <h3 className="text-xl font-semibold">Sắp ra mắt</h3>
-                  <p>Lịch sử các lần chạy tự động hóa sẽ được hiển thị ở đây.</p>
-                </div>
+                <AutomationRunHistory channelId={selectedChannel.id} />
               </div>
             </>
           ) : (
