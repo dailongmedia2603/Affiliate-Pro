@@ -9,36 +9,44 @@ const corsHeaders = {
 
 const toHex = (data) => Array.from(new Uint8Array(data)).map((b) => b.toString(16).padStart(2, '0')).join('');
 
-async function hmacSha256(key, data) { 
-  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, [ "sign" ]); 
-  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data)); 
+async function hmacSha256(key, data) {
+  // Sử dụng phiên bản an toàn hơn, tự động chuyển đổi key dạng string
+  const cryptoKey = await crypto.subtle.importKey("raw", typeof key === "string" ? new TextEncoder().encode(key) : key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
   return signature;
 }
 
-async function getSignatureKey(key, dateStamp, regionName, serviceName) { 
-  const kDate = await hmacSha256(new TextEncoder().encode("AWS4" + key), dateStamp); 
-  const kRegion = await hmacSha256(kDate, regionName); 
-  const kService = await hmacSha256(kRegion, serviceName); 
-  const kSigning = await hmacSha256(kService, "aws4_request"); 
-  return kSigning;
+async function getSignatureKey(key, dateStamp, regionName, serviceName) {
+  // Sử dụng phiên bản code sạch sẽ và mạnh mẽ hơn
+  const kDate = await hmacSha256(`AWS4${key}`, dateStamp);
+  const kRegion = await hmacSha256(kDate, regionName);
+  const kService = await hmacSha256(kRegion, serviceName);
+  return await hmacSha256(kService, "aws4_request");
 }
 
 serve(async (req) => {
+  console.log(`[r2-generate-upload-url] INFO: Received request: ${req.method} ${req.url}`);
   if (req.method === "OPTIONS") {
+    console.log("[r2-generate-upload-url] INFO: Handling OPTIONS request.");
     return new Response("ok", { headers: corsHeaders });
   }
   try {
+    console.log("[r2-generate-upload-url] INFO: Processing request body.");
     const { fileName, contentType } = await req.json();
+    console.log(`[r2-generate-upload-url] INFO: Received fileName: ${fileName}, contentType: ${contentType}`);
     if (!fileName || !contentType) throw new Error("fileName and contentType are required.");
 
+    console.log("[r2-generate-upload-url] INFO: Authenticating user.");
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
+    if (userError || !user) throw new Error(`User not authenticated: ${userError?.message}`);
+    console.log(`[r2-generate-upload-url] INFO: User ${user.id} authenticated.`);
 
+    console.log(`[r2-generate-upload-url] INFO: Fetching R2 settings for user ${user.id}.`);
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -50,7 +58,8 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    if (settingsError || !settings) throw new Error("Could not retrieve R2 settings for user.");
+    if (settingsError || !settings) throw new Error(`Could not retrieve R2 settings for user: ${settingsError?.message}`);
+    console.log("[r2-generate-upload-url] INFO: R2 settings fetched successfully.");
 
     const {
       cloudflare_account_id: accountId,
@@ -62,7 +71,9 @@ serve(async (req) => {
     if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
       throw new Error("Cloudflare R2 credentials are not set completely for this user.");
     }
+    console.log(`[r2-generate-upload-url] INFO: Using R2 Bucket: ${bucketName}, Account ID: ${accountId}`);
 
+    console.log("[r2-generate-upload-url] INFO: Generating presigned URL.");
     const host = `${bucketName}.${accountId}.r2.cloudflarestorage.com`;
     const region = "auto";
     const service = "s3";
@@ -83,10 +94,11 @@ serve(async (req) => {
     const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
     const signature = toHex(await hmacSha256(signingKey, stringToSign));
     const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
+    console.log("[r2-generate-upload-url] INFO: Presigned URL generated successfully.");
     
     return new Response(JSON.stringify({ url: presignedUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (error) {
-    console.error("r2-generate-upload-url: CATCH BLOCK ERROR:", error.message);
+    console.error("[r2-generate-upload-url] CATCH BLOCK ERROR:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
   }
 });
