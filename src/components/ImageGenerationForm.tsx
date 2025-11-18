@@ -174,7 +174,6 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
 
   const modelInfo = {
     banana: { title: "Tạo ảnh với Banana", input: "Prompt (bắt buộc) và Ảnh đầu vào (tùy chọn)." },
-    seedream: { title: "Hòa trộn ảnh với SeeDream", input: "Prompt (bắt buộc) và Ảnh đầu vào (tùy chọn)." },
   };
 
   return (

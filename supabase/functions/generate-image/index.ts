@@ -76,6 +76,7 @@ serve(async (req) => {
     if (action === 'generate_image') {
       const { model, prompt, image_urls, aspect_ratio } = payload;
       if (!model || !prompt) throw new Error("Model and prompt are required.");
+      if (model !== 'banana') throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
 
       let images_data = [];
       if (image_urls && image_urls.length > 0) {
@@ -106,22 +107,9 @@ serve(async (req) => {
         .single();
       if (logError) throw logError;
 
-      let endpoint = '';
-      let apiPayload = {};
+      const endpoint = `${API_BASE}/img/banana`;
       const basePayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio };
-
-      switch (model) {
-        case 'banana':
-          endpoint = `${API_BASE}/img/banana`;
-          apiPayload = { ...basePayload, batch_size: 1 };
-          break;
-        case 'seedream':
-          endpoint = `${API_BASE}/img/seedream`;
-          apiPayload = { ...basePayload, batch_size: 1, quality: "basic" };
-          break;
-        default:
-          throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
-      }
+      const apiPayload = { ...basePayload, batch_size: 1 };
 
       const generationResponse = await fetch(endpoint, {
         method: 'POST',

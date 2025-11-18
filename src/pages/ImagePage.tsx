@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Image as ImageIcon, AlertTriangle, Loader2, Banana, Sparkles } from "lucide-react";
+import { Image as ImageIcon, AlertTriangle, Loader2, Banana } from "lucide-react";
 import { showError } from '@/utils/toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import ImageGenerationForm from '@/components/ImageGenerationForm';
 import ImageTaskHistory from '@/components/ImageTaskHistory';
 
 const ImagePage = () => {
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
-  const [activeModel, setActiveModel] = useState('banana');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
@@ -33,10 +31,7 @@ const ImagePage = () => {
     checkApiKeys();
   }, []);
 
-  const models = [
-    { id: 'banana', name: 'Banana', icon: <Banana className="w-4 h-4 mr-2" />, color: "text-yellow-500" },
-    { id: 'seedream', name: 'SeeDream', icon: <Sparkles className="w-4 h-4 mr-2" />, color: "text-cyan-500" },
-  ];
+  const model = { id: 'banana' };
 
   if (apiKeySet === null) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>;
@@ -60,23 +55,10 @@ const ImagePage = () => {
         <ImageIcon className="w-7 h-7 text-orange-500" />
         <h1 className="text-2xl font-bold text-gray-800">Tạo Ảnh</h1>
       </div>
-      <Tabs value={activeModel} onValueChange={setActiveModel} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 bg-gray-100 p-1 rounded-lg h-auto">
-          {models.map(model => (
-            <TabsTrigger key={model.id} value={model.id} className="data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-orange-600 font-semibold flex items-center justify-center">
-              <span className={model.color}>{model.icon}</span> {model.name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        {models.map(model => (
-          <TabsContent key={model.id} value={model.id} className="mt-6">
-            <div className="space-y-8">
-              <ImageGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} />
-              <ImageTaskHistory model={model.id} refreshTrigger={refreshTrigger} />
-            </div>
-          </TabsContent>
-        ))}
-      </Tabs>
+      <div className="space-y-8">
+        <ImageGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} />
+        <ImageTaskHistory model={model.id} refreshTrigger={refreshTrigger} />
+      </div>
     </div>
   );
 };
