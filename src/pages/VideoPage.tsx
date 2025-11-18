@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VideoGenerationForm from '@/components/VideoGenerationForm';
 import VideoTaskHistory from '@/components/VideoTaskHistory';
 
-const VideoPage = () => {
+const VideoPage = ({ channelId = null }) => {
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
   const [activeModel, setActiveModel] = useState('kling');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -62,6 +62,15 @@ const VideoPage = () => {
         <Film className="w-7 h-7 text-orange-500" />
         <h1 className="text-2xl font-bold text-gray-800">Tạo Video</h1>
       </div>
+      {channelId && (
+        <Alert className="mb-6 bg-blue-50 border-blue-200">
+          <AlertTriangle className="h-4 w-4 text-blue-600" />
+          <AlertTitle className="text-blue-800">Chế độ tạo video cho kênh</AlertTitle>
+          <AlertDescription className="text-blue-700">
+            Các video bạn tạo bây giờ sẽ được tự động liên kết với kênh đã chọn.
+          </AlertDescription>
+        </Alert>
+      )}
       <Tabs value={activeModel} onValueChange={setActiveModel} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 bg-gray-100 p-1 rounded-lg h-auto">
           {models.map(model => (
@@ -74,7 +83,7 @@ const VideoPage = () => {
           <TabsContent key={model.id} value={model.id} className="mt-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
-                <VideoGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} />
+                <VideoGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} channelId={channelId} />
               </div>
               <div className="lg:col-span-1">
                 <VideoTaskHistory model={model.id} key={`${model.id}-${refreshTrigger}`} />

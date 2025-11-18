@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { showError, showSuccess } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AddChannelDialog from './AddChannelDialog';
+import ChannelDetailPage from '@/pages/ChannelDetailPage';
 
 type Product = {
   id: string;
@@ -26,13 +27,14 @@ type Channel = {
   link: string | null;
 };
 
-const ChannelManagement = () => {
+const ChannelManagement = ({ onNavigate }) => {
   const [products, setProducts] = useState<Product[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeProductId, setActiveProductId] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -114,6 +116,10 @@ const ChannelManagement = () => {
 
   const filters = [{ id: 'all', name: 'Tất cả' }, ...products];
 
+  if (selectedChannelId) {
+    return <ChannelDetailPage channelId={selectedChannelId} onBack={() => setSelectedChannelId(null)} onNavigate={onNavigate} />;
+  }
+
   return (
     <>
       <div className="w-full p-6 bg-gray-50/50">
@@ -170,6 +176,7 @@ const ChannelManagement = () => {
                   key={channel.id}
                   channel={channel}
                   productName={channel.product_id ? productMap.get(channel.product_id) : undefined}
+                  onClick={() => setSelectedChannelId(channel.id)}
                 />
               ))
             ) : (

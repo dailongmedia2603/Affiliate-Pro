@@ -5,9 +5,17 @@ import {
   Video,
 } from 'lucide-react';
 
-const ChannelCard = ({ channel, productName }) => {
+const ChannelCard = ({ channel, productName, onClick }) => {
+  const handleButtonClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick();
+  };
+
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4 transition-all duration-300 hover:shadow-lg hover:-translate-y-1">
+    <div 
+      onClick={onClick}
+      className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+    >
       {/* Header */}
       <div className="flex items-center gap-3">
         <img
@@ -54,7 +62,10 @@ const ChannelCard = ({ channel, productName }) => {
       </div>
 
       {/* Action Button */}
-      <button className="w-full mt-2 py-2.5 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">
+      <button 
+        onClick={handleButtonClick}
+        className="w-full mt-2 py-2.5 bg-orange-500 text-white font-semibold rounded-lg hover:bg-orange-600 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
+      >
         Video đã tạo
       </button>
     </div>

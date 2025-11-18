@@ -11,7 +11,7 @@ import { Wand2, Loader2, Upload, Info } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
-const VideoGenerationForm = ({ model, onTaskCreated }) => {
+const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   const [prompt, setPrompt] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -71,7 +71,7 @@ const VideoGenerationForm = ({ model, onTaskCreated }) => {
       if (data.error) throw new Error(data.error);
 
       if (data.success && data.taskId) {
-        await supabase.from('video_tasks').insert({ user_id: user.id, higgsfield_task_id: data.taskId, model, prompt });
+        await supabase.from('video_tasks').insert({ user_id: user.id, higgsfield_task_id: data.taskId, model, prompt, channel_id: channelId });
         showSuccess('Đã gửi yêu cầu tạo video thành công!');
         onTaskCreated();
       } else {

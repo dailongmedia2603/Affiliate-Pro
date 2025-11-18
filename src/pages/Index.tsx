@@ -10,16 +10,21 @@ import VideoPage from '@/pages/VideoPage';
 import ImagePage from '@/pages/ImagePage';
 
 const Index = () => {
-  const [activeItem, setActiveItem] = useState('Quản lý kênh');
+  const [activePage, setActivePage] = useState({ page: 'Quản lý kênh', payload: null });
+
+  const navigate = (page: string, payload: any = null) => {
+    setActivePage({ page, payload });
+  };
 
   const renderContent = () => {
-    switch (activeItem) {
+    const { page, payload } = activePage;
+    switch (page) {
       case 'Quản lý kênh':
-        return <ChannelManagement />;
+        return <ChannelManagement onNavigate={navigate} />;
       case 'Sản phẩm':
         return <ProductPage />;
       case 'Tạo Video':
-        return <VideoPage />;
+        return <VideoPage {...payload} />;
       case 'Tạo Ảnh':
         return <ImagePage />;
       case 'Tạo Voice':
@@ -27,13 +32,13 @@ const Index = () => {
       case 'Cài Đặt':
         return <SettingsPage />;
       default:
-        return <PlaceholderPage pageName={activeItem} />;
+        return <PlaceholderPage pageName={page} />;
     }
   };
 
   return (
     <div className="bg-[#F6F8FA] h-screen flex flex-col">
-      <Header activeItem={activeItem} setActiveItem={setActiveItem} />
+      <Header activeItem={activePage.page} setActiveItem={navigate} />
       <main className="flex flex-1 items-stretch p-3 gap-3 overflow-hidden">
         <Sidebar />
         <div className="bg-white flex-1 rounded-lg border border-solid border-[#EDEDED] overflow-y-auto">
