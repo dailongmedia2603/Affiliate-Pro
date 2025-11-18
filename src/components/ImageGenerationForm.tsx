@@ -33,6 +33,18 @@ const findClosestAspectRatio = (width: number, height: number): string => {
   return closestRatio;
 };
 
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = error => reject(error);
+  });
+};
+
 const ImageGenerationForm = ({ model, onTaskCreated }) => {
   const [prompt, setPrompt] = useState('A cat wearing a superhero cape');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
@@ -100,44 +112,28 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
   };
 
   const uploadToStorage = async (file: File): Promise<string> => {
-    // Generate a unique file name to avoid collisions
     const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+    const fileData = await fileToBase64(file);
 
-    // Get a presigned URL from our R2 Edge Function
-    const { data: presignedData, error: presignedError } = await supabase.functions.invoke('r2-generate-upload-url', {
-      body: { fileName, contentType: file.type },
+    const { data, error } = await supabase.functions.invoke('upload-image-to-r2', {
+      body: {
+        fileName,
+        fileType: file.type,
+        fileData,
+      },
     });
 
-    if (presignedError) {
-      throw new Error(`Không thể lấy URL tải lên R2: ${presignedError.message}`);
+    if (error) {
+      throw new Error(`Lỗi gọi function upload-image-to-r2: ${error.message}`);
     }
-    if (presignedData.error) {
-      throw new Error(`Lỗi từ function r2-generate-upload-url: ${presignedData.error}`);
+    if (data.error) {
+      throw new Error(`Lỗi từ function upload-image-to-r2: ${data.error}`);
     }
-
-    // Upload the file to R2 using the presigned URL
-    const uploadResponse = await fetch(presignedData.url, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type },
-      body: file,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Lỗi tải tệp lên R2: ${errorText}`);
+    if (!data.url) {
+      throw new Error('Function upload-image-to-r2 không trả về URL.');
     }
 
-    // Get the public URL base from the config function
-    const { data: configData, error: configError } = await supabase.functions.invoke('get-public-config');
-    if (configError) {
-      throw new Error(`Không thể lấy cấu hình public URL: ${configError.message}`);
-    }
-    if (configData.error) {
-      throw new Error(`Lỗi từ function get-public-config: ${configData.error}`);
-    }
-
-    // Construct and return the final public URL
-    return `${configData.publicUrl}/${fileName}`;
+    return data.url;
   };
 
   const handleSubmit = async () => {
