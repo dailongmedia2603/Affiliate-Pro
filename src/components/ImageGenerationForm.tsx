@@ -14,7 +14,6 @@ const SUPPORTED_ASPECT_RATIOS = [
   "2:3", "9:16", "3:4", "4:5"
 ];
 
-// Helper function to find the closest aspect ratio
 const findClosestAspectRatio = (width: number, height: number): string => {
   const originalRatio = width / height;
   let closestRatio = "1:1";
@@ -59,6 +58,29 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     }
   };
 
+  const uploadToStorage = async (file: File): Promise<string> => {
+    // 1. Get presigned URL from our new Edge Function
+    const { data: presignedData, error: presignedError } = await supabase.functions.invoke('storage-generate-upload-url', {
+      body: { fileName: file.name },
+    });
+    if (presignedError) throw new Error(`Không thể lấy URL tải lên: ${presignedError.message}`);
+
+    // 2. Upload the file directly to Supabase Storage using the presigned URL
+    const uploadResponse = await fetch(presignedData.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type },
+      body: file,
+    });
+    if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Lỗi tải tệp lên: ${errorText}`);
+    }
+
+    // 3. Get the public URL of the uploaded file
+    const { data: urlData } = supabase.storage.from('images').getPublicUrl(presignedData.path);
+    return urlData.publicUrl;
+  };
+
   const handleSubmit = async () => {
     if (!prompt) {
       showError('Vui lòng nhập prompt.');
@@ -66,43 +88,32 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     }
     setIsGenerating(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Cần đăng nhập để thực hiện.");
-
-      let imageUrl = null;
-      // Step 1: Upload image to Supabase Storage if a file is selected
+      let imageUrls: string[] = [];
       if (imageFile) {
-        const filePath = `${user.id}/${Date.now()}_${imageFile.name}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('images')
-          .upload(filePath, imageFile);
-
-        if (uploadError) {
-          throw new Error(`Lỗi tải ảnh lên Supabase: ${uploadError.message}`);
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('images')
-          .getPublicUrl(uploadData.path);
-        
-        imageUrl = urlData.publicUrl;
+        const publicUrl = await uploadToStorage(imageFile);
+        imageUrls.push(publicUrl);
       }
 
-      // Step 2: Call the edge function with the image URL
-      const { data, error } = await supabase.functions.invoke('generate-image', {
-        body: { model, prompt, imageUrl, options: { aspectRatio } },
+      const { error } = await supabase.functions.invoke('generate-image', {
+        body: {
+          action: 'generate_image',
+          model,
+          prompt,
+          image_urls: imageUrls,
+          aspect_ratio: aspectRatio,
+        },
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
 
-      if (data.success && data.taskId) {
-        await supabase.from('image_tasks').insert({ user_id: user.id, higgsfield_task_id: data.taskId, model, prompt });
-        showSuccess('Đã gửi yêu cầu tạo ảnh thành công!');
-        onTaskCreated();
-      } else {
-        throw new Error('Không nhận được ID tác vụ từ API.');
-      }
+      showSuccess('Đã gửi yêu cầu tạo ảnh thành công! Kiểm tra tab lịch sử.');
+      onTaskCreated();
+      // Reset form
+      setPrompt('A cat wearing a superhero cape');
+      setImageFile(null);
+      setImagePreview(null);
+      setAspectRatio('1:1');
+
     } catch (error) {
       showError(`Lỗi tạo ảnh: ${error.message}`);
     } finally {

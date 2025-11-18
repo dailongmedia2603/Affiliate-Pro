@@ -13,7 +13,7 @@ import {
 
 const ImageTaskItem = ({ task, onTaskDeleted }) => {
   const handleDelete = async () => {
-    const { error } = await supabase.from('image_tasks').delete().eq('id', task.id);
+    const { error } = await supabase.from('higgsfield_generation_logs').delete().eq('id', task.id);
     if (error) {
       showError('Xóa tác vụ thất bại.');
     } else {
@@ -38,7 +38,6 @@ const ImageTaskItem = ({ task, onTaskDeleted }) => {
             </Tooltip>
           </TooltipProvider>
         );
-      case 'pending':
       case 'processing':
       default:
         return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />Đang xử lý</Badge>;
@@ -50,15 +49,15 @@ const ImageTaskItem = ({ task, onTaskDeleted }) => {
       <div className="flex justify-between items-start">
         <div className="flex-1 mr-2 space-y-1">
           {renderStatus()}
-          <p className="text-sm font-medium" title={task.prompt}>{task.prompt}</p>
+          <p className="text-sm font-medium truncate" title={task.prompt}>{task.prompt}</p>
           <p className="text-xs text-gray-500">Model: {task.model}</p>
         </div>
         <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
       </div>
-      {task.status === 'completed' && task.result_url && (
+      {task.status === 'completed' && task.result_image_url && (
         <div className="relative aspect-square bg-black rounded-md overflow-hidden group">
-            <img src={task.result_url} alt={task.prompt} className="w-full h-full object-contain" />
-            <a href={task.result_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <img src={task.result_image_url} alt={task.prompt} className="w-full h-full object-contain" />
+            <a href={task.result_image_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button size="icon" className="w-8 h-8 bg-black/50 hover:bg-black/75">
                     <Download className="w-4 h-4" />
                 </Button>

@@ -75,7 +75,7 @@ const ImagePage = () => {
                 <ImageGenerationForm model={model.id} onTaskCreated={() => setRefreshTrigger(c => c + 1)} />
               </div>
               <div className="lg:col-span-1">
-                <ImageTaskHistory model={model.id} key={`${model.id}-${refreshTrigger}`} />
+                <ImageTaskHistory model={model.id} refreshTrigger={refreshTrigger} />
               </div>
             </div>
           </TabsContent>
