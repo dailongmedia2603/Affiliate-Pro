@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ const ImageTaskHistory = ({ model, refreshTrigger }) => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -36,56 +35,34 @@ const ImageTaskHistory = ({ model, refreshTrigger }) => {
     setLoading(false);
   }, [model]);
 
-  const checkTasksStatus = useCallback(async (tasksToCheck) => {
-    let needsRefetch = false;
-    for (const task of tasksToCheck) {
-      try {
-        const { data, error } = await supabase.functions.invoke('generate-image', {
-          body: {
-            action: 'get_task_status',
-            taskId: task.api_task_id,
-            logId: task.id,
-          },
-        });
-        if (error) throw error;
-        if (data.status && data.status !== 'processing') {
-            needsRefetch = true;
-        }
-      } catch (e) {
-        console.error(`Lỗi kiểm tra tác vụ ${task.id}:`, e);
-      }
-    }
-    if (needsRefetch) {
-        fetchTasks();
-    }
-  }, [fetchTasks]);
-
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks, refreshTrigger]);
 
   useEffect(() => {
-    const processingTasks = tasks.filter(t => t.status === 'processing' && t.api_task_id);
+    // Subscribe to real-time changes in the database
+    const channel = supabase
+      .channel(`higgsfield_logs_changes_for_${model}`)
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'higgsfield_generation_logs',
+          filter: `model=eq.${model}`
+        },
+        (payload) => {
+          // When a change is detected, refetch the tasks
+          fetchTasks();
+        }
+      )
+      .subscribe();
 
-    if (processingTasks.length > 0) {
-      if (!pollingIntervalRef.current) {
-        pollingIntervalRef.current = setInterval(() => {
-          checkTasksStatus(processingTasks);
-        }, 5000);
-      }
-    } else {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
-    }
-
+    // Cleanup function to remove the subscription when the component unmounts
     return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
+      supabase.removeChannel(channel);
     };
-  }, [tasks, checkTasksStatus]);
+  }, [model, fetchTasks]);
 
   return (
     <>
