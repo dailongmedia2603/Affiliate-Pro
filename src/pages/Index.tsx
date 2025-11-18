@@ -8,6 +8,7 @@ import ProductPage from '@/pages/ProductPage';
 import VoicePage from '@/pages/VoicePage';
 import VideoPage from '@/pages/VideoPage';
 import ImagePage from '@/pages/ImagePage';
+import AutomationPage from '@/pages/AutomationPage';
 
 const Index = () => {
   const [activePage, setActivePage] = useState({ page: 'Quản lý kênh', payload: null });
@@ -23,6 +24,8 @@ const Index = () => {
         return <ChannelManagement onNavigate={navigate} />;
       case 'Sản phẩm':
         return <ProductPage />;
+      case 'Automation':
+        return <AutomationPage />;
       case 'Tạo Video':
         return <VideoPage {...payload} />;
       case 'Tạo Ảnh':
