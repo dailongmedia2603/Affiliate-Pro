@@ -87,25 +87,33 @@ serve(async (req) => {
         }
       }
 
-      // If not part of an automation run, create a standalone log
-      let logTable = 'higgsfield_generation_logs';
-      let logInsertData = { user_id: user.id, model, prompt, status: 'processing' };
-      let logIdField = 'id';
+      let logId;
+      let logTable;
+      let logIdField;
 
       if (stepId) {
-        // This is part of an automation run, so we don't create a separate log.
-        // We will update the step record instead.
+        // This is part of an automation run
         logTable = 'automation_run_steps';
         logIdField = 'id';
-        logInsertData = { id: stepId, status: 'running' }; // We'll update the existing step
+        logId = stepId;
+        // Update the existing step to 'running'
+        const { error: updateError } = await supabaseAdmin
+          .from(logTable)
+          .update({ status: 'running' })
+          .eq(logIdField, logId);
+        if (updateError) throw updateError;
+      } else {
+        // This is a standalone generation
+        logTable = 'higgsfield_generation_logs';
+        logIdField = 'id';
+        const { data: log, error: logError } = await supabaseAdmin
+          .from(logTable)
+          .insert({ user_id: user.id, model, prompt, status: 'processing' })
+          .select(logIdField)
+          .single();
+        if (logError) throw logError;
+        logId = log[logIdField];
       }
-
-      const { data: log, error: logError } = await supabaseAdmin
-        .from(logTable)
-        .upsert(logInsertData)
-        .select(logIdField)
-        .single();
-      if (logError) throw logError;
 
       const endpoint = `${API_BASE}/img/banana`;
       const basePayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio };
@@ -127,10 +135,10 @@ serve(async (req) => {
       const { error: updateError } = await supabaseAdmin
         .from(logTable)
         .update({ api_task_id: api_task_id, status: 'running' })
-        .eq(logIdField, log[logIdField]);
+        .eq(logIdField, logId);
       if (updateError) throw updateError;
 
-      return new Response(JSON.stringify({ success: true, logId: log[logIdField], taskId: api_task_id }), {
+      return new Response(JSON.stringify({ success: true, logId: logId, taskId: api_task_id }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 

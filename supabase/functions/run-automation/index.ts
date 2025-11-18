@@ -46,7 +46,7 @@ serve(async (req) => {
 
     // 3. Fetch all necessary data
     const [channelRes, configRes] = await Promise.all([
-      supabaseAdmin.from('channels').select('product_id').eq('id', channelId).single(),
+      supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single(),
       supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).single()
     ]);
 
@@ -54,13 +54,14 @@ serve(async (req) => {
     if (configRes.error) throw new Error(`Automation config not found for this channel: ${configRes.error.message}`);
     
     const productId = channelRes.data.product_id;
+    const characterImageUrl = channelRes.data.character_image_url;
     const config = configRes.data.config_data;
     if (!productId) throw new Error("Channel is not linked to any product.");
     if (!config) throw new Error("Automation is not configured for this channel.");
 
     const { data: subProducts, error: subProductsError } = await supabaseAdmin
       .from('sub_products')
-      .select('id, name, description')
+      .select('id, name, description, image_url')
       .eq('product_id', productId);
     if (subProductsError) throw subProductsError;
     if (!subProducts || subProducts.length === 0) throw new Error("No sub-products found for this channel's product.");
@@ -73,11 +74,20 @@ serve(async (req) => {
       };
       const imagePrompt = replacePlaceholders(config.imagePromptTemplate, placeholderData);
       
+      const imageUrls = [];
+      if (characterImageUrl) {
+        imageUrls.push(characterImageUrl);
+      }
+      // Also add sub-product image if it exists
+      if (subProduct.image_url) {
+        imageUrls.push(subProduct.image_url);
+      }
+
       const inputData = {
         prompt: imagePrompt,
-        model: 'banana', // Hardcoded for now as per current image generation setup
-        aspect_ratio: '1:1', // This could be made configurable later
-        image_urls: [], // Assuming no input image for now
+        model: 'banana',
+        aspect_ratio: '1:1',
+        image_urls: imageUrls,
       };
 
       const { data: step, error: stepError } = await supabaseAdmin
@@ -94,13 +104,11 @@ serve(async (req) => {
       if (stepError) throw stepError;
 
       // Invoke the image generation function but don't wait for it to finish
-      // The cron job will handle polling for status
       supabaseAdmin.functions.invoke('generate-image', {
         body: {
           action: 'generate_image',
+          stepId: step.id, // Pass stepId to the function
           ...inputData,
-          // Pass step_id to the function so it can update its own api_task_id
-          // This requires modifying the generate-image function
         },
       }).catch(console.error); // Fire and forget
     });

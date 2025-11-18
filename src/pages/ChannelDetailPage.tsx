@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ArrowLeft, Video, Heart, Users, UploadCloud, PlusCircle, Film, Loader2, Edit2 } from 'lucide-react';
+import { ArrowLeft, Video, Heart, Users, UploadCloud, PlusCircle, Film, Loader2, Edit2, User as UserIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess } from '@/utils/toast';
@@ -49,7 +49,9 @@ const ChannelDetailPage = ({ channelId, onBack, onNavigate }) => {
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingCharacterImage, setIsUploadingCharacterImage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const characterImageInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -104,6 +106,33 @@ const ChannelDetailPage = ({ channelId, onBack, onNavigate }) => {
     }
   };
 
+  const handleCharacterImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCharacterImage(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Cần đăng nhập để thực hiện.");
+
+      const filePath = `public/character_images/${user.id}/${channelId}/${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath);
+      
+      const { error: updateError } = await supabase.from('channels').update({ character_image_url: publicUrl }).eq('id', channelId);
+      if (updateError) throw updateError;
+
+      setChannel(prev => prev ? { ...prev, character_image_url: publicUrl } : null);
+      showSuccess('Đã cập nhật ảnh nhân vật thành công!');
+    } catch (error) {
+      showError(`Lỗi tải ảnh nhân vật lên: ${error.message}`);
+    } finally {
+      setIsUploadingCharacterImage(false);
+    }
+  };
+
   if (loading || !channel) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-orange-500" /></div>;
   }
@@ -142,6 +171,30 @@ const ChannelDetailPage = ({ channelId, onBack, onNavigate }) => {
               <h2 className="text-xl font-bold">{channel.name}</h2>
               <p className="text-gray-500">{channel.category}</p>
               {channel.link && <a href={channel.link} target="_blank" rel="noopener noreferrer" className="text-sm text-orange-600 hover:underline mt-2">Xem kênh</a>}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader><CardTitle>Ảnh Nhân Vật</CardTitle></CardHeader>
+            <CardContent className="flex flex-col items-center text-center">
+              <div className="relative group mb-4 w-32 h-32">
+                {channel.character_image_url ? (
+                  <img src={channel.character_image_url} alt="Ảnh nhân vật" className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg" />
+                ) : (
+                  <div className="w-32 h-32 rounded-full bg-gray-100 flex items-center justify-center border-4 border-white shadow-lg">
+                      <UserIcon className="w-16 h-16 text-gray-400" />
+                  </div>
+                )}
+                <button 
+                  onClick={() => characterImageInputRef.current?.click()}
+                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  disabled={isUploadingCharacterImage}
+                >
+                  {isUploadingCharacterImage ? <Loader2 className="w-6 h-6 animate-spin" /> : <UploadCloud className="w-6 h-6" />}
+                </button>
+                <input type="file" ref={characterImageInputRef} onChange={handleCharacterImageUpload} accept="image/*" className="hidden" />
+              </div>
+              <p className="text-sm text-gray-500">Ảnh khuôn mặt của nhân vật. Sẽ được dùng để giữ sự đồng nhất khi tạo ảnh mới.</p>
             </CardContent>
           </Card>
         </div>
