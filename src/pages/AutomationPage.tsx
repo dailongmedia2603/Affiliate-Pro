@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Search, Settings, Play, Bot } from 'lucide-react';
-import { showError } from '@/utils/toast';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import AutomationConfigDialog from '@/components/AutomationConfigDialog';
 
 type Channel = {
@@ -13,15 +13,21 @@ type Channel = {
   user_id: string;
 };
 
+type AutomationRun = {
+  id: string;
+  status: string;
+};
+
 const AutomationPage = () => {
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [runningAutomations, setRunningAutomations] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [configuringChannel, setConfiguringChannel] = useState<Channel | null>(null);
 
-  const fetchChannels = useCallback(async () => {
+  const fetchChannelsAndRuns = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -30,26 +36,35 @@ const AutomationPage = () => {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('channels')
-      .select('id, name, avatar, user_id')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+    const [channelsRes, runsRes] = await Promise.all([
+      supabase.from('channels').select('id, name, avatar, user_id').eq('user_id', user.id).order('created_at', { ascending: false }),
+      supabase.from('automation_runs').select('channel_id, status').in('status', ['starting', 'running'])
+    ]);
 
-    if (error) {
+    if (channelsRes.error) {
       showError('Không thể tải danh sách kênh.');
     } else {
-      setChannels(data || []);
-      if (data && data.length > 0 && !selectedChannel) {
+      const data = channelsRes.data || [];
+      setChannels(data);
+      if (data.length > 0 && !selectedChannel) {
         setSelectedChannel(data[0]);
       }
     }
+
+    if (runsRes.data) {
+      const running = runsRes.data.reduce((acc, run) => {
+        acc[run.channel_id] = true;
+        return acc;
+      }, {});
+      setRunningAutomations(running);
+    }
+
     setLoading(false);
   }, [selectedChannel]);
 
   useEffect(() => {
-    fetchChannels();
-  }, [fetchChannels]);
+    fetchChannelsAndRuns();
+  }, [fetchChannelsAndRuns]);
 
   const filteredChannels = useMemo(() => {
     return channels.filter(channel =>
@@ -62,9 +77,31 @@ const AutomationPage = () => {
     setIsConfigOpen(true);
   };
 
-  const handleRunAutomation = (channelId: string) => {
-    // Logic for Phase 3
-    alert(`Chạy automation cho kênh ${channelId} sẽ được triển khai ở giai đoạn sau.`);
+  const handleRunAutomation = async (channelId: string) => {
+    if (runningAutomations[channelId]) {
+      showError("Một luồng automation cho kênh này đã đang chạy.");
+      return;
+    }
+
+    setRunningAutomations(prev => ({ ...prev, [channelId]: true }));
+    const loadingToast = showLoading(`Đang khởi động automation cho kênh...`);
+
+    try {
+      const { error } = await supabase.functions.invoke('run-automation', {
+        body: { channelId },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      showSuccess('Đã khởi động luồng automation thành công! Bạn có thể xem tiến trình trong tab Lịch sử.');
+    } catch (error) {
+      showError(`Khởi động automation thất bại: ${error.message}`);
+      setRunningAutomations(prev => ({ ...prev, [channelId]: false }));
+    } finally {
+      dismissToast(loadingToast);
+    }
   };
 
   return (
@@ -106,9 +143,14 @@ const AutomationPage = () => {
                       <Settings className="w-4 h-4 mr-2" />
                       Cấu hình
                     </Button>
-                    <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" onClick={(e) => { e.stopPropagation(); handleRunAutomation(channel.id); }}>
-                      <Play className="w-4 h-4 mr-2" />
-                      Chạy
+                    <Button
+                      size="sm"
+                      className="bg-orange-500 hover:bg-orange-600 text-white"
+                      onClick={(e) => { e.stopPropagation(); handleRunAutomation(channel.id); }}
+                      disabled={runningAutomations[channel.id]}
+                    >
+                      {runningAutomations[channel.id] ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Play className="w-4 h-4 mr-2" />}
+                      {runningAutomations[channel.id] ? 'Đang chạy' : 'Chạy'}
                     </Button>
                   </div>
                 </div>

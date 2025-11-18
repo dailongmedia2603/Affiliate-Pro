@@ -9,6 +9,7 @@ const corsHeaders = {
 
 const API_BASE = "https://api.beautyapp.work";
 
+// --- Helper Functions ---
 async function getHiggsfieldToken(cookie, clerk_active_context) {
   const tokenResponse = await fetch(`${API_BASE}/gettoken`, {
     method: 'POST',
@@ -20,9 +21,7 @@ async function getHiggsfieldToken(cookie, clerk_active_context) {
     throw new Error(`Lỗi khi lấy token từ Higgsfield: ${tokenResponse.status} - ${errorText}`);
   }
   const tokenData = await tokenResponse.json();
-  if (!tokenData.jwt) {
-    throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
-  }
+  if (!tokenData.jwt) throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
   return tokenData.jwt;
 }
 
@@ -39,6 +38,12 @@ async function getTaskStatus(token, taskId) {
   return response.json();
 }
 
+function replacePlaceholders(template, data) {
+  if (!template) return '';
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => data[key] || match);
+}
+
+// --- Main Orchestrator Logic ---
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -47,135 +52,128 @@ serve(async (req) => {
   const authHeader = req.headers.get('Authorization');
   const cronSecret = Deno.env.get('CRON_SECRET');
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    console.warn('Unauthorized attempt to run cron job.');
     return new Response('Unauthorized', { status: 401, headers: corsHeaders });
   }
 
   try {
-    console.log("--- Cron Job: Check Task Status Started ---");
+    console.log("--- Cron Job: Automation Orchestrator Started ---");
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // 1. Fetch pending video tasks
-    const { data: videoTasks, error: videoError } = await supabaseAdmin
-      .from('video_tasks')
-      .select('id, user_id, higgsfield_task_id, status')
-      .in('status', ['pending', 'processing', 'in_progress']);
-    if (videoError) throw videoError;
-    console.log(`[INFO] Found ${videoTasks?.length || 0} pending video tasks.`);
+    // Fetch all 'running' automation steps that have an api_task_id
+    const { data: runningSteps, error: stepsError } = await supabaseAdmin
+      .from('automation_run_steps')
+      .select(`
+        *,
+        run:automation_runs(channel_id, user_id),
+        sub_product:sub_products(name, description)
+      `)
+      .eq('status', 'running')
+      .not('api_task_id', 'is', null);
 
-    // 2. Fetch pending image tasks
-    const { data: imageTasks, error: imageError } = await supabaseAdmin
-      .from('higgsfield_generation_logs')
-      .select('id, user_id, api_task_id, status')
-      .eq('status', 'processing');
-    if (imageError) throw imageError;
-    console.log(`[INFO] Found ${imageTasks?.length || 0} pending image tasks.`);
-
-    // 3. Combine tasks into a unified structure
-    const allTasks = [
-      ...(videoTasks || []).map(t => ({ ...t, type: 'video', higgsfield_task_id: t.higgsfield_task_id })),
-      ...(imageTasks || []).map(t => ({ ...t, type: 'image', higgsfield_task_id: t.api_task_id }))
-    ];
-
-    if (allTasks.length === 0) {
-      console.log("[INFO] No pending tasks to check. Exiting.");
-      return new Response(JSON.stringify({ message: 'Không có tác vụ nào đang chờ xử lý.' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (stepsError) throw stepsError;
+    if (!runningSteps || runningSteps.length === 0) {
+      console.log("[INFO] No running automation steps to check. Exiting.");
+      return new Response(JSON.stringify({ message: 'Không có bước nào đang chạy.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    console.log(`[INFO] Total tasks to check: ${allTasks.length}`);
+    console.log(`[INFO] Found ${runningSteps.length} running steps to check.`);
 
     const userCache = new Map();
     let tasksUpdated = 0;
 
-    for (const task of allTasks) {
+    for (const step of runningSteps) {
       try {
-        console.log(`[INFO] Processing task ID: ${task.id} (Type: ${task.type}, Higgsfield ID: ${task.higgsfield_task_id})`);
+        console.log(`[INFO] Processing step ID: ${step.id} (Type: ${step.step_type})`);
         
-        if (!task.higgsfield_task_id) {
-            console.warn(`[WARN] Skipping task ID ${task.id} (Type: ${task.type}) due to missing higgsfield_task_id.`);
-            continue;
-        }
-
-        let cachedUser = userCache.get(task.user_id);
+        // 1. Get user token (cached)
+        let cachedUser = userCache.get(step.run.user_id);
         if (!cachedUser) {
-          console.log(`[INFO] Fetching settings for new user: ${task.user_id}`);
           const { data: settings, error: settingsError } = await supabaseAdmin
             .from('user_settings')
-            .select('higgsfield_cookie, higgsfield_clerk_context')
-            .eq('id', task.user_id)
+            .select('higgsfield_cookie, higgsfield_clerk_context, voice_api_key')
+            .eq('id', step.run.user_id)
             .single();
-
-          if (settingsError || !settings?.higgsfield_cookie || !settings?.higgsfield_clerk_context) {
-            console.warn(`[WARN] Skipping tasks for user ${task.user_id}: Settings not found.`);
-            userCache.set(task.user_id, { token: null }); // Cache that settings are missing
+          if (settingsError || !settings) {
+            console.warn(`[WARN] Skipping tasks for user ${step.run.user_id}: Settings not found.`);
+            userCache.set(step.run.user_id, { token: null });
             continue;
           }
-          
           const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
-          cachedUser = { token };
-          userCache.set(task.user_id, cachedUser);
+          cachedUser = { token, settings };
+          userCache.set(step.run.user_id, cachedUser);
         } else if (!cachedUser.token) {
-            console.log(`[INFO] Skipping task for user ${task.user_id} due to previously failed settings fetch.`);
-            continue;
+          continue;
         }
 
-        const statusData = await getTaskStatus(cachedUser.token, task.higgsfield_task_id);
+        // 2. Check API task status
+        const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
         const job = statusData?.jobs?.[0];
         const apiStatus = job?.status;
-        console.log(`[INFO] Higgsfield API status for task ${task.higgsfield_task_id}: ${apiStatus}`);
+        console.log(`[INFO] API status for task ${step.api_task_id}: ${apiStatus}`);
 
-        if (apiStatus && apiStatus !== task.status && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
-          console.log(`[INFO] Status changed for task ${task.id}. Old: ${task.status}, New: ${apiStatus}. Preparing update.`);
-          
+        if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
+          const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
           const resultUrl = job?.results?.raw?.url;
           const errorMessage = job?.error;
-          
-          let updatePayload = {};
-          let tableName = '';
 
-          if (task.type === 'video') {
-            tableName = 'video_tasks';
-            updatePayload = { status: apiStatus, result_url: resultUrl, error_message: errorMessage };
-          } else { // image
-            tableName = 'higgsfield_generation_logs';
-            updatePayload = { status: apiStatus, result_image_url: resultUrl, error_message: errorMessage };
+          // 3. Update current step
+          await supabaseAdmin
+            .from('automation_run_steps')
+            .update({ status: newStatus, output_data: { url: resultUrl }, error_message: errorMessage })
+            .eq('id', step.id);
+          tasksUpdated++;
+          console.log(`[SUCCESS] Updated step ${step.id} to status: ${newStatus}`);
+
+          if (newStatus === 'failed') {
+            await supabaseAdmin.from('automation_runs').update({ status: 'failed' }).eq('id', step.run_id);
+            console.error(`[ERROR] Run ${step.run_id} marked as failed due to failed step ${step.id}.`);
+            continue; // Stop processing this chain
           }
 
-          console.log(`[INFO] Updating table '${tableName}' for ID ${task.id}`);
-          const { error: updateError } = await supabaseAdmin
-            .from(tableName)
-            .update(updatePayload)
-            .eq('id', task.id);
-
-          if (updateError) {
-            console.error(`[ERROR] Failed to update task ${task.id} in table ${tableName}:`, updateError);
-          } else {
-            tasksUpdated++;
-            console.log(`[SUCCESS] Updated task ${task.id} (${tableName}) to status: ${apiStatus}`);
+          // 4. Trigger next step
+          const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+          if (configError || !config) {
+            throw new Error(`Config not found for channel ${step.run.channel_id}`);
           }
-        } else {
-            console.log(`[INFO] No status change for task ${task.id}. Current status: ${task.status}, API status: ${apiStatus}`);
+
+          if (step.step_type === 'generate_image') {
+            // Trigger generate_video
+            const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: step.input_data.prompt });
+            const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({
+              run_id: step.run_id,
+              sub_product_id: step.sub_product_id,
+              step_type: 'generate_video',
+              status: 'pending',
+              input_data: { prompt: videoPrompt, imageUrl: resultUrl, model: 'kling' }
+            }).select('id').single();
+            if (videoStepError) throw videoStepError;
+            
+            // Invoke function to start video generation
+            supabaseAdmin.functions.invoke('higgsfield-python-proxy', {
+              body: { action: 'generate_video', model: 'kling', prompt: videoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }
+            }).catch(console.error);
+            console.log(`[INFO] Triggered 'generate_video' step for run ${step.run_id}`);
+          }
+          // Add logic for other step transitions here (video -> voice_script, etc.)
         }
       } catch (e) {
-        console.error(`[ERROR] Failed to process task ${task.id} (Higgsfield ID: ${task.higgsfield_task_id}):`, e.message);
+        console.error(`[ERROR] Failed to process step ${step.id}:`, e.message);
+        await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: e.message }).eq('id', step.id);
+        await supabaseAdmin.from('automation_runs').update({ status: 'failed' }).eq('id', step.run_id);
       }
     }
 
-    const summary = `--- Cron Job Finished. Checked ${allTasks.length} tasks. Updated ${tasksUpdated} tasks. ---`;
+    // Final check for completed runs
+    // (This logic can be added later to mark runs as 'completed' when all steps are done)
+
+    const summary = `--- Cron Job Finished. Checked ${runningSteps.length} steps. Updated ${tasksUpdated} steps. ---`;
     console.log(summary);
-    return new Response(JSON.stringify({ message: summary }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(JSON.stringify({ message: summary }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('[FATAL] An error occurred in the check-task-status function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('[FATAL] An error occurred in the orchestrator function:', error);
+    return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

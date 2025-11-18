@@ -26,19 +26,6 @@ async function getHiggsfieldToken(cookie, clerk_active_context) {
   return tokenData.jwt;
 }
 
-async function getTaskStatus(token, taskId) {
-  const response = await fetch(`${API_BASE}/status`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, taskid: taskId })
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Không thể lấy trạng thái tác vụ ${taskId}: ${errorText}`);
-  }
-  return response.json();
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -59,7 +46,7 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error("User not authenticated.");
 
-    const { action, ...payload } = await req.json();
+    const { action, stepId, ...payload } = await req.json();
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings')
@@ -100,10 +87,23 @@ serve(async (req) => {
         }
       }
 
+      // If not part of an automation run, create a standalone log
+      let logTable = 'higgsfield_generation_logs';
+      let logInsertData = { user_id: user.id, model, prompt, status: 'processing' };
+      let logIdField = 'id';
+
+      if (stepId) {
+        // This is part of an automation run, so we don't create a separate log.
+        // We will update the step record instead.
+        logTable = 'automation_run_steps';
+        logIdField = 'id';
+        logInsertData = { id: stepId, status: 'running' }; // We'll update the existing step
+      }
+
       const { data: log, error: logError } = await supabaseAdmin
-        .from('higgsfield_generation_logs')
-        .insert({ user_id: user.id, model, prompt, status: 'processing' })
-        .select('id')
+        .from(logTable)
+        .upsert(logInsertData)
+        .select(logIdField)
         .single();
       if (logError) throw logError;
 
@@ -123,40 +123,17 @@ serve(async (req) => {
       }
       const api_task_id = generationData.job_sets[0].id;
 
+      // Update the log/step with the API task ID
       const { error: updateError } = await supabaseAdmin
-        .from('higgsfield_generation_logs')
-        .update({ api_task_id })
-        .eq('id', log.id);
+        .from(logTable)
+        .update({ api_task_id: api_task_id, status: 'running' })
+        .eq(logIdField, log[logIdField]);
       if (updateError) throw updateError;
 
-      return new Response(JSON.stringify({ success: true, logId: log.id, taskId: api_task_id }), {
+      return new Response(JSON.stringify({ success: true, logId: log[logIdField], taskId: api_task_id }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 
-    } else if (action === 'get_task_status') {
-      const { taskId, logId } = payload;
-      if (!taskId || !logId) throw new Error("taskId and logId are required.");
-
-      const statusData = await getTaskStatus(token, taskId);
-      const job = statusData?.jobs?.[0];
-      const apiStatus = job?.status;
-
-      if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
-        const updatePayload = {
-          status: apiStatus,
-          result_image_url: job?.results?.raw?.url,
-          error_message: job?.error,
-        };
-        const { error: updateError } = await supabaseAdmin
-          .from('higgsfield_generation_logs')
-          .update(updatePayload)
-          .eq('id', logId);
-        if (updateError) console.error(`Lỗi cập nhật log ${logId}:`, updateError);
-      }
-
-      return new Response(JSON.stringify({ success: true, status: apiStatus }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
     } else {
       throw new Error(`Hành động không hợp lệ: ${action}`);
     }
