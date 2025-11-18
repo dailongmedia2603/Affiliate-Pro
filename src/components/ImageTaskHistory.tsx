@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { RefreshCw, Loader2 } from 'lucide-react';
 import { showError } from '@/utils/toast';
 import ImageTaskItem from './ImageTaskItem';
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 const ImageTaskHistory = ({ model, refreshTrigger }) => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchTasks = useCallback(async () => {
@@ -86,23 +88,32 @@ const ImageTaskHistory = ({ model, refreshTrigger }) => {
   }, [tasks, checkTasksStatus]);
 
   return (
-    <Card className="flex flex-col h-full min-h-[600px]">
-      <CardHeader className="flex-row justify-between items-center">
-        <CardTitle>Lịch sử tạo</CardTitle>
-        <Button variant="ghost" size="icon" onClick={fetchTasks} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
-      </CardHeader>
-      <CardContent className="flex-1 overflow-y-auto space-y-3">
-        {loading && tasks.length === 0 ? (
-          <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
-        ) : tasks.length > 0 ? (
-          tasks.map(task => <ImageTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} />)
-        ) : (
-          <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào cho model này.</p>
-        )}
-      </CardContent>
-    </Card>
+    <>
+      <Card>
+        <CardHeader className="flex-row justify-between items-center">
+          <CardTitle>Lịch sử tạo</CardTitle>
+          <Button variant="ghost" size="icon" onClick={fetchTasks} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {loading && tasks.length === 0 ? (
+            <div className="flex justify-center p-8"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
+          ) : tasks.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {tasks.map(task => <ImageTaskItem key={task.id} task={task} onTaskDeleted={fetchTasks} onImageClick={setSelectedImage} />)}
+            </div>
+          ) : (
+            <p className="text-center text-gray-500 pt-8">Chưa có tác vụ nào cho model này.</p>
+          )}
+        </CardContent>
+      </Card>
+      <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
+        <DialogContent className="max-w-4xl p-0 bg-transparent border-0">
+          <img src={selectedImage || ''} alt="Enlarged task result" className="w-full h-auto object-contain rounded-lg" />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

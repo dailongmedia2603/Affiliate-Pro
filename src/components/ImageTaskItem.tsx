@@ -11,7 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const ImageTaskItem = ({ task, onTaskDeleted }) => {
+const ImageTaskItem = ({ task, onTaskDeleted, onImageClick }) => {
   const handleDelete = async () => {
     const { error } = await supabase.from('higgsfield_generation_logs').delete().eq('id', task.id);
     if (error) {
@@ -56,7 +56,9 @@ const ImageTaskItem = ({ task, onTaskDeleted }) => {
       </div>
       {task.status === 'completed' && task.result_image_url && (
         <div className="relative aspect-square bg-black rounded-md overflow-hidden group">
-            <img src={task.result_image_url} alt={task.prompt} className="w-full h-full object-contain" />
+            <button onClick={() => onImageClick(task.result_image_url)} className="w-full h-full cursor-pointer">
+              <img src={task.result_image_url} alt={task.prompt} className="w-full h-full object-contain" />
+            </button>
             <a href={task.result_image_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Button size="icon" className="w-8 h-8 bg-black/50 hover:bg-black/75">
                     <Download className="w-4 h-4" />
