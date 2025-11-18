@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Wand2, Loader2, Upload, Info } from 'lucide-react';
+import { Wand2, Loader2, Upload, Info, X, Plus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
@@ -35,37 +35,76 @@ const findClosestAspectRatio = (width: number, height: number): string => {
 
 const ImageGenerationForm = ({ model, onTaskCreated }) => {
   const [prompt, setPrompt] = useState('A cat wearing a superhero cape');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('1:1');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImageFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string);
-        const img = new Image();
-        img.onload = () => {
-          const closestRatio = findClosestAspectRatio(img.width, img.height);
-          setAspectRatio(closestRatio);
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newFiles = Array.from(files);
+    const currentFiles = [...imageFiles, ...newFiles];
+    setImageFiles(currentFiles);
+
+    const previewPromises = newFiles.map(file => {
+        return new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+        });
+    });
+
+    Promise.all(previewPromises).then(newPreviews => {
+        setImagePreviews(prev => [...prev, ...newPreviews]);
+    });
+
+    if (imageFiles.length === 0 && newFiles.length > 0) {
+        const firstFile = newFiles[0];
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const img = new Image();
+            img.onload = () => {
+                const closestRatio = findClosestAspectRatio(img.width, img.height);
+                setAspectRatio(closestRatio);
+            };
+            img.src = reader.result as string;
         };
-        img.src = reader.result as string;
-      };
-      reader.readAsDataURL(file);
+        reader.readAsDataURL(firstFile);
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    const remainingFiles = imageFiles.filter((_, index) => index !== indexToRemove);
+    setImageFiles(remainingFiles);
+    setImagePreviews(prev => prev.filter((_, index) => index !== indexToRemove));
+
+    if (indexToRemove === 0) {
+        if (remainingFiles.length > 0) {
+            const firstFile = remainingFiles[0];
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const img = new Image();
+                img.onload = () => {
+                    const closestRatio = findClosestAspectRatio(img.width, img.height);
+                    setAspectRatio(closestRatio);
+                };
+                img.src = reader.result as string;
+            };
+            reader.readAsDataURL(firstFile);
+        } else {
+            setAspectRatio('1:1');
+        }
     }
   };
 
   const uploadToStorage = async (file: File): Promise<string> => {
-    // 1. Get presigned URL from our new Edge Function
     const { data: presignedData, error: presignedError } = await supabase.functions.invoke('storage-generate-upload-url', {
       body: { fileName: file.name },
     });
     if (presignedError) throw new Error(`Không thể lấy URL tải lên: ${presignedError.message}`);
 
-    // 2. Upload the file directly to Supabase Storage using the presigned URL
     const uploadResponse = await fetch(presignedData.signedUrl, {
       method: 'PUT',
       headers: { 'Content-Type': file.type },
@@ -76,7 +115,6 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
         throw new Error(`Lỗi tải tệp lên: ${errorText}`);
     }
 
-    // 3. Get the public URL of the uploaded file
     const { data: urlData } = supabase.storage.from('images').getPublicUrl(presignedData.path);
     return urlData.publicUrl;
   };
@@ -88,11 +126,8 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     }
     setIsGenerating(true);
     try {
-      let imageUrls: string[] = [];
-      if (imageFile) {
-        const publicUrl = await uploadToStorage(imageFile);
-        imageUrls.push(publicUrl);
-      }
+      const uploadPromises = imageFiles.map(file => uploadToStorage(file));
+      const imageUrls = await Promise.all(uploadPromises);
 
       const { error } = await supabase.functions.invoke('generate-image', {
         body: {
@@ -108,10 +143,9 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
 
       showSuccess('Đã gửi yêu cầu tạo ảnh thành công! Kiểm tra tab lịch sử.');
       onTaskCreated();
-      // Reset form
       setPrompt('A cat wearing a superhero cape');
-      setImageFile(null);
-      setImagePreview(null);
+      setImageFiles([]);
+      setImagePreviews([]);
       setAspectRatio('1:1');
 
     } catch (error) {
@@ -146,9 +180,37 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
           </div>
           <div className="space-y-2">
             <Label htmlFor="image-upload">Ảnh đầu vào (Tùy chọn)</Label>
-            <div className="w-full h-[152px] border-2 border-dashed rounded-lg flex items-center justify-center relative bg-gray-50">
-              {imagePreview ? <img src={imagePreview} alt="Preview" className="w-full h-full object-contain rounded-lg" /> : <div className="text-center text-gray-500"><Upload className="mx-auto h-8 w-8" /><p className="text-sm mt-1">Tải ảnh lên</p></div>}
-              <Input id="image-upload" type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            <div className="w-full min-h-[152px] border-2 border-dashed rounded-lg p-2 bg-gray-50">
+              {imagePreviews.length > 0 ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {imagePreviews.map((preview, index) => (
+                    <div key={index} className="relative group aspect-square">
+                      <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover rounded-md" />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => handleRemoveImage(index)}
+                        className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Remove image"
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <label htmlFor="image-upload" className="flex flex-col items-center justify-center aspect-square border-2 border-dashed rounded-md cursor-pointer hover:bg-gray-100 text-gray-400">
+                    <Plus className="w-6 h-6" />
+                    <span className="text-xs mt-1">Thêm ảnh</span>
+                  </label>
+                </div>
+              ) : (
+                <label htmlFor="image-upload" className="w-full h-[136px] flex items-center justify-center relative cursor-pointer">
+                  <div className="text-center text-gray-500">
+                    <Upload className="mx-auto h-8 w-8" />
+                    <p className="text-sm mt-1">Tải ảnh lên</p>
+                  </div>
+                </label>
+              )}
+              <Input id="image-upload" type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" />
             </div>
           </div>
         </div>
