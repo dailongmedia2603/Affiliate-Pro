@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/tooltip";
 
 const ImageTaskItem = ({ task, onTaskDeleted, onImageClick }) => {
+  const [isDownloading, setIsDownloading] = useState(false);
+
   const handleDelete = async () => {
     const { error } = await supabase.from('higgsfield_generation_logs').delete().eq('id', task.id);
     if (error) {
@@ -19,6 +21,38 @@ const ImageTaskItem = ({ task, onTaskDeleted, onImageClick }) => {
     } else {
       showSuccess('Đã xóa tác vụ.');
       onTaskDeleted();
+    }
+  };
+
+  const handleDownload = async (e, url) => {
+    e.stopPropagation(); // Ngăn không cho hộp thoại xem ảnh mở ra
+    if (!url) return;
+    setIsDownloading(true);
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Không thể tải dữ liệu ảnh.');
+      
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      
+      const filename = url.split('/').pop()?.split('?')[0] || 'generated-image.png';
+      link.setAttribute('download', filename);
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+      
+      showSuccess('Đã bắt đầu tải ảnh.');
+    } catch (error) {
+      console.error('Lỗi tải ảnh:', error);
+      showError('Tải ảnh thất bại. Vui lòng thử lại.');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -59,11 +93,15 @@ const ImageTaskItem = ({ task, onTaskDeleted, onImageClick }) => {
             <button onClick={() => onImageClick(task.result_image_url)} className="w-full h-full cursor-pointer">
               <img src={task.result_image_url} alt={task.prompt} className="w-full h-full object-contain" />
             </button>
-            <a href={task.result_image_url} download target="_blank" rel="noopener noreferrer" className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Button size="icon" className="w-8 h-8 bg-black/50 hover:bg-black/75">
-                    <Download className="w-4 h-4" />
-                </Button>
-            </a>
+            <Button 
+              size="icon" 
+              className="absolute top-2 right-2 w-8 h-8 bg-black/50 hover:bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => handleDownload(e, task.result_image_url)}
+              disabled={isDownloading}
+              aria-label="Tải ảnh xuống"
+            >
+              {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            </Button>
         </div>
       )}
       <div className="flex justify-between items-center text-xs text-gray-500 pt-1">
