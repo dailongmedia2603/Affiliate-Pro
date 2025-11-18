@@ -109,8 +109,12 @@ const ImageTaskHistory = ({ model, refreshTrigger }) => {
         </CardContent>
       </Card>
       <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
-        <DialogContent className="max-w-5xl w-full h-[90vh] p-4 bg-transparent border-0">
-          <img src={selectedImage || ''} alt="Enlarged task result" className="w-full h-full object-contain" />
+        <DialogContent className="max-w-5xl w-auto p-0">
+          <img 
+            src={selectedImage || ''} 
+            alt="Enlarged task result" 
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" 
+          />
         </DialogContent>
       </Dialog>
     </>
