@@ -189,10 +189,6 @@ serve(async (req) => {
                     endpoint = 'https://api.beautyapp.work/video/kling2.1';
                     apiPayload = { ...basePayload, model: "kling-v2-5-turbo" };
                     break;
-                case 'sora':
-                    endpoint = 'https://api.beautyapp.work/video/sora';
-                    apiPayload = basePayload;
-                    break;
                 case 'higg_life':
                     endpoint = 'https://api.beautyapp.work/video/higg_life';
                     apiPayload = { ...basePayload, model: "standard" };
