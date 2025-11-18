@@ -187,7 +187,7 @@ serve(async (req) => {
             switch (model) {
                 case 'kling':
                     endpoint = 'https://api.beautyapp.work/video/kling2.1';
-                    apiPayload = { ...basePayload, model: "kling-v2-5-turbo" };
+                    apiPayload = { ...basePayload, model: "kling-v2-5-turbo", motion_id: 1 };
                     break;
                 case 'higg_life':
                     endpoint = 'https://api.beautyapp.work/video/higg_life';
