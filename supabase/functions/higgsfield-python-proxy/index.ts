@@ -82,37 +82,37 @@ serve(async (req) => {
       }
 
       case 'generate_video': {
-        const { model, prompt, imageData, videoData, options } = payload;
+        const { model, prompt, imageUrl, videoData, options } = payload;
         console.log(`[INFO] Starting video generation for model: ${model}`);
 
         const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
-        const uploadMediaForVideo = async (mediaData) => {
-            if (!mediaData) return null;
-            console.log('[INFO] Uploading media for video generation...');
+        const registerMediaUrlForVideo = async (mediaUrl) => {
+            if (!mediaUrl) return null;
+            console.log('[INFO] Registering media URL for video generation...');
             const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmediav2", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, file_data: [mediaData] })
+                body: JSON.stringify({ token, url: [mediaUrl] })
             });
             const uploadData = await uploadResponse.json();
             if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
-                console.error(`[ERROR] Media upload for video failed. API Response:`, JSON.stringify(uploadData));
-                throw new Error(`Tải media cho video lên thất bại.`);
+                console.error(`[ERROR] Media URL registration for video failed. API Response:`, JSON.stringify(uploadData));
+                throw new Error(`Đăng ký media URL cho video thất bại. API Response: ${JSON.stringify(uploadData)}`);
             }
-            console.log('[INFO] Media uploaded successfully for video generation.');
+            console.log('[INFO] Media URL registered successfully for video generation.');
             return uploadData.data;
         };
 
         if (model === 'wan2') {
-            if (!imageData || !videoData) {
+            if (!imageUrl || !videoData) {
                 throw new Error('Model Wan2 yêu cầu cả ảnh và video đầu vào.');
             }
             
-            const uploadedImageData = await uploadMediaForVideo(imageData);
+            const registeredImageData = await registerMediaUrlForVideo(imageUrl);
             const input_image = {
-                id: uploadedImageData[0].id,
-                url: uploadedImageData[0].url,
+                id: registeredImageData[0].id,
+                url: registeredImageData[0].url,
                 type: "media_input"
             };
 
@@ -178,7 +178,7 @@ serve(async (req) => {
             });
 
         } else {
-            const input_image = await uploadMediaForVideo(imageData);
+            const input_image = await registerMediaUrlForVideo(imageUrl);
             
             let endpoint = '';
             let apiPayload = {};

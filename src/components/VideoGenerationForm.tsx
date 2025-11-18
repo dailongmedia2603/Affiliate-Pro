@@ -11,6 +11,40 @@ import { Wand2, Loader2, Upload, Info } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = error => reject(error);
+  });
+};
+
+const uploadToStorage = async (file: File): Promise<string> => {
+    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+    const fileData = await fileToBase64(file);
+
+    const { data, error } = await supabase.functions.invoke('upload-image-to-r2', {
+      body: {
+        fileName,
+        fileType: file.type,
+        fileData,
+      },
+    });
+
+    if (error) {
+      throw new Error(`Lỗi gọi function upload-image-to-r2: ${error.message}`);
+    }
+    if (data.error) {
+      throw new Error(`Lỗi từ function upload-image-to-r2: ${data.error}`);
+    }
+    if (!data.url) {
+      throw new Error('Function upload-image-to-r2 không trả về URL.');
+    }
+
+    return data.url;
+};
+
 const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   const [prompt, setPrompt] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -38,23 +72,14 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-      reader.onerror = error => reject(error);
-    });
-  };
-
   const handleSubmit = async () => {
     setIsGenerating(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
-      let imageData = imageFile ? await fileToBase64(imageFile) : null;
-      let videoData = videoFile ? await fileToBase64(videoFile) : null;
+      const imageUrl = imageFile ? await uploadToStorage(imageFile) : null;
+      const videoData = videoFile ? await fileToBase64(videoFile) : null;
 
       const options = {
         kling: { duration, width: 1024, height: 576, resolution: "1080p" },
@@ -63,7 +88,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
       };
 
       const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
-        body: { action: 'generate_video', model, prompt, imageData, videoData, options: options[model] },
+        body: { action: 'generate_video', model, prompt, imageUrl, videoData, options: options[model] },
       });
 
       if (error) throw error;
