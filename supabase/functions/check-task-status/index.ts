@@ -57,23 +57,14 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { data: imageTasks, error: imageError } = await supabaseAdmin
-      .from('image_tasks')
-      .select('id, user_id, higgsfield_task_id, status')
-      .in('status', ['pending', 'processing', 'queued']);
-
     const { data: videoTasks, error: videoError } = await supabaseAdmin
       .from('video_tasks')
       .select('id, user_id, higgsfield_task_id, status')
       .in('status', ['pending', 'processing', 'in_progress']);
 
-    if (imageError) throw imageError;
     if (videoError) throw videoError;
 
-    const allTasks = [
-        ...(imageTasks || []).map(t => ({ ...t, type: 'image' })),
-        ...(videoTasks || []).map(t => ({ ...t, type: 'video' }))
-    ];
+    const allTasks = [...(videoTasks || []).map(t => ({ ...t, type: 'video' }))];
 
     if (allTasks.length === 0) {
       return new Response(JSON.stringify({ message: 'Không có tác vụ nào đang chờ xử lý.' }), {
@@ -118,7 +109,7 @@ serve(async (req) => {
             error_message: errorMessage,
           };
 
-          const tableName = task.type === 'image' ? 'image_tasks' : 'video_tasks';
+          const tableName = 'video_tasks';
           const { error: updateError } = await supabaseAdmin
             .from(tableName)
             .update(updatePayload)
