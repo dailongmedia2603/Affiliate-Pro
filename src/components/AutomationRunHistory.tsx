@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon,
 import { showError } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AutomationLogViewer from './AutomationLogViewer';
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 // Types
 type AutomationRunLog = {
@@ -63,6 +64,7 @@ const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<Record<string, AutomationRunLog[]>>({});
   const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
@@ -90,7 +92,6 @@ const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
       .channel(`automation-runs-and-steps-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_runs', filter: `channel_id=eq.${channelId}` }, () => fetchRuns())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_run_steps' }, (payload) => {
-        // A bit smarter refetch: only if the step belongs to one of the runs we are displaying
         const runId = (payload.new as any)?.run_id || (payload.old as any)?.run_id;
         if (runs.some(run => run.id === runId)) {
           fetchRuns();
@@ -119,7 +120,7 @@ const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
       setVisibleLogs(null);
     } else {
       setVisibleLogs(runId);
-      if (!logs[runId]) { // Fetch logs only if not already fetched
+      if (!logs[runId]) {
         const { data, error } = await supabase.from('automation_run_logs').select('*').eq('run_id', runId).order('timestamp', { ascending: true });
         if (error) showError('Không thể tải logs.');
         else setLogs(prev => ({ ...prev, [runId]: data }));
@@ -131,58 +132,71 @@ const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
   if (runs.length === 0) return <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 border-2 border-dashed rounded-lg p-4"><Bot className="w-16 h-16 mb-4" /><h3 className="text-xl font-semibold">Chưa có lần chạy nào</h3><p>Nhấn nút "Chạy" để bắt đầu một luồng tự động hóa cho kênh này.</p></div>;
 
   return (
-    <Accordion type="single" collapsible className="w-full space-y-2">
-      {runs.map(run => (
-        <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
-          <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
-            <div className="flex justify-between items-center w-full pr-4">
-              <div className="flex flex-col items-start text-left">
-                <span className="font-semibold text-gray-800">Run #{run.id.substring(0, 8)}</span>
-                <span className="text-sm text-gray-500">Bắt đầu: {new Date(run.started_at).toLocaleString()}</span>
-              </div>
-              <StatusBadge status={run.status} />
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="p-4 bg-gray-50/70">
-            <div className="space-y-4">
-              {run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(step => (
-                <div key={step.id} className="p-3 border rounded-lg bg-white shadow-sm">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <StepIcon type={step.step_type} />
-                      <div>
-                        <p className="font-semibold capitalize">{step.step_type.replace(/_/g, ' ')}</p>
-                        <p className="text-xs text-gray-500">Tạo lúc: {new Date(step.created_at).toLocaleTimeString()}</p>
-                      </div>
-                    </div>
-                    <StatusBadge status={step.status} />
-                  </div>
-                  {step.status === 'completed' && step.output_data?.url && (
-                    <div className="mt-3">
-                      {step.step_type === 'generate_image' ? (
-                        <img src={step.output_data.url} alt="Generated" className="max-w-xs rounded-md border" />
-                      ) : step.step_type === 'generate_video' ? (
-                        <video src={step.output_data.url} controls className="max-w-xs rounded-md border" />
-                      ) : null}
-                    </div>
-                  )}
-                  {step.status === 'failed' && step.error_message && (
-                    <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>
-                  )}
+    <>
+      <Accordion type="single" collapsible className="w-full space-y-2">
+        {runs.map(run => (
+          <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
+            <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
+              <div className="flex justify-between items-center w-full pr-4">
+                <div className="flex flex-col items-start text-left">
+                  <span className="font-semibold text-gray-800">Run #{run.id.substring(0, 8)}</span>
+                  <span className="text-sm text-gray-500">Bắt đầu: {new Date(run.started_at).toLocaleString()}</span>
                 </div>
-              ))}
-            </div>
-            <div className="mt-4 border-t pt-4">
-              <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}>
-                <Terminal className="w-4 h-4 mr-2" />
-                {visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}
-              </Button>
-              {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
-      ))}
-    </Accordion>
+                <StatusBadge status={run.status} />
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="p-4 bg-gray-50/70">
+              <div className="space-y-4">
+                {run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(step => (
+                  <div key={step.id} className="p-3 border rounded-lg bg-white shadow-sm">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <StepIcon type={step.step_type} />
+                        <div>
+                          <p className="font-semibold capitalize">{step.step_type.replace(/_/g, ' ')}</p>
+                          <p className="text-xs text-gray-500">Tạo lúc: {new Date(step.created_at).toLocaleTimeString()}</p>
+                        </div>
+                      </div>
+                      <StatusBadge status={step.status} />
+                    </div>
+                    {step.status === 'completed' && step.output_data?.url && (
+                      <div className="mt-3">
+                        {step.step_type === 'generate_image' ? (
+                          <button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer">
+                            <img src={step.output_data.url} alt="Generated" className="max-w-xs rounded-md border" />
+                          </button>
+                        ) : step.step_type === 'generate_video' ? (
+                          <video src={step.output_data.url} controls className="max-w-xs rounded-md border" />
+                        ) : null}
+                      </div>
+                    )}
+                    {step.status === 'failed' && step.error_message && (
+                      <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 border-t pt-4">
+                <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}>
+                  <Terminal className="w-4 h-4 mr-2" />
+                  {visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}
+                </Button>
+                {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        ))}
+      </Accordion>
+      <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
+        <DialogContent className="max-w-5xl w-auto p-0 bg-transparent border-none shadow-none">
+          <img 
+            src={selectedImage || ''} 
+            alt="Enlarged result" 
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" 
+          />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 

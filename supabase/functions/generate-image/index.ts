@@ -45,18 +45,18 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
+    if (userError || !user) throw new Error("Không thể xác thực người dùng.");
 
     const { action, ...payload } = await req.json();
     stepId = payload.stepId;
 
     if (stepId) {
         const { data: stepData, error: stepError } = await supabaseAdmin.from('automation_run_steps').select('run_id').eq('id', stepId).single();
-        if (stepError || !stepData) throw new Error(`Could not find run for step ${stepId}`);
+        if (stepError || !stepData) throw new Error(`Không tìm thấy phiên chạy cho bước ${stepId}`);
         runId = stepData.run_id;
     }
 
-    await logToDb(supabaseAdmin, runId, `Function 'generate-image' started.`, 'INFO', stepId);
+    await logToDb(supabaseAdmin, runId, `Function 'generate-image' đã bắt đầu.`, 'INFO', stepId);
 
     const { data: settings, error: settingsError } = await supabaseClient
       .from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', user.id).single();
@@ -66,23 +66,23 @@ serve(async (req) => {
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-    await logToDb(supabaseAdmin, runId, 'Higgsfield token acquired.', 'INFO', stepId);
+    await logToDb(supabaseAdmin, runId, 'Đã lấy token Higgsfield thành công.', 'INFO', stepId);
 
     if (action === 'generate_image') {
       const { model, prompt, image_urls, aspect_ratio } = payload;
-      if (!model || !prompt) throw new Error("Model and prompt are required.");
+      if (!model || !prompt) throw new Error("Model và prompt là bắt buộc.");
       if (model !== 'banana') throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
 
       let images_data = [];
       if (image_urls && image_urls.length > 0) {
-        await logToDb(supabaseAdmin, runId, `Registering ${image_urls.length} media URLs...`, 'INFO', stepId);
+        await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL...`, 'INFO', stepId);
         const uploadPayload = { token, url: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
         const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
         if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${await uploadResponse.text()}`);
         const uploadData = await uploadResponse.json();
         if (uploadData?.status === true && uploadData.data) {
           images_data = uploadData.data;
-          await logToDb(supabaseAdmin, runId, 'Media URLs registered successfully.', 'SUCCESS', stepId);
+          await logToDb(supabaseAdmin, runId, 'Đăng ký media URL thành công.', 'SUCCESS', stepId);
         } else {
           throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadData)}`);
         }
@@ -102,7 +102,7 @@ serve(async (req) => {
         logId = log[logIdField];
       }
       
-      await logToDb(supabaseAdmin, runId, 'Calling Higgsfield API to generate image...', 'INFO', stepId);
+      await logToDb(supabaseAdmin, runId, 'Đang gọi API Higgsfield để tạo ảnh...', 'INFO', stepId);
       const endpoint = `${API_BASE}/img/banana`;
       const apiPayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
       const generationResponse = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(apiPayload) });
@@ -112,7 +112,7 @@ serve(async (req) => {
       if (!generationData.job_sets || generationData.job_sets.length === 0) throw new Error('Phản hồi từ API tạo ảnh không hợp lệ.');
       
       const api_task_id = generationData.job_sets[0].id;
-      await logToDb(supabaseAdmin, runId, `Received API Task ID: ${api_task_id}.`, 'SUCCESS', stepId);
+      await logToDb(supabaseAdmin, runId, `Đã nhận ID tác vụ từ API: ${api_task_id}.`, 'SUCCESS', stepId);
 
       const { error: updateError } = await supabaseAdmin.from(logTable).update({ api_task_id: api_task_id, status: 'running' }).eq(logIdField, logId);
       if (updateError) throw updateError;
@@ -122,7 +122,7 @@ serve(async (req) => {
       throw new Error(`Hành động không hợp lệ: ${action}`);
     }
   } catch (error) {
-    await logToDb(supabaseAdmin, runId, `Error in 'generate-image': ${error.message}`, 'ERROR', stepId);
+    await logToDb(supabaseAdmin, runId, `Lỗi trong 'generate-image': ${error.message}`, 'ERROR', stepId);
     if (stepId) {
         await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: error.message }).eq('id', stepId);
     }

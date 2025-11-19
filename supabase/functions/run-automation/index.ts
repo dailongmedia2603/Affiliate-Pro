@@ -30,11 +30,11 @@ serve(async (req) => {
 
   try {
     const { channelId } = await req.json();
-    if (!channelId) throw new Error("channelId is required.");
+    if (!channelId) throw new Error("Thiếu tham số channelId.");
 
     const authHeader = req.headers.get('Authorization')!;
     if (!authHeader) {
-      throw new Error("Missing Authorization header.");
+      throw new Error("Thiếu thông tin xác thực (Authorization header).");
     }
 
     const supabaseClient = createClient(
@@ -43,11 +43,10 @@ serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     );
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
+    if (userError || !user) throw new Error("Không thể xác thực người dùng.");
 
-    // Check for config BEFORE creating a run
     const { data: configData, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).maybeSingle();
-    if (configError) throw new Error(`Error checking config: ${configError.message}`);
+    if (configError) throw new Error(`Lỗi khi kiểm tra cấu hình: ${configError.message}`);
     if (!configData) {
       throw new Error("Kênh này chưa được cấu hình. Vui lòng nhấn nút 'Cấu hình' và lưu lại trước khi chạy.");
     }
@@ -60,25 +59,25 @@ serve(async (req) => {
       .single();
     if (runError) throw runError;
     runId = run.id;
-    await logToDb(supabaseAdmin, runId, 'Automation run created successfully.');
+    await logToDb(supabaseAdmin, runId, 'Đã tạo phiên chạy automation thành công.');
 
     const { data: channelRes, error: channelError } = await supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single();
-    await logToDb(supabaseAdmin, runId, 'Fetching channel data.');
+    await logToDb(supabaseAdmin, runId, 'Đang lấy dữ liệu kênh...');
 
-    if (channelError) throw new Error(`Channel not found: ${channelError.message}`);
+    if (channelError) throw new Error(`Không tìm thấy kênh: ${channelError.message}`);
     
     const productId = channelRes.product_id;
     const characterImageUrl = channelRes.character_image_url;
-    if (!productId) throw new Error("Channel is not linked to any product.");
-    await logToDb(supabaseAdmin, runId, 'Configurations validated.');
+    if (!productId) throw new Error("Kênh chưa được liên kết với sản phẩm nào.");
+    await logToDb(supabaseAdmin, runId, 'Đã xác thực cấu hình.');
 
     const { data: subProducts, error: subProductsError } = await supabaseAdmin
       .from('sub_products')
       .select('id, name, description, image_url')
       .eq('product_id', productId);
     if (subProductsError) throw subProductsError;
-    if (!subProducts || subProducts.length === 0) throw new Error("No sub-products found for this channel's product.");
-    await logToDb(supabaseAdmin, runId, `Found ${subProducts.length} sub-products to process.`);
+    if (!subProducts || subProducts.length === 0) throw new Error("Không tìm thấy sản phẩm con nào cho sản phẩm của kênh này.");
+    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con để xử lý.`);
 
     const stepPromises = subProducts.map(async (subProduct) => {
       const placeholderData = { product_name: subProduct.name, background_context: config.backgroundContext };
@@ -96,9 +95,8 @@ serve(async (req) => {
         .select('id')
         .single();
       if (stepError) throw stepError;
-      await logToDb(supabaseAdmin, runId, `Created 'generate_image' step for sub-product: ${subProduct.name}`, 'INFO', step.id);
+      await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${subProduct.name}`, 'INFO', step.id);
 
-      // Invoke the function with proper stringified body and headers
       supabaseAdmin.functions.invoke('generate-image', {
         body: JSON.stringify({ action: 'generate_image', stepId: step.id, ...inputData }),
         headers: {
@@ -107,10 +105,10 @@ serve(async (req) => {
         }
       }).then(({ error }) => {
         if (error) {
-          console.error(`Failed to invoke generate-image for step ${step.id}:`, error);
-          logToDb(supabaseAdmin, runId, `FATAL: Failed to invoke 'generate-image' function. Error: ${error.message}`, 'ERROR', step.id);
+          console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, error);
+          logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${error.message}`, 'ERROR', step.id);
         } else {
-          logToDb(supabaseAdmin, runId, `Invoked 'generate-image' function for step ${step.id}.`, 'INFO', step.id);
+          logToDb(supabaseAdmin, runId, `Đã gọi function 'generate-image' cho bước ${step.id}.`, 'INFO', step.id);
         }
       });
     });
@@ -118,7 +116,7 @@ serve(async (req) => {
     await Promise.all(stepPromises);
 
     await supabaseAdmin.from('automation_runs').update({ status: 'running' }).eq('id', run.id);
-    await logToDb(supabaseAdmin, runId, 'All initial steps invoked. Run status set to "running".', 'SUCCESS');
+    await logToDb(supabaseAdmin, runId, 'Đã kích hoạt tất cả các bước ban đầu. Phiên chạy chuyển sang trạng thái "Đang chạy".', 'SUCCESS');
 
     return new Response(JSON.stringify({ success: true, message: 'Automation started successfully.', runId: run.id }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -126,7 +124,7 @@ serve(async (req) => {
 
   } catch (error) {
     if (runId) {
-      await logToDb(supabaseAdmin, runId, `Critical error in run-automation: ${error.message}`, 'ERROR');
+      await logToDb(supabaseAdmin, runId, `Lỗi nghiêm trọng trong run-automation: ${error.message}`, 'ERROR');
       await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
     }
     console.error('Error in run-automation function:', error);

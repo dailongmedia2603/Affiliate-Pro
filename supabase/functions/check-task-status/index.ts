@@ -46,7 +46,7 @@ serve(async (req) => {
 
   try {
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    await logToDb(supabaseAdmin, null, 'Cron Job: check-task-status started.');
+    await logToDb(supabaseAdmin, null, 'Cron Job: Bắt đầu kiểm tra trạng thái tác vụ.');
 
     const { data: runningSteps, error: stepsError } = await supabaseAdmin
       .from('automation_run_steps').select(`*, run:automation_runs(id, channel_id, user_id), sub_product:sub_products(name, description)`)
@@ -54,10 +54,10 @@ serve(async (req) => {
 
     if (stepsError) throw stepsError;
     if (!runningSteps || runningSteps.length === 0) {
-      await logToDb(supabaseAdmin, null, 'No running automation steps to check. Exiting.');
+      await logToDb(supabaseAdmin, null, 'Không có bước nào đang chạy để kiểm tra. Kết thúc.');
       return new Response(JSON.stringify({ message: 'Không có bước nào đang chạy.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
-    await logToDb(supabaseAdmin, null, `Found ${runningSteps.length} running steps to check.`);
+    await logToDb(supabaseAdmin, null, `Tìm thấy ${runningSteps.length} bước đang chạy để kiểm tra.`);
 
     const userCache = new Map();
 
@@ -65,13 +65,13 @@ serve(async (req) => {
       const runId = step.run.id;
       const stepId = step.id;
       try {
-        await logToDb(supabaseAdmin, runId, `Checking status for step ${stepId} (Type: ${step.step_type})`, 'INFO', stepId);
+        await logToDb(supabaseAdmin, runId, `Kiểm tra trạng thái cho bước ${stepId} (Loại: ${step.step_type})`, 'INFO', stepId);
         
         let cachedUser = userCache.get(step.run.user_id);
         if (!cachedUser) {
           const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context, voice_api_key').eq('id', step.run.user_id).single();
           if (settingsError || !settings) {
-            await logToDb(supabaseAdmin, runId, `Skipping tasks for user ${step.run.user_id}: Settings not found.`, 'WARN', stepId);
+            await logToDb(supabaseAdmin, runId, `Bỏ qua tác vụ cho người dùng ${step.run.user_id}: Không tìm thấy cài đặt.`, 'WARN', stepId);
             userCache.set(step.run.user_id, { token: null });
             continue;
           }
@@ -83,7 +83,7 @@ serve(async (req) => {
         const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
         const job = statusData?.jobs?.[0];
         const apiStatus = job?.status;
-        await logToDb(supabaseAdmin, runId, `API status for task ${step.api_task_id}: ${apiStatus}`, 'INFO', stepId);
+        await logToDb(supabaseAdmin, runId, `Trạng thái từ API cho tác vụ ${step.api_task_id}: ${apiStatus}`, 'INFO', stepId);
 
         if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
           const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
@@ -91,25 +91,25 @@ serve(async (req) => {
           const errorMessage = job?.error;
 
           await supabaseAdmin.from('automation_run_steps').update({ status: newStatus, output_data: { url: resultUrl }, error_message: errorMessage }).eq('id', stepId);
-          await logToDb(supabaseAdmin, runId, `Step ${stepId} updated to status: ${newStatus}.`, newStatus === 'completed' ? 'SUCCESS' : 'ERROR', stepId);
+          await logToDb(supabaseAdmin, runId, `Bước ${stepId} đã cập nhật trạng thái: ${newStatus}.`, newStatus === 'completed' ? 'SUCCESS' : 'ERROR', stepId);
 
           if (newStatus === 'failed') {
             await supabaseAdmin.from('automation_runs').update({ status: 'failed' }).eq('id', runId);
-            await logToDb(supabaseAdmin, runId, `Run marked as failed due to failed step ${stepId}.`, 'ERROR');
+            await logToDb(supabaseAdmin, runId, `Phiên chạy bị đánh dấu là thất bại do bước ${stepId} thất bại.`, 'ERROR');
             continue;
           }
 
           const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
-          if (configError || !config) throw new Error(`Config not found for channel ${step.run.channel_id}`);
+          if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
 
           if (step.step_type === 'generate_image') {
-            await logToDb(supabaseAdmin, runId, `Step 'generate_image' completed. Triggering next step: 'generate_video'.`, 'INFO', stepId);
+            await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Kích hoạt bước tiếp theo: 'Tạo Video'.`, 'INFO', stepId);
             const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: step.input_data.prompt });
             
             const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: { prompt: videoPrompt, imageUrl: resultUrl, model: 'kling' } }).select('id').single();
             if (videoStepError) throw videoStepError;
             
-            await logToDb(supabaseAdmin, runId, `Created 'generate_video' step.`, 'INFO', videoStep.id);
+            await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
             
             const userId = step.run.user_id;
             supabaseAdmin.functions.invoke('higgsfield-python-proxy', 
@@ -131,17 +131,17 @@ serve(async (req) => {
                   }
               }
             ).catch(console.error);
-            await logToDb(supabaseAdmin, runId, `Invoked function for 'generate_video' step.`, 'INFO', videoStep.id);
+            await logToDb(supabaseAdmin, runId, `Đã gọi function cho bước 'Tạo Video'.`, 'INFO', videoStep.id);
           }
         }
       } catch (e) {
-        await logToDb(supabaseAdmin, runId, `Failed to process step ${stepId}: ${e.message}`, 'ERROR', stepId);
+        await logToDb(supabaseAdmin, runId, `Không thể xử lý bước ${stepId}: ${e.message}`, 'ERROR', stepId);
         await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: e.message }).eq('id', stepId);
         await supabaseAdmin.from('automation_runs').update({ status: 'failed' }).eq('id', runId);
       }
     }
 
-    const summary = `Cron Job Finished. Checked ${runningSteps.length} steps.`;
+    const summary = `Cron Job Hoàn thành. Đã kiểm tra ${runningSteps.length} bước.`;
     await logToDb(supabaseAdmin, null, summary);
     return new Response(JSON.stringify({ message: summary }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
