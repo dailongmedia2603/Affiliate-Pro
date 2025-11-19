@@ -19,18 +19,16 @@ import { showError, showSuccess } from '@/utils/toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 type Config = {
-  imagePromptTemplate: string;
+  imagePromptGenerationTemplate: string;
   imageCount: number;
-  backgroundContext: string;
   videoPromptTemplate: string;
   voiceScriptTemplate: string;
   voiceId: string | null;
 };
 
 const defaultConfig: Config = {
-  imagePromptTemplate: 'Một bức ảnh chân thực về một người mẫu châu Á đang giới thiệu sản phẩm "{{product_name}}".\nBối cảnh: {{background_context}}.',
-  imageCount: 1,
-  backgroundContext: 'studio background, high quality, professional lighting',
+  imagePromptGenerationTemplate: 'Vui lòng tạo {{image_count}} prompt khác nhau, mỗi prompt trên một dòng, để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\nYêu cầu:\n- Mỗi prompt phải độc đáo, mô tả một góc nhìn hoặc bối cảnh khác nhau (ví dụ: ảnh cận cảnh, ảnh sản phẩm với người mẫu, ảnh sản phẩm trên nền tự nhiên...).\n- Không thêm số thứ tự hoặc gạch đầu dòng vào trước mỗi prompt.',
+  imageCount: 4,
   videoPromptTemplate: 'Tạo một video với chuyển động lia máy từ từ qua sản phẩm, {{image_prompt}}',
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
   voiceId: null,
@@ -77,7 +75,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
       ]);
 
       if (configRes.data?.config_data) {
-        setConfig(prev => ({ ...prev, ...configRes.data.config_data }));
+        setConfig(prev => ({ ...defaultConfig, ...configRes.data.config_data }));
       } else {
         setConfig(defaultConfig);
       }
@@ -151,22 +149,20 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
               <TabsContent value="image" className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center">
-                    <Label htmlFor="imagePromptTemplate">Mẫu Prompt Tạo Ảnh</Label>
+                    <Label htmlFor="imagePromptGenerationTemplate">Mẫu Prompt cho AI (Gemini)</Label>
                     <PlaceholderTooltip content={
                       <div>
-                        <p className="font-bold">Các biến có thể dùng:</p>
+                        <p className="font-bold">Đây là câu lệnh để yêu cầu AI tạo ra các prompt tạo ảnh.</p>
+                        <p className="mt-2 font-bold">Các biến có thể dùng:</p>
                         <ul className="list-disc list-inside">
                           <li><code className="bg-gray-200 px-1 rounded">{"{{product_name}}"}</code>: Tên sản phẩm con.</li>
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{background_context}}"}</code>: Bối cảnh nền.</li>
+                          <li><code className="bg-gray-200 px-1 rounded">{"{{product_description}}"}</code>: Mô tả sản phẩm con.</li>
+                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_count}}"}</code>: Số lượng ảnh cần tạo.</li>
                         </ul>
                       </div>
                     } />
                   </div>
-                  <Textarea id="imagePromptTemplate" value={config.imagePromptTemplate} onChange={(e) => handleConfigChange('imagePromptTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="backgroundContext">Bối cảnh nền</Label>
-                  <Input id="backgroundContext" value={config.backgroundContext} onChange={(e) => handleConfigChange('backgroundContext', e.target.value)} />
+                  <Textarea id="imagePromptGenerationTemplate" value={config.imagePromptGenerationTemplate} onChange={(e) => handleConfigChange('imagePromptGenerationTemplate', e.target.value)} className="min-h-[150px] font-mono text-sm" />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="imageCount">Số lượng ảnh / sản phẩm con</Label>
@@ -181,7 +177,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                       <div>
                         <p className="font-bold">Biến có thể dùng:</p>
                         <ul className="list-disc list-inside">
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_prompt}}"}</code>: Toàn bộ prompt đã dùng để tạo ảnh.</li>
+                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_prompt}}"}</code>: Prompt đã dùng để tạo ảnh (sẽ lấy prompt của ảnh đầu tiên).</li>
                         </ul>
                       </div>
                     } />
