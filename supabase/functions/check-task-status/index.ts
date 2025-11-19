@@ -49,7 +49,7 @@ serve(async (req) => {
     await logToDb(supabaseAdmin, null, 'Cron Job: check-task-status started.');
 
     const { data: runningSteps, error: stepsError } = await supabaseAdmin
-      .from('automation_run_steps').select(`*, run:automation_runs(channel_id, user_id), sub_product:sub_products(name, description)`)
+      .from('automation_run_steps').select(`*, run:automation_runs(id, channel_id, user_id), sub_product:sub_products(name, description)`)
       .eq('status', 'running').not('api_task_id', 'is', null);
 
     if (stepsError) throw stepsError;
