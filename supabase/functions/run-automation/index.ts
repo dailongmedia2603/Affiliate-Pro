@@ -98,11 +98,21 @@ serve(async (req) => {
       if (stepError) throw stepError;
       await logToDb(supabaseAdmin, runId, `Created 'generate_image' step for sub-product: ${subProduct.name}`, 'INFO', step.id);
 
-      supabaseAdmin.functions.invoke('generate-image', 
-        { body: { action: 'generate_image', stepId: step.id, ...inputData } },
-        { headers: { Authorization: authHeader } }
-      ).catch(console.error);
-      await logToDb(supabaseAdmin, runId, `Invoked 'generate-image' function for step ${step.id}.`, 'INFO', step.id);
+      // Invoke the function with proper stringified body and headers
+      supabaseAdmin.functions.invoke('generate-image', {
+        body: JSON.stringify({ action: 'generate_image', stepId: step.id, ...inputData }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader
+        }
+      }).then(({ error }) => {
+        if (error) {
+          console.error(`Failed to invoke generate-image for step ${step.id}:`, error);
+          logToDb(supabaseAdmin, runId, `FATAL: Failed to invoke 'generate-image' function. Error: ${error.message}`, 'ERROR', step.id);
+        } else {
+          logToDb(supabaseAdmin, runId, `Invoked 'generate-image' function for step ${step.id}.`, 'INFO', step.id);
+        }
+      });
     });
 
     await Promise.all(stepPromises);
