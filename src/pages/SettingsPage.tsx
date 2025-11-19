@@ -83,6 +83,9 @@ const SettingsPage = () => {
           setCloudflareSecretAccessKey(data.cloudflare_secret_access_key || '');
           setCloudflareR2BucketName(data.cloudflare_r2_bucket_name || '');
           setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
+          if (data.voice_api_key) {
+            fetchVoiceCredits(data.voice_api_key);
+          }
         }
       }
     };
@@ -211,17 +214,20 @@ const SettingsPage = () => {
     setIsCheckingVoiceConnection(true);
     setVoiceConnectionStatus('idle');
     try {
+      // Use the 'credits' endpoint for a more reliable connection test
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'v1/health-check', token: voiceApiKey },
+        body: { path: 'v1/credits', token: voiceApiKey },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.success && (data.data.minimax === 'good' || data.data.minimax === 'degraded')) {
+      
+      // Check for a successful response from the 'credits' endpoint
+      if (data.success && typeof data.credits === 'number') {
         setVoiceConnectionStatus('success');
         showSuccess('Kết nối API Voice thành công!');
-        fetchVoiceCredits(voiceApiKey);
+        setVoiceCredits(data.credits); // Set credits directly
       } else {
-        throw new Error(`Dịch vụ không khả dụng: ${JSON.stringify(data.data)}`);
+        throw new Error(`Phản hồi từ API không hợp lệ hoặc API key sai.`);
       }
     } catch (error) {
       setVoiceConnectionStatus('error');
