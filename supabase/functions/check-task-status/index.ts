@@ -48,7 +48,7 @@ serve(async (req) => {
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     
     const { data: runningSteps, error: stepsError } = await supabaseAdmin
-      .from('automation_run_steps').select(`*, run:automation_runs(id, channel_id, user_id), sub_product:sub_products(name, description)`)
+      .from('automation_run_steps').select(`*, run:automation_runs(id, channel_id, user_id)`)
       .eq('status', 'running').not('api_task_id', 'is', null);
 
     if (stepsError) throw stepsError;
@@ -92,20 +92,38 @@ serve(async (req) => {
                 continue;
               }
 
-              const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
-              if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
-
+              // --- NEW LOGIC: Check for completeness before triggering next step ---
               if (step.step_type === 'generate_image') {
-                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Kích hoạt bước 'Tạo Video'.`, 'INFO', stepId);
-                const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: step.input_data.prompt });
-                const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: { prompt: videoPrompt, imageUrl: resultUrl, model: 'kling' } }).select('id').single();
-                if (videoStepError) throw videoStepError;
-                await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
-                supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: videoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
+                const { count: totalImageSteps, error: totalError } = await supabaseAdmin.from('automation_run_steps').select('id', { count: 'exact', head: true }).eq('run_id', runId).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_image');
+                const { count: completedImageSteps, error: completedError } = await supabaseAdmin.from('automation_run_steps').select('id', { count: 'exact', head: true }).eq('run_id', runId).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_image').eq('status', 'completed');
+
+                if (totalError || completedError) throw new Error('Lỗi khi đếm các bước tạo ảnh.');
+                
+                await logToDb(supabaseAdmin, runId, `Hoàn thành ${completedImageSteps}/${totalImageSteps} ảnh cho sản phẩm con ID ${step.sub_product_id}.`, 'INFO');
+
+                if (completedImageSteps === totalImageSteps) {
+                  await logToDb(supabaseAdmin, runId, `Tất cả ảnh cho sản phẩm con đã hoàn thành. Kích hoạt bước 'Tạo Video'.`, 'SUCCESS');
+                  
+                  const { data: firstImageStep, error: firstImageError } = await supabaseAdmin.from('automation_run_steps').select('output_data, input_data').eq('run_id', runId).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_image').eq('status', 'completed').order('created_at', { ascending: true }).limit(1).single();
+                  if (firstImageError || !firstImageStep) throw new Error('Không tìm thấy ảnh đã hoàn thành để tạo video.');
+
+                  const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+                  if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
+
+                  const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: firstImageStep.input_data.prompt });
+                  const imageUrlForVideo = firstImageStep.output_data.url;
+
+                  const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: { prompt: videoPrompt, imageUrl: imageUrlForVideo, model: 'kling' } }).select('id').single();
+                  if (videoStepError) throw videoStepError;
+                  
+                  await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
+                  supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: videoPrompt, imageUrl: imageUrlForVideo, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
+                }
               } else if (step.step_type === 'generate_video') {
-                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Video' hoàn thành. Kích hoạt bước 'Tạo Voice'.`, 'INFO', stepId);
+                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Video' hoàn thành. Kích hoạt bước 'Tạo Voice'.`, 'SUCCESS', stepId);
                 const { data: voiceStep, error: voiceStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_voice', status: 'pending', input_data: {} }).select('id').single();
                 if (voiceStepError) throw voiceStepError;
+                
                 await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Voice'.`, 'INFO', voiceStep.id);
                 supabaseAdmin.functions.invoke('automation-worker-voice', { body: JSON.stringify({ stepId: voiceStep.id, userId: step.run.user_id }) }).catch(console.error);
               }
@@ -118,20 +136,33 @@ serve(async (req) => {
         }
     }
 
+    // --- NEW RUN COMPLETION LOGIC ---
     const { data: activeRuns, error: activeRunsError } = await supabaseAdmin.from('automation_runs').select('id').in('status', ['running', 'starting']);
     if (activeRunsError) throw activeRunsError;
 
     for (const run of activeRuns) {
-        const { data: allSteps, error: allStepsError } = await supabaseAdmin.from('automation_run_steps').select('status').eq('run_id', run.id);
-        if (allStepsError) continue;
+        const { count: totalSteps, error: totalError } = await supabaseAdmin.from('automation_run_steps').select('id', { count: 'exact', head: true }).eq('run_id', run.id);
+        const { count: finishedSteps, error: finishedError } = await supabaseAdmin.from('automation_run_steps').select('id', { count: 'exact', head: true }).eq('run_id', run.id).in('status', ['completed', 'failed', 'cancelled', 'stopped']);
 
-        const { data: subProductCount } = await supabaseAdmin.rpc('count_sub_products_for_run', { p_run_id: run.id });
-        const expectedStepCount = subProductCount * 3; // image, video, voice
+        if (totalError || finishedError) {
+            await logToDb(supabaseAdmin, run.id, 'Lỗi khi kiểm tra trạng thái hoàn tất của phiên chạy.', 'ERROR');
+            continue;
+        }
 
-        if (allSteps.length >= expectedStepCount) {
-            const isFinished = allSteps.every(s => ['completed', 'failed', 'cancelled', 'stopped'].includes(s.status));
-            if (isFinished) {
-                const hasFailedStep = allSteps.some(s => s.status === 'failed');
+        // Check if all initial steps have been created before deciding completion
+        const { data: channelData } = await supabaseAdmin.from('automation_runs').select('channel:channels(product_id)').eq('id', run.id).single();
+        if (channelData?.channel?.product_id) {
+            const { count: subProductCount } = await supabaseAdmin.from('sub_products').select('id', { count: 'exact', head: true }).eq('product_id', channelData.channel.product_id);
+            const { data: config } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelData.channel.id).single();
+            const imageCountPerProduct = config?.config_data?.imageCount || 0;
+            
+            // Total expected steps: (image + video + voice) for each image prompt, for each sub-product
+            // Simplified: (imageCount * (image + video + voice)) per sub-product. But video/voice is per sub-product, not per image.
+            // Corrected: (imageCount + 1 video + 1 voice) per sub-product
+            const expectedTotalSteps = subProductCount * (imageCountPerProduct + 2);
+
+            if (totalSteps >= expectedTotalSteps && totalSteps === finishedSteps) {
+                const hasFailedStep = (await supabaseAdmin.from('automation_run_steps').select('id', { count: 'exact', head: true }).eq('run_id', run.id).eq('status', 'failed')).count > 0;
                 const finalStatus = hasFailedStep ? 'failed' : 'completed';
                 await supabaseAdmin.from('automation_runs').update({ status: finalStatus, finished_at: new Date().toISOString() }).eq('id', run.id);
                 await logToDb(supabaseAdmin, run.id, `Tất cả các bước đã hoàn thành. Trạng thái cuối cùng của phiên chạy: ${finalStatus}.`, 'SUCCESS');
