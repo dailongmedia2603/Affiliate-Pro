@@ -50,7 +50,11 @@ serve(async (req) => {
     const targetUrl = `${API_BASE_URL}/${path}`;
     console.log(`[proxy-voice-api] INFO: Proxying request to ${targetUrl} with method ${method}.`);
 
-    const headers = { 'xi-api-key': token };
+    const headers: Record<string, string> = { 
+      'xi-api-key': token,
+      // Thêm User-Agent của một trình duyệt phổ biến
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+    };
     const fetchOptions: RequestInit = { method, headers };
 
     if (method !== 'GET' && body) {
