@@ -32,10 +32,15 @@ serve(async (req) => {
     const { channelId } = await req.json();
     if (!channelId) throw new Error("channelId is required.");
 
+    const authHeader = req.headers.get('Authorization')!;
+    if (!authHeader) {
+      throw new Error("Missing Authorization header.");
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      { global: { headers: { Authorization: authHeader } } }
     );
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error("User not authenticated.");
@@ -93,7 +98,10 @@ serve(async (req) => {
       if (stepError) throw stepError;
       await logToDb(supabaseAdmin, runId, `Created 'generate_image' step for sub-product: ${subProduct.name}`, 'INFO', step.id);
 
-      supabaseAdmin.functions.invoke('generate-image', { body: { action: 'generate_image', stepId: step.id, ...inputData } }).catch(console.error);
+      supabaseAdmin.functions.invoke('generate-image', 
+        { body: { action: 'generate_image', stepId: step.id, ...inputData } },
+        { headers: { Authorization: authHeader } }
+      ).catch(console.error);
       await logToDb(supabaseAdmin, runId, `Invoked 'generate-image' function for step ${step.id}.`, 'INFO', step.id);
     });
 
