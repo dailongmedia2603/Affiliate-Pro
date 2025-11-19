@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [logs, setLogs] = useState<Record<string, AutomationRunLog[]>>({});
   const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const runIdsRef = useRef<string[]>([]);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
@@ -49,17 +50,27 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     setLoading(false);
   }, [channelId]);
 
-  useEffect(() => { setLoading(true); fetchRuns(); }, [channelId, fetchRuns]);
+  useEffect(() => {
+    runIdsRef.current = runs.map(r => r.id);
+  }, [runs]);
 
   useEffect(() => {
-    const subscription = supabase.channel(`automation-runs-and-steps-${channelId}`)
+    setLoading(true);
+    fetchRuns();
+  }, [channelId, fetchRuns]);
+
+  useEffect(() => {
+    const subscription = supabase
+      .channel(`automation-runs-and-steps-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_runs', filter: `channel_id=eq.${channelId}` }, fetchRuns)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_run_steps' }, (payload) => {
         const runId = (payload.new as any)?.run_id || (payload.old as any)?.run_id;
-        if (runs.some(run => run.id === runId)) { fetchRuns(); }
+        if (runId && runIdsRef.current.includes(runId)) {
+          fetchRuns();
+        }
       }).subscribe();
     return () => { supabase.removeChannel(subscription); };
-  }, [channelId, fetchRuns, runs]);
+  }, [channelId, fetchRuns]);
 
   useEffect(() => {
     let logSubscription: any;
