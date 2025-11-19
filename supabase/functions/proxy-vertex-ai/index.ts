@@ -46,21 +46,32 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("Xác thực người dùng thất bại.");
-
-    const { prompt } = await req.json();
+    const { prompt, userId: payloadUserId } = await req.json();
     if (!prompt) throw new Error("Thiếu tham số bắt buộc: prompt");
+    
+    let userId;
+    if (payloadUserId) {
+        userId = payloadUserId;
+    } else {
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+        );
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) throw new Error("Xác thực người dùng thất bại.");
+        userId = user.id;
+    }
 
-    const { data: settings, error: settingsError } = await supabaseClient
+    const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data: settings, error: settingsError } = await supabaseAdmin
       .from('user_settings')
       .select('vertex_ai_service_account')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (settingsError || !settings || !settings.vertex_ai_service_account) {
@@ -68,7 +79,6 @@ serve(async (req) => {
     }
     const { vertex_ai_service_account } = settings;
     
-    // Tự động lấy project_id từ file JSON
     const gcp_project_id = vertex_ai_service_account.project_id;
     if (!gcp_project_id) {
         throw new Error("File JSON Service Account không chứa 'project_id'.");
@@ -76,7 +86,7 @@ serve(async (req) => {
 
     const accessToken = await getGoogleAccessToken(vertex_ai_service_account);
 
-    const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`;
+    const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-1.5-pro-preview-0409:generateContent`;
     
     const vertexResponse = await fetch(vertexUrl, {
       method: 'POST',

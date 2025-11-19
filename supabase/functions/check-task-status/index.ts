@@ -46,99 +46,103 @@ serve(async (req) => {
 
   try {
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    await logToDb(supabaseAdmin, null, 'Cron Job: Bắt đầu kiểm tra trạng thái tác vụ.');
-
+    
     const { data: runningSteps, error: stepsError } = await supabaseAdmin
       .from('automation_run_steps').select(`*, run:automation_runs(id, channel_id, user_id), sub_product:sub_products(name, description)`)
       .eq('status', 'running').not('api_task_id', 'is', null);
 
     if (stepsError) throw stepsError;
-    if (!runningSteps || runningSteps.length === 0) {
-      await logToDb(supabaseAdmin, null, 'Không có bước nào đang chạy để kiểm tra. Kết thúc.');
-      return new Response(JSON.stringify({ message: 'Không có bước nào đang chạy.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-    await logToDb(supabaseAdmin, null, `Tìm thấy ${runningSteps.length} bước đang chạy để kiểm tra.`);
-
+    
     const userCache = new Map();
 
-    for (const step of runningSteps) {
-      const runId = step.run.id;
-      const stepId = step.id;
-      try {
-        await logToDb(supabaseAdmin, runId, `Kiểm tra trạng thái cho bước ${stepId} (Loại: ${step.step_type})`, 'INFO', stepId);
-        
-        let cachedUser = userCache.get(step.run.user_id);
-        if (!cachedUser) {
-          const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context, voice_api_key').eq('id', step.run.user_id).single();
-          if (settingsError || !settings) {
-            await logToDb(supabaseAdmin, runId, `Bỏ qua tác vụ cho người dùng ${step.run.user_id}: Không tìm thấy cài đặt.`, 'WARN', stepId);
-            userCache.set(step.run.user_id, { token: null });
-            continue;
-          }
-          const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
-          cachedUser = { token, settings };
-          userCache.set(step.run.user_id, cachedUser);
-        } else if (!cachedUser.token) continue;
+    if (runningSteps && runningSteps.length > 0) {
+        for (const step of runningSteps) {
+          const runId = step.run.id;
+          const stepId = step.id;
+          try {
+            if (step.step_type === 'generate_voice') continue; // Voice worker handles its own polling
 
-        const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
-        const job = statusData?.jobs?.[0];
-        const apiStatus = job?.status;
-        await logToDb(supabaseAdmin, runId, `Trạng thái từ API cho tác vụ ${step.api_task_id}: ${apiStatus}`, 'INFO', stepId);
+            let cachedUser = userCache.get(step.run.user_id);
+            if (!cachedUser) {
+              const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', step.run.user_id).single();
+              if (settingsError || !settings) {
+                userCache.set(step.run.user_id, { token: null });
+                continue;
+              }
+              const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
+              cachedUser = { token };
+              userCache.set(step.run.user_id, cachedUser);
+            } else if (!cachedUser.token) continue;
 
-        if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
-          const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
-          const resultUrl = job?.results?.raw?.url;
-          const errorMessage = job?.error;
+            const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
+            const job = statusData?.jobs?.[0];
+            const apiStatus = job?.status;
 
-          await supabaseAdmin.from('automation_run_steps').update({ status: newStatus, output_data: { url: resultUrl }, error_message: errorMessage }).eq('id', stepId);
-          await logToDb(supabaseAdmin, runId, `Bước ${stepId} đã cập nhật trạng thái: ${newStatus}.`, newStatus === 'completed' ? 'SUCCESS' : 'ERROR', stepId);
+            if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
+              const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
+              const resultUrl = job?.results?.raw?.url;
+              const errorMessage = job?.error;
 
-          if (newStatus === 'failed') {
-            await supabaseAdmin.from('automation_runs').update({ status: 'failed' }).eq('id', runId);
-            await logToDb(supabaseAdmin, runId, `Phiên chạy bị đánh dấu là thất bại do bước ${stepId} thất bại.`, 'ERROR');
-            continue;
-          }
+              await supabaseAdmin.from('automation_run_steps').update({ status: newStatus, output_data: { url: resultUrl }, error_message: errorMessage }).eq('id', stepId);
+              await logToDb(supabaseAdmin, runId, `Bước ${stepId} (${step.step_type}) đã cập nhật trạng thái: ${newStatus}.`, newStatus === 'completed' ? 'SUCCESS' : 'ERROR', stepId);
 
-          const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
-          if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
+              if (newStatus === 'failed') {
+                await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
+                await logToDb(supabaseAdmin, runId, `Phiên chạy bị đánh dấu là thất bại do bước ${stepId} thất bại.`, 'ERROR');
+                continue;
+              }
 
-          if (step.step_type === 'generate_image') {
-            await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Kích hoạt bước tiếp theo: 'Tạo Video'.`, 'INFO', stepId);
-            const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: step.input_data.prompt });
-            
-            const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: { prompt: videoPrompt, imageUrl: resultUrl, model: 'kling' } }).select('id').single();
-            if (videoStepError) throw videoStepError;
-            
-            await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
-            
-            const userId = step.run.user_id;
-            // Gọi đến worker mới
-            supabaseAdmin.functions.invoke('automation-worker-video', { 
-                body: JSON.stringify({ 
-                  stepId: videoStep.id, 
-                  userId: userId,
-                  model: 'kling', 
-                  prompt: videoPrompt, 
-                  imageUrl: resultUrl, 
-                  options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } 
-                })
-            }).catch(console.error);
-            await logToDb(supabaseAdmin, runId, `Đã gọi worker 'automation-worker-video' cho bước tạo video.`, 'INFO', videoStep.id);
+              const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+              if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
+
+              if (step.step_type === 'generate_image') {
+                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Kích hoạt bước 'Tạo Video'.`, 'INFO', stepId);
+                const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: step.input_data.prompt });
+                const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: { prompt: videoPrompt, imageUrl: resultUrl, model: 'kling' } }).select('id').single();
+                if (videoStepError) throw videoStepError;
+                await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
+                supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: videoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
+              } else if (step.step_type === 'generate_video') {
+                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Video' hoàn thành. Kích hoạt bước 'Tạo Voice'.`, 'INFO', stepId);
+                const { data: voiceStep, error: voiceStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_voice', status: 'pending', input_data: {} }).select('id').single();
+                if (voiceStepError) throw voiceStepError;
+                await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Voice'.`, 'INFO', voiceStep.id);
+                supabaseAdmin.functions.invoke('automation-worker-voice', { body: JSON.stringify({ stepId: voiceStep.id, userId: step.run.user_id }) }).catch(console.error);
+              }
+            }
+          } catch (e) {
+            await logToDb(supabaseAdmin, runId, `Không thể xử lý bước ${stepId}: ${e.message}`, 'ERROR', stepId);
+            await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: e.message }).eq('id', stepId);
+            await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
           }
         }
-      } catch (e) {
-        await logToDb(supabaseAdmin, runId, `Không thể xử lý bước ${stepId}: ${e.message}`, 'ERROR', stepId);
-        await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: e.message }).eq('id', stepId);
-        await supabaseAdmin.from('automation_runs').update({ status: 'failed' }).eq('id', runId);
-      }
     }
 
-    const summary = `Cron Job Hoàn thành. Đã kiểm tra ${runningSteps.length} bước.`;
-    await logToDb(supabaseAdmin, null, summary);
-    return new Response(JSON.stringify({ message: summary }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    const { data: activeRuns, error: activeRunsError } = await supabaseAdmin.from('automation_runs').select('id').in('status', ['running', 'starting']);
+    if (activeRunsError) throw activeRunsError;
+
+    for (const run of activeRuns) {
+        const { data: allSteps, error: allStepsError } = await supabaseAdmin.from('automation_run_steps').select('status').eq('run_id', run.id);
+        if (allStepsError) continue;
+
+        const { data: subProductCount } = await supabaseAdmin.rpc('count_sub_products_for_run', { p_run_id: run.id });
+        const expectedStepCount = subProductCount * 3; // image, video, voice
+
+        if (allSteps.length >= expectedStepCount) {
+            const isFinished = allSteps.every(s => ['completed', 'failed', 'cancelled', 'stopped'].includes(s.status));
+            if (isFinished) {
+                const hasFailedStep = allSteps.some(s => s.status === 'failed');
+                const finalStatus = hasFailedStep ? 'failed' : 'completed';
+                await supabaseAdmin.from('automation_runs').update({ status: finalStatus, finished_at: new Date().toISOString() }).eq('id', run.id);
+                await logToDb(supabaseAdmin, run.id, `Tất cả các bước đã hoàn thành. Trạng thái cuối cùng của phiên chạy: ${finalStatus}.`, 'SUCCESS');
+            }
+        }
+    }
+
+    return new Response(JSON.stringify({ message: 'Kiểm tra hoàn tất.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('[FATAL] An error occurred in the orchestrator function:', error);
+    console.error('[FATAL] Lỗi trong check-task-status:', error);
     return new Response(JSON.stringify({ error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
