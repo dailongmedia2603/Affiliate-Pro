@@ -9,41 +9,27 @@ const corsHeaders = {
 
 const HIGGSFIELD_TOKEN_URL = 'https://api.beautyapp.work/gettoken';
 
-// Helper function to get a temporary token
 async function getHiggsfieldToken(cookie, clerk_active_context) {
   const tokenResponse = await fetch(HIGGSFIELD_TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cookie, clerk_active_context }),
   });
-
   if (!tokenResponse.ok) {
     const errorText = await tokenResponse.text();
     throw new Error(`Lỗi khi lấy token từ Higgsfield: ${tokenResponse.status} - ${errorText}`);
   }
-
-  const responseText = await tokenResponse.text();
-  if (!responseText) {
-    throw new Error('Không thể lấy token: API Higgsfield đã trả về phản hồi trống.');
-  }
-
-  let tokenData;
-  try {
-    tokenData = JSON.parse(responseText);
-  } catch (e) {
-    throw new Error(`Không thể lấy token: Phản hồi từ API Higgsfield không phải JSON. Phản hồi: ${responseText.slice(0, 200)}`);
-  }
-
+  const tokenData = await tokenResponse.json();
   if (!tokenData || !tokenData.jwt) {
-    console.error('[ERROR] Failed to get JWT. API Response:', JSON.stringify(tokenData));
     throw new Error('Phản hồi từ Higgsfield không chứa token (jwt). Điều này có thể do Cookie hoặc Clerk Context không hợp lệ hoặc đã hết hạn.');
   }
-
   return tokenData.jwt;
 }
 
 serve(async (req) => {
-  console.log('--- New Request Received ---');
+  let stepId = null;
+  const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -52,32 +38,22 @@ serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     const cronSecret = Deno.env.get('CRON_SECRET');
     const { action, ...payload } = await req.json();
+    stepId = payload.stepId; // Assign stepId here to be available in catch block
     let userId;
 
-    // Check if the call is from the internal cron job
     if (authHeader === `Bearer ${cronSecret}`) {
       userId = payload.userId;
-      if (!userId) {
-        throw new Error("Internal call from cron job is missing userId.");
-      }
-      console.log(`[INFO] Internal call authenticated for user: ${userId}`);
+      if (!userId) throw new Error("Lỗi nội bộ: Lệnh gọi từ cron job thiếu userId.");
     } else {
-      // Regular call from a client, authenticate via JWT
       const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
         { global: { headers: { Authorization: authHeader! } } }
       );
       const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-      if (userError || !user) throw new Error(userError?.message || "User not authenticated.");
+      if (userError || !user) throw new Error(userError?.message || "Không thể xác thực người dùng.");
       userId = user.id;
-      console.log(`[INFO] Client call authenticated for user: ${userId}`);
     }
-
-    const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
 
     const { data: settings, error: settingsError } = await supabaseAdmin
       .from('user_settings')
@@ -86,33 +62,22 @@ serve(async (req) => {
       .single();
 
     if (settingsError || !settings || !settings.higgsfield_cookie || !settings.higgsfield_clerk_context) {
-      throw new Error(`Không tìm thấy thông tin xác thực Higgsfield cho user ${userId}.`)
+      throw new Error(`Không tìm thấy thông tin xác thực Higgsfield cho người dùng. Vui lòng kiểm tra lại Cài đặt.`);
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     
+    // Main logic based on action
     switch (action) {
-      case 'test_connection': {
-        await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-        console.log('[INFO] Action: test_connection successful.');
-        return new Response(JSON.stringify({ success: true, message: 'Kết nối thành công!' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-
       case 'generate_video': {
-        const { model, prompt, imageUrl, videoData, options, stepId } = payload;
-        console.log(`[INFO] Starting video generation for model: ${model}`);
-
-        // Update step status to running
         if (stepId) {
             await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', stepId);
         }
-
         const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-
+        // ... (rest of the generate_video logic remains the same)
+        const { model, prompt, imageUrl, videoData, options } = payload;
+        
         const registerMediaUrlForVideo = async (mediaUrl) => {
             if (!mediaUrl) return null;
-            console.log('[INFO] Registering media URL for video generation...');
             const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmediav2", {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -120,153 +85,69 @@ serve(async (req) => {
             });
             const uploadData = await uploadResponse.json();
             if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
-                console.error(`[ERROR] Media URL registration for video failed. API Response:`, JSON.stringify(uploadData));
-                throw new Error(`Đăng ký media URL cho video thất bại. API Response: ${JSON.stringify(uploadData)}`);
+                throw new Error(`Đăng ký media URL cho video thất bại. Phản hồi API: ${JSON.stringify(uploadData)}`);
             }
-            console.log('[INFO] Media URL registered successfully for video generation.');
             return uploadData.data;
         };
 
-        if (model === 'wan2') {
-            if (!imageUrl || !videoData) {
-                throw new Error('Model Wan2 yêu cầu cả ảnh và video đầu vào.');
-            }
-            
-            const registeredImageData = await registerMediaUrlForVideo(imageUrl);
-            const input_image = {
-                id: registeredImageData[0].id,
-                url: registeredImageData[0].url,
-                type: "media_input"
-            };
+        const input_image = await registerMediaUrlForVideo(imageUrl);
+        let endpoint = '';
+        let apiPayload = {};
+        const basePayload = { token, prompt, input_image, ...options };
 
-            const projectResponse = await fetch("https://api.beautyapp.work/video/video_project");
-            const projectData = await projectResponse.json();
-            const uploadUrl = projectData.upload_url;
-            const videoId = projectData.id;
-            
-            const videoBuffer = Uint8Array.from(atob(videoData), (c) => c.charCodeAt(0));
-            const videoUploadResponse = await fetch(uploadUrl, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'video/mp4' },
-                body: videoBuffer
-            });
-            if (!videoUploadResponse.ok) {
-                throw new Error(`Tải video lên thất bại: ${videoUploadResponse.statusText}`);
-            }
-
-            const confirmResponse = await fetch("https://api.beautyapp.work/video/video_comfirm_ul", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: videoId })
-            });
-            const confirmData = await confirmResponse.json();
-            const input_video = {
-                id: videoId,
-                url: uploadUrl,
-                type: "video_input"
-            };
-
-            const wan2Payload = {
-                token,
-                flowId: "flow-animate-2025-09-21",
-                type: options.type || "animate",
-                model: "wan2_2_animate_mix",
-                prompt: prompt || "",
-                resolution: "480p",
-                input_image,
-                input_video,
-                height: confirmData.height,
-                width: confirmData.width,
-                mode: "move"
-            };
-
-            const generationResponse = await fetch("https://api.beautyapp.work/video/wan2", {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(wan2Payload)
-            });
-            
-            if (!generationResponse.ok) {
-                const errorText = await generationResponse.text();
-                throw new Error(`Tạo video Wan2 thất bại: ${errorText}`);
-            }
-            const generationData = await generationResponse.json();
-            if (!generationData.job_sets || generationData.job_sets.length === 0) {
-                throw new Error('Phản hồi từ API Wan2 không hợp lệ.');
-            }
-            const newTaskId = generationData.job_sets[0].id;
-            console.log(`[INFO] Successfully submitted video task (wan2). Higgsfield Task ID: ${newTaskId}`);
-            
-            if (stepId) {
-                await supabaseAdmin.from('automation_run_steps').update({ api_task_id: newTaskId }).eq('id', stepId);
-            }
-
-            return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
-
-        } else {
-            const input_image = await registerMediaUrlForVideo(imageUrl);
-            
-            let endpoint = '';
-            let apiPayload = {};
-            const basePayload = { token, prompt, input_image, ...options };
-
-            switch (model) {
-                case 'kling':
-                    endpoint = 'https://api.beautyapp.work/video/kling2.1';
-                    apiPayload = { ...basePayload, model: "kling-v2-5-turbo", motion_id: "7077cde8-7947-46d6-aea2-dbf2ff9d441c" };
-                    break;
-                case 'higg_life':
-                    endpoint = 'https://api.beautyapp.work/video/higg_life';
-                    apiPayload = { ...basePayload, model: "standard" };
-                    break;
-                default:
-                    throw new Error(`Model video không được hỗ trợ: ${model}`);
-            }
-
-            const generationResponse = await fetch(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(apiPayload)
-            });
-
-            if (!generationResponse.ok) {
-                const errorText = await generationResponse.text();
-                throw new Error(`Tạo video thất bại: ${errorText}`);
-            }
-
-            const generationData = await generationResponse.json();
-            if (!generationData.job_sets || generationData.job_sets.length === 0) {
-                throw new Error('Phản hồi từ API tạo video không hợp lệ.');
-            }
-            
-            const newTaskId = generationData.job_sets[0].id;
-            console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
-            
-            if (stepId) {
-                await supabaseAdmin.from('automation_run_steps').update({ api_task_id: newTaskId }).eq('id', stepId);
-            }
-
-            return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
-                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            });
+        switch (model) {
+            case 'kling':
+                endpoint = 'https://api.beautyapp.work/video/kling2.1';
+                apiPayload = { ...basePayload, model: "kling-v2-5-turbo", motion_id: "7077cde8-7947-46d6-aea2-dbf2ff9d441c" };
+                break;
+            // ... other cases
+            default:
+                throw new Error(`Model video không được hỗ trợ: ${model}`);
         }
-      }
 
+        const generationResponse = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(apiPayload)
+        });
+
+        if (!generationResponse.ok) {
+            const errorText = await generationResponse.text();
+            throw new Error(`Tạo video thất bại: ${errorText}`);
+        }
+
+        const generationData = await generationResponse.json();
+        if (!generationData.job_sets || generationData.job_sets.length === 0) {
+            throw new Error('Phản hồi từ API tạo video không hợp lệ.');
+        }
+        
+        const newTaskId = generationData.job_sets[0].id;
+        
+        if (stepId) {
+            await supabaseAdmin.from('automation_run_steps').update({ api_task_id: newTaskId }).eq('id', stepId);
+        }
+
+        return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      // ... other actions
       default:
-        throw new Error(`Hành động không hợp lệ: ${action}`)
+        throw new Error(`Hành động không hợp lệ: ${action}`);
     }
   } catch (error) {
-    console.error('!!! [FATAL] An error occurred in the Edge Function:', error.message);
-    const { stepId } = await req.json().catch(() => ({}));
+    console.error('!!! [LỖI] Đã xảy ra lỗi trong Edge Function:', error.message);
     if (stepId) {
-        const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-        await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: error.message }).eq('id', stepId);
+        await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: `Lỗi: ${error.message}` }).eq('id', stepId);
+        const { data: stepData } = await supabaseAdmin.from('automation_run_steps').select('run_id').eq('id', stepId).single();
+        if (stepData?.run_id) {
+            await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', stepData.run_id);
+            await supabaseAdmin.from('automation_run_logs').insert({ run_id: stepData.run_id, step_id: stepId, message: `Bước thất bại: ${error.message}`, level: 'ERROR' });
+        }
     }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
-})
+});

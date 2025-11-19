@@ -60,6 +60,10 @@ const AutomationPage = () => {
 
   useEffect(() => {
     fetchChannelsAndRuns();
+    const subscription = supabase.channel('automation-runs-global')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_runs' }, fetchChannelsAndRuns)
+      .subscribe();
+    return () => { supabase.removeChannel(subscription); };
   }, [fetchChannelsAndRuns]);
 
   const filteredChannels = useMemo(() => {
@@ -79,7 +83,6 @@ const AutomationPage = () => {
       return;
     }
 
-    setRunningAutomations(prev => ({ ...prev, [channelId]: true }));
     const loadingToast = showLoading(`Đang khởi động automation cho kênh...`);
 
     try {
@@ -87,14 +90,11 @@ const AutomationPage = () => {
         body: { channelId },
       });
 
-      if (error) {
-        throw new Error(error.message);
-      }
+      if (error) throw new Error(error.message);
 
-      showSuccess('Đã khởi động luồng automation thành công! Bạn có thể xem tiến trình trong tab Lịch sử.');
+      showSuccess('Đã khởi động luồng automation thành công!');
     } catch (error) {
       showError(`Khởi động automation thất bại: ${error.message}`);
-      setRunningAutomations(prev => ({ ...prev, [channelId]: false }));
     } finally {
       dismissToast(loadingToast);
     }
@@ -168,7 +168,7 @@ const AutomationPage = () => {
                 <p className="text-sm text-gray-500">Xem lại các lần chạy tự động hóa cho kênh này.</p>
               </div>
               <div className="flex-1 overflow-y-auto p-6">
-                <AutomationRunHistory channelId={selectedChannel.id} />
+                <AutomationRunHistory channelId={selectedChannel.id} onRerun={handleRunAutomation} />
               </div>
             </>
           ) : (
