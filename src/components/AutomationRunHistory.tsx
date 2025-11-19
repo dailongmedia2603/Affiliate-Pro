@@ -2,10 +2,19 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal } from 'lucide-react';
 import { showError } from '@/utils/toast';
+import { Button } from '@/components/ui/button';
+import AutomationLogViewer from './AutomationLogViewer';
 
 // Types
+type AutomationRunLog = {
+  id: string;
+  timestamp: string;
+  message: string;
+  level: string;
+};
+
 type AutomationRunStep = {
   id: string;
   step_type: string;
@@ -52,25 +61,13 @@ const StepIcon = ({ type }: { type: string }) => {
 const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<Record<string, AutomationRunLog[]>>({});
+  const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
 
   const fetchRuns = useCallback(async () => {
-    setLoading(true);
     const { data, error } = await supabase
       .from('automation_runs')
-      .select(`
-        id,
-        status,
-        started_at,
-        finished_at,
-        automation_run_steps (
-          id,
-          step_type,
-          status,
-          output_data,
-          error_message,
-          created_at
-        )
-      `)
+      .select(`id, status, started_at, finished_at, automation_run_steps (id, step_type, status, output_data, error_message, created_at)`)
       .eq('channel_id', channelId)
       .order('started_at', { ascending: false });
 
@@ -84,55 +81,69 @@ const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
   }, [channelId]);
 
   useEffect(() => {
+    setLoading(true);
     fetchRuns();
-
-    const subscription = supabase
-      .channel(`automation-runs-${channelId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'automation_runs', filter: `channel_id=eq.${channelId}` },
-        () => fetchRuns()
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'automation_run_steps' },
-        () => fetchRuns()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(subscription);
-    };
   }, [channelId, fetchRuns]);
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-orange-500" /></div>;
-  }
+  useEffect(() => {
+    const subscription = supabase
+      .channel(`automation-runs-and-steps-${channelId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_runs', filter: `channel_id=eq.${channelId}` }, () => fetchRuns())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_run_steps' }, (payload) => {
+        // A bit smarter refetch: only if the step belongs to one of the runs we are displaying
+        const runId = (payload.new as any)?.run_id || (payload.old as any)?.run_id;
+        if (runs.some(run => run.id === runId)) {
+          fetchRuns();
+        }
+      })
+      .subscribe();
 
-  if (runs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 border-2 border-dashed rounded-lg">
-        <Bot className="w-16 h-16 mb-4" />
-        <h3 className="text-xl font-semibold">Chưa có lần chạy nào</h3>
-        <p>Nhấn nút "Chạy" để bắt đầu một luồng tự động hóa cho kênh này.</p>
-      </div>
-    );
-  }
+    return () => { supabase.removeChannel(subscription); };
+  }, [channelId, fetchRuns, runs]);
+
+  useEffect(() => {
+    let logSubscription: any;
+    if (visibleLogs) {
+      logSubscription = supabase
+        .channel(`automation-logs-${visibleLogs}`)
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'automation_run_logs', filter: `run_id=eq.${visibleLogs}` }, (payload) => {
+          setLogs(prev => ({ ...prev, [visibleLogs]: [...(prev[visibleLogs] || []), payload.new as AutomationRunLog] }));
+        })
+        .subscribe();
+    }
+    return () => { if (logSubscription) supabase.removeChannel(logSubscription); };
+  }, [visibleLogs]);
+
+  const toggleLogVisibility = async (runId: string) => {
+    if (visibleLogs === runId) {
+      setVisibleLogs(null);
+    } else {
+      setVisibleLogs(runId);
+      if (!logs[runId]) { // Fetch logs only if not already fetched
+        const { data, error } = await supabase.from('automation_run_logs').select('*').eq('run_id', runId).order('timestamp', { ascending: true });
+        if (error) showError('Không thể tải logs.');
+        else setLogs(prev => ({ ...prev, [runId]: data }));
+      }
+    }
+  };
+
+  if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-orange-500" /></div>;
+  if (runs.length === 0) return <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 border-2 border-dashed rounded-lg p-4"><Bot className="w-16 h-16 mb-4" /><h3 className="text-xl font-semibold">Chưa có lần chạy nào</h3><p>Nhấn nút "Chạy" để bắt đầu một luồng tự động hóa cho kênh này.</p></div>;
 
   return (
-    <Accordion type="single" collapsible className="w-full">
+    <Accordion type="single" collapsible className="w-full space-y-2">
       {runs.map(run => (
-        <AccordionItem value={run.id} key={run.id}>
-          <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg">
+        <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
+          <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
             <div className="flex justify-between items-center w-full pr-4">
-              <div className="flex flex-col items-start">
+              <div className="flex flex-col items-start text-left">
                 <span className="font-semibold text-gray-800">Run #{run.id.substring(0, 8)}</span>
                 <span className="text-sm text-gray-500">Bắt đầu: {new Date(run.started_at).toLocaleString()}</span>
               </div>
               <StatusBadge status={run.status} />
             </div>
           </AccordionTrigger>
-          <AccordionContent className="p-4 bg-gray-50/70 border-t">
+          <AccordionContent className="p-4 bg-gray-50/70">
             <div className="space-y-4">
               {run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(step => (
                 <div key={step.id} className="p-3 border rounded-lg bg-white shadow-sm">
@@ -149,19 +160,24 @@ const AutomationRunHistory = ({ channelId }: { channelId: string }) => {
                   {step.status === 'completed' && step.output_data?.url && (
                     <div className="mt-3">
                       {step.step_type === 'generate_image' ? (
-                        <img src={step.output_data.url} alt="Generated image" className="max-w-xs rounded-md border" />
+                        <img src={step.output_data.url} alt="Generated" className="max-w-xs rounded-md border" />
                       ) : step.step_type === 'generate_video' ? (
                         <video src={step.output_data.url} controls className="max-w-xs rounded-md border" />
                       ) : null}
                     </div>
                   )}
                   {step.status === 'failed' && step.error_message && (
-                    <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md">
-                      <strong>Lỗi:</strong> {step.error_message}
-                    </div>
+                    <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>
                   )}
                 </div>
               ))}
+            </div>
+            <div className="mt-4 border-t pt-4">
+              <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}>
+                <Terminal className="w-4 h-4 mr-2" />
+                {visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}
+              </Button>
+              {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
             </div>
           </AccordionContent>
         </AccordionItem>
