@@ -25,7 +25,8 @@ const VoicePage = () => {
           .single();
         
         if (error && error.code !== 'PGRST116') {
-          showError('Không thể tải cài đặt API key.');
+          const errorMessage = error.message;
+          showError(`Không thể tải cài đặt API key: ${errorMessage}`);
         }
         if (data && data.voice_api_key) {
           setApiKey(data.voice_api_key);

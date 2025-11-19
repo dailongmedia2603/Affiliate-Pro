@@ -51,7 +51,8 @@ const SettingsPage = () => {
         throw new Error('Không thể lấy thông tin credits.');
       }
     } catch (error) {
-      showError(`Lỗi khi lấy credits: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi khi lấy credits: ${errorMessage}`);
       setVoiceCredits(null);
     } finally {
       setIsFetchingCredits(false);
@@ -170,7 +171,8 @@ const SettingsPage = () => {
       setTestResult(data);
     } catch (error) {
       setGeminiConnectionStatus('error');
-      setTestResult(`Lỗi: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      setTestResult(`Lỗi: ${errorMessage}`);
     } finally {
       setIsLoadingApiTest(false);
     }
@@ -200,7 +202,8 @@ const SettingsPage = () => {
       }
     } catch (error) {
       setVertexAiConnectionStatus('error');
-      setTestResult(`Lỗi: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      setTestResult(`Lỗi: ${errorMessage}`);
     } finally {
       setIsTestingVertexAi(false);
     }
@@ -214,24 +217,23 @@ const SettingsPage = () => {
     setIsCheckingVoiceConnection(true);
     setVoiceConnectionStatus('idle');
     try {
-      // Use the 'credits' endpoint for a more reliable connection test
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', {
         body: { path: 'v1/credits', token: voiceApiKey },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
       
-      // Check for a successful response from the 'credits' endpoint
       if (data.success && typeof data.credits === 'number') {
         setVoiceConnectionStatus('success');
         showSuccess('Kết nối API Voice thành công!');
-        setVoiceCredits(data.credits); // Set credits directly
+        setVoiceCredits(data.credits);
       } else {
         throw new Error(`Phản hồi từ API không hợp lệ hoặc API key sai.`);
       }
     } catch (error) {
       setVoiceConnectionStatus('error');
-      showError(`Lỗi kết nối: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi kết nối: ${errorMessage}`);
     } finally {
       setIsCheckingVoiceConnection(false);
     }
@@ -259,7 +261,8 @@ const SettingsPage = () => {
       }
     } catch (error) {
       setHiggsfieldConnectionStatus('error');
-      showError(`Lỗi kết nối Higgsfield: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi kết nối Higgsfield: ${errorMessage}`);
     } finally {
       setIsTestingHiggsfield(false);
     }
@@ -276,7 +279,8 @@ const SettingsPage = () => {
       showSuccess('Kết nối Cloudflare R2 thành công!');
     } catch (error) {
       setR2ConnectionStatus('error');
-      showError(`Lỗi kết nối R2: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi kết nối R2: ${errorMessage}`);
     } finally {
       setIsTestingR2(false);
     }

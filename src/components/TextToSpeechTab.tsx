@@ -26,13 +26,15 @@ const TextToSpeechTab = ({ apiKey }) => {
       const { data, error } = await supabase.functions.invoke('proxy-voice-api', { body: { path: 'v1m/voice/clone', token: apiKey, method: 'GET' } });
       
       if (error) throw error;
+      if (data.error) throw new Error(data.error);
       if (data.success) {
         setClonedVoices(data.data);
       } else {
         throw new Error(data.error || 'Failed to fetch cloned voices');
       }
     } catch (error) {
-      showError(`Lỗi tải danh sách giọng nói: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi tải danh sách giọng nói: ${errorMessage}`);
     } finally {
       setIsLoadingVoices(false);
     }
@@ -45,10 +47,12 @@ const TextToSpeechTab = ({ apiKey }) => {
         body: { path: 'v1/tasks?limit=20&type=minimax_tts', token: apiKey, method: 'GET' }
       });
       if (error) throw error;
+      if (data.error) throw new Error(data.error);
       if (data.success) setTasks(data.data);
       else throw new Error(data.error || 'Failed to fetch tasks');
     } catch (error) {
-      showError(`Lỗi tải danh sách tác vụ: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi tải danh sách tác vụ: ${errorMessage}`);
     } finally {
       setIsLoadingTasks(false);
     }
@@ -103,6 +107,7 @@ const TextToSpeechTab = ({ apiKey }) => {
         }
       });
       if (error) throw error;
+      if (data.error) throw new Error(data.error);
       if (data.success) {
         showSuccess('Đã gửi yêu cầu tạo voice. Vui lòng chờ trong giây lát.');
         setTimeout(fetchTasks, 2000);
@@ -110,7 +115,8 @@ const TextToSpeechTab = ({ apiKey }) => {
         throw new Error(data.error || 'Failed to generate speech');
       }
     } catch (error) {
-      showError(`Lỗi tạo voice: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi tạo voice: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
     }
