@@ -40,6 +40,14 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error("User not authenticated.");
 
+    // Check for config BEFORE creating a run
+    const { data: configData, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).maybeSingle();
+    if (configError) throw new Error(`Error checking config: ${configError.message}`);
+    if (!configData) {
+      throw new Error("Kênh này chưa được cấu hình. Vui lòng nhấn nút 'Cấu hình' và lưu lại trước khi chạy.");
+    }
+    const config = configData.config_data;
+
     const { data: run, error: runError } = await supabaseAdmin
       .from('automation_runs')
       .insert({ user_id: user.id, channel_id: channelId, status: 'starting' })
@@ -49,20 +57,14 @@ serve(async (req) => {
     runId = run.id;
     await logToDb(supabaseAdmin, runId, 'Automation run created successfully.');
 
-    const [channelRes, configRes] = await Promise.all([
-      supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single(),
-      supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).single()
-    ]);
-    await logToDb(supabaseAdmin, runId, 'Fetching channel and automation configurations.');
+    const { data: channelRes, error: channelError } = await supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single();
+    await logToDb(supabaseAdmin, runId, 'Fetching channel data.');
 
-    if (channelRes.error) throw new Error(`Channel not found: ${channelRes.error.message}`);
-    if (configRes.error) throw new Error(`Automation config not found for this channel: ${configRes.error.message}`);
+    if (channelError) throw new Error(`Channel not found: ${channelError.message}`);
     
-    const productId = channelRes.data.product_id;
-    const characterImageUrl = channelRes.data.character_image_url;
-    const config = configRes.data.config_data;
+    const productId = channelRes.product_id;
+    const characterImageUrl = channelRes.character_image_url;
     if (!productId) throw new Error("Channel is not linked to any product.");
-    if (!config) throw new Error("Automation is not configured for this channel.");
     await logToDb(supabaseAdmin, runId, 'Configurations validated.');
 
     const { data: subProducts, error: subProductsError } = await supabaseAdmin
