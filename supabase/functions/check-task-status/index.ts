@@ -112,10 +112,9 @@ serve(async (req) => {
             await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
             
             const userId = step.run.user_id;
-            supabaseAdmin.functions.invoke('higgsfield-python-proxy', 
-              { 
+            // Gọi đến worker mới
+            supabaseAdmin.functions.invoke('automation-worker-video', { 
                 body: JSON.stringify({ 
-                  action: 'generate_video', 
                   stepId: videoStep.id, 
                   userId: userId,
                   model: 'kling', 
@@ -123,15 +122,8 @@ serve(async (req) => {
                   imageUrl: resultUrl, 
                   options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } 
                 })
-              },
-              {
-                  headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${cronSecret}` 
-                  }
-              }
-            ).catch(console.error);
-            await logToDb(supabaseAdmin, runId, `Đã gọi function cho bước 'Tạo Video'.`, 'INFO', videoStep.id);
+            }).catch(console.error);
+            await logToDb(supabaseAdmin, runId, `Đã gọi worker 'automation-worker-video' cho bước tạo video.`, 'INFO', videoStep.id);
           }
         }
       } catch (e) {
