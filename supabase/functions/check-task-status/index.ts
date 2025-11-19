@@ -111,7 +111,26 @@ serve(async (req) => {
             
             await logToDb(supabaseAdmin, runId, `Created 'generate_video' step.`, 'INFO', videoStep.id);
             
-            supabaseAdmin.functions.invoke('higgsfield-python-proxy', { body: { action: 'generate_video', stepId: videoStep.id, model: 'kling', prompt: videoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } } }).catch(console.error);
+            const userId = step.run.user_id;
+            supabaseAdmin.functions.invoke('higgsfield-python-proxy', 
+              { 
+                body: JSON.stringify({ 
+                  action: 'generate_video', 
+                  stepId: videoStep.id, 
+                  userId: userId,
+                  model: 'kling', 
+                  prompt: videoPrompt, 
+                  imageUrl: resultUrl, 
+                  options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } 
+                })
+              },
+              {
+                  headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${cronSecret}` 
+                  }
+              }
+            ).catch(console.error);
             await logToDb(supabaseAdmin, runId, `Invoked function for 'generate_video' step.`, 'INFO', videoStep.id);
           }
         }

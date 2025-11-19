@@ -49,26 +49,44 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
+    const authHeader = req.headers.get('Authorization');
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    const { action, ...payload } = await req.json();
+    let userId;
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError) throw userError
+    // Check if the call is from the internal cron job
+    if (authHeader === `Bearer ${cronSecret}`) {
+      userId = payload.userId;
+      if (!userId) {
+        throw new Error("Internal call from cron job is missing userId.");
+      }
+      console.log(`[INFO] Internal call authenticated for user: ${userId}`);
+    } else {
+      // Regular call from a client, authenticate via JWT
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader! } } }
+      );
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      if (userError || !user) throw new Error(userError?.message || "User not authenticated.");
+      userId = user.id;
+      console.log(`[INFO] Client call authenticated for user: ${userId}`);
+    }
 
-    const { action, ...payload } = await req.json()
-    console.log(`[INFO] Request from user: ${user.id}, Action: ${action}`);
+    const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    const { data: settings, error: settingsError } = await supabaseClient
+    const { data: settings, error: settingsError } = await supabaseAdmin
       .from('user_settings')
       .select('higgsfield_cookie, higgsfield_clerk_context')
-      .eq('id', user.id)
-      .single()
+      .eq('id', userId)
+      .single();
 
     if (settingsError || !settings || !settings.higgsfield_cookie || !settings.higgsfield_clerk_context) {
-      throw new Error('Không tìm thấy thông tin xác thực Higgsfield. Vui lòng kiểm tra lại cài đặt của bạn.')
+      throw new Error(`Không tìm thấy thông tin xác thực Higgsfield cho user ${userId}.`)
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     
@@ -82,8 +100,13 @@ serve(async (req) => {
       }
 
       case 'generate_video': {
-        const { model, prompt, imageUrl, videoData, options } = payload;
+        const { model, prompt, imageUrl, videoData, options, stepId } = payload;
         console.log(`[INFO] Starting video generation for model: ${model}`);
+
+        // Update step status to running
+        if (stepId) {
+            await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', stepId);
+        }
 
         const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
@@ -173,6 +196,11 @@ serve(async (req) => {
             }
             const newTaskId = generationData.job_sets[0].id;
             console.log(`[INFO] Successfully submitted video task (wan2). Higgsfield Task ID: ${newTaskId}`);
+            
+            if (stepId) {
+                await supabaseAdmin.from('automation_run_steps').update({ api_task_id: newTaskId }).eq('id', stepId);
+            }
+
             return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
@@ -215,6 +243,11 @@ serve(async (req) => {
             
             const newTaskId = generationData.job_sets[0].id;
             console.log(`[INFO] Successfully submitted video task (${model}). Higgsfield Task ID: ${newTaskId}`);
+            
+            if (stepId) {
+                await supabaseAdmin.from('automation_run_steps').update({ api_task_id: newTaskId }).eq('id', stepId);
+            }
+
             return new Response(JSON.stringify({ success: true, taskId: newTaskId }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             });
@@ -226,6 +259,11 @@ serve(async (req) => {
     }
   } catch (error) {
     console.error('!!! [FATAL] An error occurred in the Edge Function:', error.message);
+    const { stepId } = await req.json().catch(() => ({}));
+    if (stepId) {
+        const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+        await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: error.message }).eq('id', stepId);
+    }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
