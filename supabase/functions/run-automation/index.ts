@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// --- Helper Functions ---
+
 const logToDb = async (supabaseAdmin, runId, message, level = 'INFO', stepId = null, metadata = {}) => {
   try {
     await supabaseAdmin.from('automation_run_logs').insert({ run_id: runId, step_id: stepId, message, level, metadata });
@@ -14,8 +16,14 @@ const logToDb = async (supabaseAdmin, runId, message, level = 'INFO', stepId = n
 };
 
 function replacePlaceholders(template, data) {
-  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => data[key] || match);
+  if (!template) return '';
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    // Ensure the key exists and is not null/undefined before replacing
+    return data[key] !== undefined && data[key] !== null ? data[key] : match;
+  });
 }
+
+// --- Main Handler ---
 
 serve(async (req) => {
   let runId = null;
@@ -29,13 +37,12 @@ serve(async (req) => {
   }
 
   try {
+    // 1. --- AUTHENTICATION & PAYLOAD ---
     const { channelId } = await req.json();
     if (!channelId) throw new Error("Thiếu tham số channelId.");
 
     const authHeader = req.headers.get('Authorization')!;
-    if (!authHeader) {
-      throw new Error("Thiếu thông tin xác thực (Authorization header).");
-    }
+    if (!authHeader) throw new Error("Thiếu thông tin xác thực (Authorization header).");
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -45,13 +52,36 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error("Không thể xác thực người dùng.");
 
-    const { data: configData, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).maybeSingle();
-    if (configError) throw new Error(`Lỗi khi kiểm tra cấu hình: ${configError.message}`);
-    if (!configData) {
-      throw new Error("Kênh này chưa được cấu hình. Vui lòng nhấn nút 'Cấu hình' và lưu lại trước khi chạy.");
-    }
-    const config = configData.config_data;
+    // 2. --- PRE-FLIGHT CHECKS ---
+    // Check for existing running automations for this channel
+    const { data: existingRun, error: existingRunError } = await supabaseAdmin
+      .from('automation_runs')
+      .select('id')
+      .eq('channel_id', channelId)
+      .in('status', ['starting', 'running'])
+      .maybeSingle();
+    if (existingRunError) throw new Error(`Lỗi khi kiểm tra phiên chạy hiện tại: ${existingRunError.message}`);
+    if (existingRun) throw new Error("Một luồng automation cho kênh này đã đang chạy. Vui lòng chờ hoàn tất hoặc dừng lại trước khi bắt đầu một luồng mới.");
 
+    // Load automation config
+    const { data: configData, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).maybeSingle();
+    if (configError) throw new Error(`Lỗi khi tải cấu hình automation: ${configError.message}`);
+    if (!configData?.config_data) throw new Error("Kênh này chưa được cấu hình. Vui lòng nhấn nút 'Cấu hình' và lưu lại trước khi chạy.");
+    const config = configData.config_data;
+    if (!config.imagePromptGenerationTemplate || !config.imageCount) {
+      throw new Error("Cấu hình automation không đầy đủ. Thiếu 'Mẫu Prompt cho AI' hoặc 'Số lượng ảnh'.");
+    }
+
+    // Load user settings for Vertex AI
+    const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('vertex_ai_service_account').eq('id', user.id).single();
+    if (settingsError || !settings?.vertex_ai_service_account) throw new Error("Chưa cấu hình API Vertex AI trong Cài đặt.");
+
+    // Load channel data
+    const { data: channel, error: channelError } = await supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single();
+    if (channelError || !channel) throw new Error(`Không tìm thấy kênh với ID: ${channelId}. Lỗi: ${channelError?.message}`);
+    if (!channel.product_id) throw new Error("Kênh chưa được liên kết với sản phẩm nào.");
+
+    // 3. --- CREATE AUTOMATION RUN ---
     const { data: run, error: runError } = await supabaseAdmin
       .from('automation_runs')
       .insert({ user_id: user.id, channel_id: channelId, status: 'starting' })
@@ -61,60 +91,73 @@ serve(async (req) => {
     runId = run.id;
     await logToDb(supabaseAdmin, runId, 'Đã tạo phiên chạy automation thành công.');
 
-    const { data: channelRes, error: channelError } = await supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single();
-    await logToDb(supabaseAdmin, runId, 'Đang lấy dữ liệu kênh...');
-
-    if (channelError) throw new Error(`Không tìm thấy kênh: ${channelError.message}`);
-    
-    const productId = channelRes.product_id;
-    const characterImageUrl = channelRes.character_image_url;
-    if (!productId) throw new Error("Kênh chưa được liên kết với sản phẩm nào.");
-    await logToDb(supabaseAdmin, runId, 'Đã xác thực cấu hình.');
-
+    // 4. --- FETCH SUB-PRODUCTS ---
     const { data: subProducts, error: subProductsError } = await supabaseAdmin
       .from('sub_products')
       .select('id, name, description, image_url')
-      .eq('product_id', productId);
+      .eq('product_id', channel.product_id);
     if (subProductsError) throw subProductsError;
     if (!subProducts || subProducts.length === 0) throw new Error("Không tìm thấy sản phẩm con nào cho sản phẩm của kênh này.");
     await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con để xử lý.`);
 
-    const stepPromises = subProducts.map(async (subProduct) => {
-      const placeholderData = { product_name: subProduct.name, background_context: config.backgroundContext };
-      const imagePrompt = replacePlaceholders(config.imagePromptTemplate, placeholderData);
+    // 5. --- MAIN LOOP (per sub-product) ---
+    for (const subProduct of subProducts) {
+      await logToDb(supabaseAdmin, runId, `Bắt đầu xử lý sản phẩm con: "${subProduct.name}".`);
+
+      // 5a. Prepare and call Gemini to get image prompts
+      const geminiPromptData = {
+        product_name: subProduct.name,
+        product_description: subProduct.description,
+        image_count: config.imageCount
+      };
+      const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
       
+      await logToDb(supabaseAdmin, runId, `Đang gọi AI để tạo ${config.imageCount} prompt cho ảnh...`);
+      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-vertex-ai', {
+        body: { prompt: geminiPrompt, userId: user.id }
+      });
+
+      if (geminiError) throw new Error(`Lỗi gọi function proxy-vertex-ai: ${geminiError.message}`);
+      if (geminiResult.error) throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error}`);
+      
+      const imagePrompts = geminiResult.data.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+      if (imagePrompts.length === 0) {
+        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào cho sản phẩm "${subProduct.name}". Bỏ qua sản phẩm này.`, 'WARN');
+        continue;
+      }
+      await logToDb(supabaseAdmin, runId, `AI đã trả về ${imagePrompts.length} prompt ảnh.`, 'SUCCESS');
+
+      // 5b. Create multiple image generation steps
       const imageUrls = [];
-      if (characterImageUrl) imageUrls.push(characterImageUrl);
+      if (channel.character_image_url) imageUrls.push(channel.character_image_url);
       if (subProduct.image_url) imageUrls.push(subProduct.image_url);
 
-      const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
+      const stepPromises = imagePrompts.map(async (imagePrompt) => {
+        const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
 
-      const { data: step, error: stepError } = await supabaseAdmin
-        .from('automation_run_steps')
-        .insert({ run_id: run.id, sub_product_id: subProduct.id, step_type: 'generate_image', status: 'pending', input_data: inputData })
-        .select('id')
-        .single();
-      if (stepError) throw stepError;
-      await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${subProduct.name}`, 'INFO', step.id);
+        const { data: step, error: stepError } = await supabaseAdmin
+          .from('automation_run_steps')
+          .insert({ run_id: run.id, sub_product_id: subProduct.id, step_type: 'generate_image', status: 'pending', input_data: inputData })
+          .select('id')
+          .single();
+        if (stepError) throw stepError;
+        
+        await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${subProduct.name}`, 'INFO', step.id);
 
-      supabaseAdmin.functions.invoke('generate-image', {
-        body: JSON.stringify({ action: 'generate_image', stepId: step.id, ...inputData }),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader
-        }
-      }).then(({ error }) => {
-        if (error) {
-          console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, error);
-          logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${error.message}`, 'ERROR', step.id);
-        } else {
-          logToDb(supabaseAdmin, runId, `Đã gọi function 'generate-image' cho bước ${step.id}.`, 'INFO', step.id);
-        }
+        // Asynchronously invoke the worker function
+        supabaseAdmin.functions.invoke('generate-image', {
+          body: { action: 'generate_image', stepId: step.id, ...inputData },
+          headers: { 'Authorization': authHeader }
+        }).catch(err => {
+          console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, err);
+          logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', step.id);
+        });
       });
-    });
 
-    await Promise.all(stepPromises);
+      await Promise.all(stepPromises);
+    }
 
+    // 6. --- FINALIZE RUN START ---
     await supabaseAdmin.from('automation_runs').update({ status: 'running' }).eq('id', run.id);
     await logToDb(supabaseAdmin, runId, 'Đã kích hoạt tất cả các bước ban đầu. Phiên chạy chuyển sang trạng thái "Đang chạy".', 'SUCCESS');
 
