@@ -52,16 +52,20 @@ serve(async (req) => {
 
     const headers: Record<string, string> = { 
       'xi-api-key': token,
-      // Thêm User-Agent của một trình duyệt phổ biến
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
     };
+
+    // Luôn thêm Content-Type cho các yêu cầu không phải form-data, theo đúng tài liệu.
+    if (!isFormData) {
+        headers['Content-Type'] = 'application/json';
+    }
+
     const fetchOptions: RequestInit = { method, headers };
 
     if (method !== 'GET' && body) {
       if (isFormData) {
         fetchOptions.body = body;
       } else {
-        headers['Content-Type'] = 'application/json';
         fetchOptions.body = JSON.stringify(body);
       }
     }
