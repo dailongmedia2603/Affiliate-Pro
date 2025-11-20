@@ -27,9 +27,9 @@ type Config = {
 };
 
 const defaultConfig: Config = {
-  imagePromptGenerationTemplate: 'Vui lòng tạo chính xác {{image_count}} prompt khác nhau để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\nYÊU CẦU CỰC KỲ QUAN TRỌNG: Mỗi prompt phải được đặt trong một cặp thẻ <prompt> và </prompt>. Ví dụ: <prompt>Một prompt mẫu.</prompt><prompt>Một prompt mẫu khác.</prompt>. KHÔNG thêm bất kỳ văn bản nào khác ngoài các thẻ prompt.',
+  imagePromptGenerationTemplate: 'MỤC ĐÍCH SỬ DỤNG: Các ảnh này sẽ được sử dụng cho mục đích review sản phẩm {{product_name}}, các ảnh này sẽ được chuyển thành video để ghép lại với nhau vì vậy các ảnh sẽ cần phải có liên quan đến nhau, mỗi ảnh được hiểu là 1 phân cảnh để tạo ra 1 video review sản chất lượng và hiệu quả. Vì vậy prompot tạo ảnh của mỗi ảnh phải có sự liên quan với nhau và phù hợp để chuyển sang từng ảnh.\n\nVui lòng tạo chính xác {{image_count}} prompt khác nhau để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\n\nMô tả sản phẩm: {{product_description}}.\n\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\n\nKịch bản tạo ảnh: {{image_count}} ảnh này kết hợp thành 1 kịch bản review hoàn chỉnh, hình ảnh cần được thiết kế để có câu chuyện liên quan đến sản phẩm, kết hợp yếu tố và tình huống đời thường sẽ gồm các phân cảnh: \n- Ảnh 1: Hình ảnh phù hợp để bắt đầu câu chuyện (yêu cầu: người + sản phẩm + background + bối cảnh)\n- Ảnh 2: Phân cảnh tiếp theo tiếp nối với ảnh 1. Là ảnh focus vào sản phẩm, cận cảnh. (yêu cầu: Chỉ sản phẩm + background + bối cảnh)\n- Ảnh 3: Phân cảnh tiếp theo mục đích là sử dụng sản phẩm, vd như người cầm sản phẩm lên hoặc hành động sử dụng,... (yêu cầu: người + sản phẩm + background + bối cảnh)\n- Ảnh 4: Phân cảnh cuối cùng là ảnh thể hiện ứng dụng của sản phẩm vào cuộc sống đời thường, vd như sử dụng {{product_name}} trong những trường hợp thực tế trong đời thường theo các tình huống thực tế phù hợp với sản phẩm. (yêu cầu: người + sản phẩm + background + bối cảnh)\n\nNếu yêu cầu là {{image_count}} ảnh thì hãy đưa ra prompt cho {{image_count}} ảnh. Có sự hệ thống và mạch lạc giữa ảnh đầu tiên và cuối cùng từ ảnh với nội dung bắt đầu câu chuyện -> chi tiết sản phẩm -> hành động sử dụng -> sử dụng sản phẩm trong tình huống đời thường cuộc sống. Mỗi phần có thể 1 hoặc nhiều ảnh tuỳ theo số lượng ảnh tạo chứ không bắt buộc là mỗi phần là 1 ảnh, miễn sao là hợp lý\n\nYÊU CẦU CỰC KỲ QUAN TRỌNG: Mỗi prompt phải được đặt trong một cặp thẻ <prompt> và </prompt>. Ví dụ: <prompt>Một prompt mẫu.</prompt><prompt>Một prompt mẫu khác.</prompt>, đồng thời trong mỗi cặp thẻ luôn luôn phải kèm 1 câu là: "QUAN TRỌNG: Đảm bảo tuyệt đối khuôn mặt của người mẫu trong ảnh và hình sản phẩm phải luôn được chính xác không được thay đổi sang sản phẩm, người mẫu khác nhé, đặc biệt là các chi tiết nhỏ của sản phẩm". . KHÔNG thêm bất kỳ văn bản nào khác ngoài các thẻ prompt.',
   imageCount: 4,
-  videoPromptGenerationTemplate: 'Dựa vào prompt tạo ảnh sau: "{{image_prompt}}", hãy tạo một prompt mô tả chuyển động ngắn gọn cho video, ví dụ: "a slow pan from left to right". Chỉ trả về prompt chuyển động, không thêm lời giải thích.',
+  videoPromptGenerationTemplate: 'MỤC ĐÍCH: Tạo một prompt mô tả chuyển động (motion prompt) ngắn gọn và tinh tế để biến ảnh tĩnh thành một video ngắn. Chuyển động phải phù hợp với nội dung và cảm xúc của ảnh gốc.\n\nBỐI CẢNH: Dưới đây là prompt đã được sử dụng để tạo ra ảnh gốc. Hãy phân tích nó để đề xuất chuyển động phù hợp:\nPrompt ảnh gốc: "{{image_prompt}}"\n\nYÊU CẦU: Chỉ trả về MỘT câu lệnh mô tả chuyển động bằng tiếng Anh. Các chuyển động nên đơn giản và chuyên nghiệp. Ví dụ: "a slow zoom in", "a gentle pan from left to right", "subtle camera rotation clockwise", "a slight tilt up".\n\nQUAN TRỌNG: KHÔNG thêm bất kỳ lời giải thích, lời chào, hay văn bản nào khác. Chỉ trả về duy nhất một dòng prompt chuyển động.',
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
   voiceId: null,
 };
@@ -45,6 +45,15 @@ const PlaceholderTooltip = ({ content }: { content: React.ReactNode }) => (
       </TooltipContent>
     </Tooltip>
   </TooltipProvider>
+);
+
+const VariablesList = ({ variables }: { variables: string[] }) => (
+    <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-gray-500">Biến có sẵn:</span>
+        {variables.map(variable => (
+            <code key={variable} className="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded-md">{`{{${variable}}}`}</code>
+        ))}
+    </div>
 );
 
 const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => {
@@ -150,19 +159,10 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                 <div className="space-y-2">
                   <div className="flex items-center">
                     <Label htmlFor="imagePromptGenerationTemplate">Mẫu Prompt cho AI (Tạo Prompt Ảnh)</Label>
-                    <PlaceholderTooltip content={
-                      <div>
-                        <p className="font-bold">Đây là câu lệnh để yêu cầu AI tạo ra các prompt tạo ảnh.</p>
-                        <p className="mt-2 font-bold">Các biến có thể dùng:</p>
-                        <ul className="list-disc list-inside">
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{product_name}}"}</code>: Tên sản phẩm con.</li>
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{product_description}}"}</code>: Mô tả sản phẩm con.</li>
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_count}}"}</code>: Số lượng ảnh cần tạo.</li>
-                        </ul>
-                      </div>
-                    } />
+                    <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra các prompt tạo ảnh." />
                   </div>
                   <Textarea id="imagePromptGenerationTemplate" value={config.imagePromptGenerationTemplate} onChange={(e) => handleConfigChange('imagePromptGenerationTemplate', e.target.value)} className="min-h-[150px] font-mono text-sm" />
+                  <VariablesList variables={['product_name', 'product_description', 'image_count']} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="imageCount">Số lượng ảnh / sản phẩm con</Label>
@@ -173,34 +173,20 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                 <div className="space-y-2">
                   <div className="flex items-center">
                     <Label htmlFor="videoPromptGenerationTemplate">Mẫu Prompt cho AI (Tạo Prompt Video)</Label>
-                    <PlaceholderTooltip content={
-                      <div>
-                        <p className="font-bold">Đây là câu lệnh để yêu cầu AI tạo ra prompt mô tả chuyển động cho video.</p>
-                        <p className="mt-2 font-bold">Biến có thể dùng:</p>
-                        <ul className="list-disc list-inside">
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_prompt}}"}</code>: Prompt đã dùng để tạo ảnh gốc.</li>
-                        </ul>
-                      </div>
-                    } />
+                    <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra prompt mô tả chuyển động cho video." />
                   </div>
                   <Textarea id="videoPromptGenerationTemplate" value={config.videoPromptGenerationTemplate} onChange={(e) => handleConfigChange('videoPromptGenerationTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
+                  <VariablesList variables={['image_prompt']} />
                 </div>
               </TabsContent>
               <TabsContent value="voice" className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center">
                     <Label htmlFor="voiceScriptTemplate">Mẫu Prompt Kịch Bản Voice</Label>
-                    <PlaceholderTooltip content={
-                      <div>
-                        <p className="font-bold">Các biến có thể dùng:</p>
-                        <ul className="list-disc list-inside">
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{product_name}}"}</code>: Tên sản phẩm con.</li>
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{product_description}}"}</code>: Mô tả sản phẩm con.</li>
-                        </ul>
-                      </div>
-                    } />
+                    <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra kịch bản voice cho video." />
                   </div>
                   <Textarea id="voiceScriptTemplate" value={config.voiceScriptTemplate} onChange={(e) => handleConfigChange('voiceScriptTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
+                  <VariablesList variables={['product_name', 'product_description']} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="voiceId">Giọng nói mặc định cho kênh</Label>
