@@ -101,7 +101,11 @@ serve(async (req) => {
                 await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Bắt đầu tạo prompt cho video.`, 'INFO', stepId);
                 
                 const geminiVideoPromptTemplate = config.config_data.videoPromptGenerationTemplate;
-                const geminiVideoPrompt = replacePlaceholders(geminiVideoPromptTemplate, { image_prompt: step.input_data.prompt });
+                const geminiVideoPrompt = replacePlaceholders(geminiVideoPromptTemplate, { 
+                  image_prompt: step.input_data.prompt,
+                  product_name: step.sub_product.name,
+                  product_description: step.sub_product.description
+                });
 
                 const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
                     body: { apiUrl: cachedUser.settings.gemini_api_url, prompt: geminiVideoPrompt, token: cachedUser.settings.gemini_api_key }
