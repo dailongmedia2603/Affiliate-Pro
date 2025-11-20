@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; };
-type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[] } | null; error_message: string | null; created_at: string; };
+type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[]; source_image_step_id?: string; } | null; error_message: string | null; created_at: string; };
 type AutomationRun = { id: string; status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; started_at: string; finished_at: string | null; automation_run_steps: AutomationRunStep[]; channel_id: string; };
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -150,7 +150,15 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     <>
       <Accordion type="single" collapsible className="w-full space-y-2">
         {runs.map(run => {
-          let imageCounter = 0;
+          const sortedSteps = run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          
+          const imageStepNumberMap = new Map<string, number>();
+          sortedSteps
+            .filter(step => step.step_type === 'generate_image')
+            .forEach((step, index) => {
+              imageStepNumberMap.set(step.id, index + 1);
+            });
+
           return (
             <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
               <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
@@ -175,12 +183,17 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
               </AccordionTrigger>
               <AccordionContent className="p-4 bg-gray-50/70">
                 <div className="space-y-4">
-                  {run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(step => {
+                  {sortedSteps.map(step => {
                     let title = step.step_type.replace(/_/g, ' ');
                     if (step.step_type === 'generate_image') {
-                      imageCounter++;
-                      title = `Generate Image ${imageCounter}`;
+                      const num = imageStepNumberMap.get(step.id);
+                      if (num) title = `Generate Image ${num}`;
+                    } else if (step.step_type === 'generate_video') {
+                      const sourceImageStepId = step.input_data?.source_image_step_id;
+                      const num = sourceImageStepId ? imageStepNumberMap.get(sourceImageStepId) : null;
+                      title = num ? `Generate Video ${num}` : 'Generate Video';
                     }
+
                     return (
                       <div key={step.id} className="p-3 border rounded-lg bg-white shadow-sm">
                         <div className="flex items-start justify-between">
