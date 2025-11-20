@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Upload, Video, X, AlertTriangle, CheckCircle, FileAudio, Film, XCircle } from 'lucide-react';
+import { Loader2, Upload, Video, X, AlertTriangle, CheckCircle, FileAudio, Film, XCircle, Wand } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type MediaFile = {
   file: File;
@@ -18,10 +19,33 @@ type RendiTask = {
   id: string;
   rendi_command_id: string;
   status: string;
-  output_files: { out_1: { storage_url: string } } | null;
+  output_files: { [key: string]: { storage_url: string } } | null;
   error_message: string | null;
   created_at: string;
 };
+
+const transitions = [
+    { value: 'fade', label: 'Mờ dần (Fade)' },
+    { value: 'wipeleft', label: 'Quét Trái (Wipe Left)' },
+    { value: 'wiperight', label: 'Quét Phải (Wipe Right)' },
+    { value: 'wipeup', label: 'Quét Lên (Wipe Up)' },
+    { value: 'wipedown', label: 'Quét Xuống (Wipe Down)' },
+    { value: 'slideleft', label: 'Trượt Trái (Slide Left)' },
+    { value: 'slideright', label: 'Trượt Phải (Slide Right)' },
+    { value: 'slideup', label: 'Trượt Lên (Slide Up)' },
+    { value: 'slidedown', label: 'Trượt Xuống (Slide Down)' },
+    { value: 'circlecrop', label: 'Cắt Tròn (Circle Crop)' },
+    { value: 'rectcrop', label: 'Cắt Chữ Nhật (Rect Crop)' },
+    { value: 'distance', label: 'Khoảng Cách (Distance)' },
+    { value: 'radial', label: 'Tỏa Tròn (Radial)' },
+    { value: 'smoothleft', label: 'Mượt Trái (Smooth Left)' },
+    { value: 'dissolve', label: 'Hòa Tan (Dissolve)' },
+    { value: 'pixelize', label: 'Điểm Ảnh (Pixelize)' },
+    { value: 'diagtl', label: 'Chéo Trên Trái (Diagonal TL)' },
+    { value: 'diagtr', label: 'Chéo Trên Phải (Diagonal TR)' },
+    { value: 'diagbl', label: 'Chéo Dưới Trái (Diagonal BL)' },
+    { value: 'diagbr', label: 'Chéo Dưới Phải (Diagonal BR)' },
+];
 
 const RendiApiTestPage = () => {
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
@@ -29,6 +53,10 @@ const RendiApiTestPage = () => {
   const [task, setTask] = useState<RendiTask | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const pollingIntervalRef = useRef<number | null>(null);
+  
+  const [transition, setTransition] = useState<string>('fade');
+  const [transitionDuration, setTransitionDuration] = useState<number>(1);
+  const [clipDuration, setClipDuration] = useState<number>(3);
 
   useEffect(() => {
     const checkApiKey = async () => {
@@ -97,6 +125,8 @@ const RendiApiTestPage = () => {
 
         if (error) throw error;
 
+        const finalOutputKey = Object.keys(data.output_files || {}).find(k => k.startsWith('final_output'));
+
         if (data.status === 'SUCCESS' || data.status === 'FAILED') {
           if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
           setIsProcessing(false);
@@ -134,45 +164,63 @@ const RendiApiTestPage = () => {
     }
 
     setIsProcessing(true);
+    setTask(null);
     const loadingToast = showLoading('Đang tải file lên...');
 
     try {
-      const uploadPromises = mediaFiles.map(mf => uploadFile(mf.file));
-      const urls = await Promise.all(uploadPromises);
+      const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
       dismissToast(loadingToast);
-      showLoading('Đã tải lên. Đang gửi yêu cầu render...');
+      showLoading('Đã tải lên. Đang xây dựng và gửi lệnh render...');
 
       const input_files: { [key: string]: string } = {};
-      let filter_complex = '';
-      let lastVideoOutput = '';
+      const output_files: { [key: string]: string } = {};
       const ffmpeg_commands: string[] = [];
 
-      const videoInputs = videosAndImages.map((mf, i) => {
-        const alias = `in_${i + 1}`;
-        input_files[alias] = urls[mediaFiles.indexOf(mf)];
-        return `[${i}:v]`;
+      // Step 1: Standardize all inputs to video clips of the same duration and resolution
+      const resolution = "1280:720";
+      videosAndImages.forEach((mf, i) => {
+        const inputAlias = `in_${i + 1}`;
+        const outputAlias = `clip_${i + 1}`;
+        input_files[inputAlias] = urls[mediaFiles.indexOf(mf)];
+        output_files[outputAlias] = `${outputAlias}.mp4`;
+        
+        let cmd = '';
+        if (mf.type === 'image') {
+          cmd = `-loop 1 -t ${clipDuration} -i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -pix_fmt yuv420p {{${outputAlias}}}`;
+        } else { // video
+          cmd = `-i {{${inputAlias}}} -t ${clipDuration} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:a copy {{${outputAlias}}}`;
+        }
+        ffmpeg_commands.push(cmd);
       });
 
-      // Command 1: Concatenate all videos/images
-      filter_complex = `${videoInputs.join('')}concat=n=${videosAndImages.length}:v=1:a=0[v]`;
-      ffmpeg_commands.push(`-filter_complex "${filter_complex}" -map "[v]" {{out_intermediate_video}}`);
+      // Step 2: Chain transitions
+      let lastOutput = 'clip_1';
+      if (videosAndImages.length > 1) {
+        for (let i = 1; i < videosAndImages.length; i++) {
+          const currentInput = `clip_${i + 1}`;
+          const transitionOutput = `transitioned_${i}`;
+          output_files[transitionOutput] = `${transitionOutput}.mp4`;
+          
+          const offset = i * clipDuration;
+          const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
+          ffmpeg_commands.push(cmd);
+          lastOutput = transitionOutput;
+        }
+      }
       
-      // Command 2: Add audio if present
+      // Step 3: Add audio if present, or just copy the final video
+      const finalVideoAlias = 'final_output_1';
+      output_files[finalVideoAlias] = 'final_output.mp4';
+
       if (audioFile) {
-        const audioAlias = `in_audio`;
+        const audioAlias = 'in_audio';
         input_files[audioAlias] = urls[mediaFiles.indexOf(audioFile)];
-        ffmpeg_commands.push(`-i {{out_intermediate_video}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{out_1}}`);
-        lastVideoOutput = 'out_1';
+        ffmpeg_commands.push(`-i {{${lastOutput}}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{${finalVideoAlias}}}`);
       } else {
-        ffmpeg_commands.push(`-i {{out_intermediate_video}} -c copy {{out_1}}`);
-        lastVideoOutput = 'out_1';
+        ffmpeg_commands.push(`-i {{${lastOutput}}} -c copy {{${finalVideoAlias}}}`);
       }
 
-      const payload = {
-        input_files,
-        output_files: { out_intermediate_video: 'intermediate.mp4', out_1: 'final_output.mp4' },
-        ffmpeg_commands,
-      };
+      const payload = { input_files, output_files, ffmpeg_commands };
 
       const { data: { user } } = await supabase.auth.getUser();
       const { data: dbTask, error: dbError } = await supabase.from('rendi_tasks').insert({ user_id: user!.id, status: 'QUEUED' }).select().single();
@@ -199,6 +247,8 @@ const RendiApiTestPage = () => {
     }
   };
 
+  const finalOutputUrl = task?.status === 'completed' ? Object.values(task.output_files || {}).find(f => f.storage_url.includes('final_output'))?.storage_url : null;
+
   if (apiKeySet === null) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>;
   }
@@ -224,32 +274,49 @@ const RendiApiTestPage = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>1. Tải lên Media</CardTitle>
-            <CardDescription>Chọn các file video, hình ảnh và một file âm thanh (tùy chọn) để ghép.</CardDescription>
+            <CardTitle>1. Tải lên & Cấu hình</CardTitle>
+            <CardDescription>Chọn file, hiệu ứng và thời lượng.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="file-upload" className="cursor-pointer inline-block">Chọn Video/Ảnh/Audio</Label>
-                <Input id="file-upload" type="file" multiple accept="video/*,image/*,audio/*" onChange={handleFileChange} className="mt-2" />
-              </div>
-              <div className="space-y-2 max-h-80 overflow-y-auto p-2 border rounded-md bg-gray-50">
+          <CardContent className="space-y-6">
+            <div>
+              <Label htmlFor="file-upload" className="cursor-pointer inline-block mb-2">Chọn Video/Ảnh/Audio</Label>
+              <Input id="file-upload" type="file" multiple accept="video/*,image/*,audio/*" onChange={handleFileChange} />
+              <div className="mt-4 space-y-2 max-h-60 overflow-y-auto p-2 border rounded-md bg-gray-50">
                 {mediaFiles.length === 0 ? (
                   <p className="text-sm text-center text-gray-500 py-4">Chưa có file nào được chọn.</p>
                 ) : (
                   mediaFiles.map((mf, index) => (
                     <div key={index} className="flex items-center justify-between p-2 bg-white border rounded-md">
-                      <div className="flex items-center gap-3">
-                        {mf.type === 'image' && <img src={mf.previewUrl} className="w-12 h-12 object-cover rounded-md" />}
-                        {mf.type === 'video' && <video src={mf.previewUrl} className="w-12 h-12 object-cover rounded-md bg-black" />}
-                        {mf.type === 'audio' && <div className="w-12 h-12 flex items-center justify-center bg-gray-200 rounded-md"><FileAudio className="w-6 h-6 text-gray-600" /></div>}
-                        <span className="text-sm font-medium truncate w-48" title={mf.file.name}>{mf.file.name}</span>
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        {mf.type === 'image' && <img src={mf.previewUrl} className="w-12 h-12 object-cover rounded-md flex-shrink-0" />}
+                        {mf.type === 'video' && <video src={mf.previewUrl} className="w-12 h-12 object-cover rounded-md bg-black flex-shrink-0" />}
+                        {mf.type === 'audio' && <div className="w-12 h-12 flex items-center justify-center bg-gray-200 rounded-md flex-shrink-0"><FileAudio className="w-6 h-6 text-gray-600" /></div>}
+                        <span className="text-sm font-medium truncate" title={mf.file.name}>{mf.file.name}</span>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => removeFile(index)}><X className="w-4 h-4" /></Button>
                     </div>
                   ))
                 )}
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="clip-duration">Thời lượng mỗi clip (s)</Label>
+                    <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="transition-duration">Thời lượng chuyển cảnh (s)</Label>
+                    <Input id="transition-duration" type="number" value={transitionDuration} onChange={e => setTransitionDuration(Number(e.target.value))} min="0.1" step="0.1" />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="transition-effect">Hiệu ứng chuyển cảnh</Label>
+                    <Select value={transition} onValueChange={setTransition}>
+                        <SelectTrigger id="transition-effect"><SelectValue placeholder="Chọn hiệu ứng" /></SelectTrigger>
+                        <SelectContent>
+                            {transitions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
           </CardContent>
         </Card>
@@ -260,8 +327,8 @@ const RendiApiTestPage = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button onClick={handleMerge} disabled={isProcessing || mediaFiles.length === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white">
-              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Video className="mr-2 h-4 w-4" />}
-              Ghép Video
+              {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand className="mr-2 h-4 w-4" />}
+              Ghép Video & Áp dụng hiệu ứng
             </Button>
             {task && (
               <div className="space-y-3 pt-4 border-t">
@@ -269,13 +336,13 @@ const RendiApiTestPage = () => {
                 <div className="flex items-center gap-2 p-3 border rounded-md bg-gray-50">
                   {task.status === 'completed' && <CheckCircle className="w-5 h-5 text-green-500" />}
                   {task.status === 'failed' && <XCircle className="w-5 h-5 text-red-500" />}
-                  {(task.status !== 'completed' && task.status !== 'failed') && <Loader2 className="w-5 h-5 animate-spin text-blue-500" />}
+                  {(!['completed', 'failed'].includes(task.status)) && <Loader2 className="w-5 h-5 animate-spin text-blue-500" />}
                   <span className="font-mono text-sm">{task.status}</span>
                 </div>
-                {task.status === 'completed' && task.output_files?.out_1?.storage_url && (
+                {finalOutputUrl && (
                   <div>
                     <h3 className="font-semibold mb-2">Video kết quả:</h3>
-                    <video src={task.output_files.out_1.storage_url} controls className="w-full rounded-lg border" />
+                    <video src={finalOutputUrl} controls className="w-full rounded-lg border" />
                   </div>
                 )}
                 {task.status === 'failed' && task.error_message && (
