@@ -114,8 +114,8 @@ serve(async (req) => {
                 await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
                 supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: videoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
                 
-                await logToDb(supabaseAdmin, runId, `Đợi 5 giây trước khi xử lý bước tiếp theo...`, 'INFO');
-                await sleep(5000);
+                await logToDb(supabaseAdmin, runId, `Đợi 30 giây trước khi xử lý bước tiếp theo...`, 'INFO');
+                await sleep(30000);
 
               } else if (step.step_type === 'generate_video') {
                 await logToDb(supabaseAdmin, runId, `Bước 'Tạo Video' hoàn thành. Kích hoạt bước 'Tạo Voice'.`, 'INFO', stepId);

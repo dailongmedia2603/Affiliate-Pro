@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; };
-type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[]; source_image_step_id?: string; } | null; error_message: string | null; created_at: string; };
+type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; } | null; error_message: string | null; created_at: string; };
 type AutomationRun = { id: string; status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; started_at: string; finished_at: string | null; automation_run_steps: AutomationRunStep[]; channel_id: string; };
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -193,60 +193,75 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
               <AccordionContent className="p-4 bg-gray-50/70">
                 <div className="space-y-4">
                   {contentPairs.map(({ pairNumber, imageStep, videoStep }) => (
-                    <div key={imageStep.id} className="p-4 border rounded-lg bg-white shadow-sm space-y-3">
-                      <h4 className="font-bold text-md text-gray-700">Cặp nội dung {pairNumber}</h4>
-                      
-                      {/* Render Image Step */}
-                      <div className="p-3 border rounded-md bg-gray-50/50">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <StepIcon type={imageStep.step_type} />
-                            <div>
-                              <p className="font-semibold capitalize">Generate Image {pairNumber}</p>
-                              <p className="text-xs text-gray-500">Tạo lúc: {new Date(imageStep.created_at).toLocaleTimeString()}</p>
-                            </div>
-                          </div>
-                          <StatusBadge status={imageStep.status} />
-                        </div>
-                        <div className="mt-3 flex items-start gap-4">
-                          {imageStep.status === 'completed' && imageStep.output_data?.url && (
-                            <button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer">
-                              <img src={imageStep.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" />
-                            </button>
-                          )}
-                          <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}>
-                            <FileText className="w-4 h-4 mr-2" />
-                            Chi tiết
-                          </Button>
-                        </div>
-                        {imageStep.status === 'failed' && imageStep.error_message && (
-                          <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>
-                        )}
-                      </div>
-
-                      {/* Render Video Step */}
-                      {videoStep && (
-                        <div className="p-3 border rounded-md bg-gray-50/50">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              <StepIcon type={videoStep.step_type} />
-                              <div>
-                                <p className="font-semibold capitalize">Generate Video {pairNumber}</p>
-                                <p className="text-xs text-gray-500">Tạo lúc: {new Date(videoStep.created_at).toLocaleTimeString()}</p>
+                    <div key={imageStep.id} className="p-4 border rounded-lg bg-white shadow-sm">
+                      <h4 className="font-bold text-md text-gray-700 mb-3">Cặp nội dung {pairNumber}</h4>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Left Column: Image Step */}
+                        <div className="p-3 border rounded-md bg-gray-50/50 flex flex-col justify-between">
+                          <div>
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <StepIcon type={imageStep.step_type} />
+                                <div>
+                                  <p className="font-semibold capitalize">Generate Image {pairNumber}</p>
+                                  <p className="text-xs text-gray-500">Tạo lúc: {new Date(imageStep.created_at).toLocaleTimeString()}</p>
+                                </div>
                               </div>
+                              <StatusBadge status={imageStep.status} />
                             </div>
-                            <StatusBadge status={videoStep.status} />
+                            {imageStep.status === 'failed' && imageStep.error_message && (
+                              <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>
+                            )}
                           </div>
-                          {videoStep.status === 'completed' && videoStep.output_data?.url && (
-                            <div className="mt-3">
-                              <video src={videoStep.output_data.url} controls className="max-w-xs rounded-md border" />
+                          <div className="mt-3 flex items-start gap-4">
+                            {imageStep.status === 'completed' && imageStep.output_data?.url && (
+                              <button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer">
+                                <img src={imageStep.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" />
+                              </button>
+                            )}
+                            <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}>
+                              <FileText className="w-4 h-4 mr-2" />
+                              Chi tiết
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Right Column: Video Step */}
+                        <div className="p-3 border rounded-md bg-gray-50/50 flex flex-col justify-between">
+                          {videoStep ? (
+                            <>
+                              <div>
+                                <div className="flex items-start justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <StepIcon type={videoStep.step_type} />
+                                    <div>
+                                      <p className="font-semibold capitalize">Generate Video {pairNumber}</p>
+                                      <p className="text-xs text-gray-500">Tạo lúc: {new Date(videoStep.created_at).toLocaleTimeString()}</p>
+                                    </div>
+                                  </div>
+                                  <StatusBadge status={videoStep.status} />
+                                </div>
+                                {videoStep.status === 'failed' && videoStep.error_message && (
+                                  <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {videoStep.error_message}</div>
+                                )}
+                              </div>
+                              <div className="mt-3 flex flex-col items-start gap-4">
+                                {videoStep.status === 'completed' && videoStep.output_data?.url && (
+                                  <video src={videoStep.output_data.url} controls className="w-full rounded-md border" />
+                                )}
+                                 <Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}>
+                                    <FileText className="w-4 h-4 mr-2" />
+                                    Chi tiết
+                                </Button>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex items-center justify-center h-full text-gray-400">
+                              <p className="text-sm">Chờ tạo video...</p>
                             </div>
-                          )}
-                          {videoStep.status === 'failed' && videoStep.error_message && (
-                            <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {videoStep.error_message}</div>
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   ))}
 
@@ -282,38 +297,53 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
       <Dialog open={!!detailsStep} onOpenChange={(isOpen) => !isOpen && setDetailsStep(null)}>
         <DialogContent className="max-w-4xl">
             <DialogHeader>
-                <DialogTitle>Chi tiết bước tạo ảnh</DialogTitle>
+                <DialogTitle>Chi tiết bước: {detailsStep?.step_type.replace(/_/g, ' ')}</DialogTitle>
                 <DialogDescription>
-                    Thông tin đầu vào và kết quả của bước tạo ảnh.
+                    Thông tin đầu vào và kết quả của bước.
                 </DialogDescription>
             </DialogHeader>
             {detailsStep && (
                 <div className="grid md:grid-cols-2 gap-6 pt-4 max-h-[70vh] overflow-y-auto">
+                    {/* Input Column */}
                     <div className="space-y-4">
                         <div>
                             <h3 className="font-semibold mb-2 text-gray-800">Prompt đã sử dụng:</h3>
-                            <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt}</p>
+                            <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt || "Không có prompt"}</p>
                         </div>
                         <div>
                             <h3 className="font-semibold mb-2 text-gray-800">Ảnh đầu vào:</h3>
-                            {(detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
-                                <div className="grid grid-cols-2 gap-2">
-                                    {detailsStep.input_data.image_urls.map((url, index) => (
-                                        <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                            {detailsStep.step_type === 'generate_image' && (
+                                (detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {detailsStep.input_data.image_urls.map((url, index) => (
+                                            <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                                )
+                            )}
+                            {detailsStep.step_type === 'generate_video' && (
+                                detailsStep.input_data?.imageUrl ? (
+                                    <img src={detailsStep.input_data.imageUrl} alt="Input" className="rounded-md border object-cover w-full" />
+                                ) : (
+                                    <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                                )
                             )}
                         </div>
                     </div>
+                    {/* Output Column */}
                     <div>
-                        <h3 className="font-semibold mb-2 text-gray-800">Ảnh kết quả:</h3>
+                        <h3 className="font-semibold mb-2 text-gray-800">Kết quả:</h3>
                         {detailsStep.output_data?.url ? (
-                          <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                            detailsStep.step_type === 'generate_image' ? (
+                                <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                            ) : (
+                                <video src={detailsStep.output_data.url} controls className="rounded-md border w-full" />
+                            )
                         ) : (
                           <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
-                            <p>Bước này đã thất bại, không có ảnh kết quả.</p>
+                            <p>Bước này chưa hoàn thành hoặc đã thất bại, không có kết quả.</p>
                           </div>
                         )}
                     </div>
