@@ -63,17 +63,40 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
   const [config, setConfig] = useState<Config>(defaultConfig);
   const [clonedVoices, setClonedVoices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingVoices, setLoadingVoices] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const handleConfigChange = (field: keyof Config, value: any) => {
     setConfig(prev => ({ ...prev, [field]: value }));
   };
 
+  const fetchClonedVoices = useCallback(async (apiKey: string) => {
+    setLoadingVoices(true);
+    try {
+      const { data: voiceData, error: voiceError } = await supabase.functions.invoke('proxy-voice-api', {
+        body: { path: 'v1m/voice/clone', token: apiKey, method: 'GET' }
+      });
+      if (voiceError) throw voiceError;
+      if (voiceData.success) {
+        setClonedVoices(voiceData.data || []);
+      } else {
+        throw new Error(voiceData.error || 'Failed to fetch cloned voices');
+      }
+    } catch (error) {
+      showError(`Không thể tải danh sách giọng nói: ${error.message}`);
+      setClonedVoices([]);
+    } finally {
+      setLoadingVoices(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isOpen || !channelId) return;
 
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
       setLoading(true);
+      setClonedVoices([]);
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         showError("Không thể xác thực người dùng.");
@@ -91,28 +114,17 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
       } else {
         setConfig(defaultConfig);
       }
+      
+      setLoading(false);
 
       const voiceApiKey = settingsRes.data?.voice_api_key;
       if (voiceApiKey) {
-        try {
-          const { data: voiceData, error: voiceError } = await supabase.functions.invoke('proxy-voice-api', {
-            body: { path: 'v1m/voice/clone', token: voiceApiKey, method: 'GET' }
-          });
-          if (voiceError) throw voiceError;
-          if (voiceData.success) {
-            setClonedVoices(voiceData.data || []);
-          } else {
-            throw new Error(voiceData.error || 'Failed to fetch cloned voices');
-          }
-        } catch (error) {
-          showError(`Không thể tải danh sách giọng nói: ${error.message}`);
-        }
+        fetchClonedVoices(voiceApiKey);
       }
-      setLoading(false);
     };
 
-    fetchData();
-  }, [isOpen, channelId]);
+    fetchInitialData();
+  }, [isOpen, channelId, fetchClonedVoices]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -210,13 +222,17 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="voiceId">Giọng nói mặc định cho kênh</Label>
-                  <Select value={config.voiceId || undefined} onValueChange={(value) => handleConfigChange('voiceId', value)}>
+                  <Select value={config.voiceId || undefined} onValueChange={(value) => handleConfigChange('voiceId', value)} disabled={loadingVoices}>
                     <SelectTrigger id="voiceId">
-                      <SelectValue placeholder="Chọn một giọng nói..." />
+                      <SelectValue placeholder={loadingVoices ? "Đang tải giọng nói..." : "Chọn một giọng nói..."} />
                     </SelectTrigger>
                     <SelectContent>
-                      {clonedVoices.length > 0 ? (
-                        clonedVoices.map(voice => (
+                      {loadingVoices ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : clonedVoices.length > 0 ? (
+                        clonedVoices.map((voice: any) => (
                           <SelectItem key={voice.voice_id} value={voice.voice_id}>{voice.voice_name}</SelectItem>
                         ))
                       ) : (
