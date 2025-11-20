@@ -83,21 +83,67 @@ serve(async (req) => {
             if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
               const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
               const resultUrl = job?.results?.raw?.url;
-              const errorMessage = job?.error;
-
-              await supabaseAdmin.from('automation_run_steps').update({ status: newStatus, output_data: { url: resultUrl }, error_message: errorMessage }).eq('id', stepId);
-              await logToDb(supabaseAdmin, runId, `Bước ${stepId} (${step.step_type}) đã cập nhật trạng thái: ${newStatus}.`, newStatus === 'completed' ? 'SUCCESS' : 'ERROR', stepId);
+              const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : 'Lỗi không xác định từ API.');
 
               if (newStatus === 'failed') {
-                await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
-                await logToDb(supabaseAdmin, runId, `Phiên chạy bị đánh dấu là thất bại do bước ${stepId} thất bại từ API.`, 'ERROR');
+                const maxRetries = 3;
+                const currentRetryCount = step.retry_count || 0;
+
+                if (currentRetryCount < maxRetries) {
+                  await logToDb(supabaseAdmin, runId, `Bước ${stepId} (${step.step_type}) thất bại. Thử lại lần ${currentRetryCount + 1}/${maxRetries}. Lỗi: ${errorMessage}`, 'WARN', stepId);
+                  
+                  await supabaseAdmin.from('automation_run_steps').update({ 
+                      retry_count: currentRetryCount + 1,
+                      status: 'pending',
+                      api_task_id: null,
+                      error_message: `Thất bại lần ${currentRetryCount + 1}. Lỗi: ${errorMessage}`
+                  }).eq('id', stepId);
+
+                  if (step.step_type === 'generate_image') {
+                    supabaseAdmin.functions.invoke('generate-image', {
+                        body: { action: 'generate_image', stepId: step.id, userId: step.run.user_id, ...step.input_data },
+                    }).catch(err => {
+                        console.error(`Lỗi khi gọi lại function generate-image cho bước ${step.id}:`, err);
+                        logToDb(supabaseAdmin, runId, `LỖI HỆ THỐNG: Không thể gọi lại function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', stepId);
+                    });
+                  } else if (step.step_type === 'generate_video') {
+                    const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+                    if (configError || !config) {
+                        throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id} để thử lại.`);
+                    }
+                    const videoDuration = config.config_data.videoDuration || 5;
+                    const videoOptions = { duration: videoDuration, width: 1024, height: 576, resolution: "1080p" };
+                    
+                    supabaseAdmin.functions.invoke('automation-worker-video', { 
+                        body: JSON.stringify({ 
+                            stepId: step.id, 
+                            userId: step.run.user_id, 
+                            model: step.input_data.model, 
+                            prompt: step.input_data.prompt, 
+                            imageUrl: step.input_data.imageUrl, 
+                            options: videoOptions 
+                        }) 
+                    }).catch(err => {
+                        console.error(`Lỗi khi gọi lại function automation-worker-video cho bước ${step.id}:`, err);
+                        logToDb(supabaseAdmin, runId, `LỖI HỆ THỐNG: Không thể gọi lại function 'automation-worker-video'. Lỗi: ${err.message}`, 'ERROR', stepId);
+                    });
+                  }
+                } else {
+                  await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: errorMessage }).eq('id', stepId);
+                  await logToDb(supabaseAdmin, runId, `Bước ${stepId} (${step.step_type}) đã thất bại sau ${maxRetries} lần thử. Dừng phiên chạy.`, 'ERROR', stepId);
+                  await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
+                }
                 continue;
               }
+
+              // If completed
+              await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: resultUrl }, error_message: null }).eq('id', stepId);
+              await logToDb(supabaseAdmin, runId, `Bước ${stepId} (${step.step_type}) đã hoàn thành.`, 'SUCCESS', stepId);
 
               const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
               if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
 
-              if (step.step_type === 'generate_image' && newStatus === 'completed') {
+              if (step.step_type === 'generate_image') {
                 try {
                   await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Bắt đầu tạo prompt cho video.`, 'INFO', stepId);
                   
@@ -146,7 +192,7 @@ serve(async (req) => {
                   await logToDb(supabaseAdmin, runId, `Lỗi khi chuẩn bị bước tạo video sau bước ảnh ${stepId}: ${nextStepError.message}`, 'ERROR');
                   await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
                 }
-              } else if (step.step_type === 'generate_video' && newStatus === 'completed') {
+              } else if (step.step_type === 'generate_video') {
                 await logToDb(supabaseAdmin, runId, `Bước 'Tạo Video' hoàn thành. Kích hoạt bước 'Tạo Voice'.`, 'INFO', stepId);
                 const { data: voiceStep, error: voiceStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_voice', status: 'pending', input_data: {} }).select('id').single();
                 if (voiceStepError) throw voiceStepError;

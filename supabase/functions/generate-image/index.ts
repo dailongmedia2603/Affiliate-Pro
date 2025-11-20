@@ -38,17 +38,25 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("Không thể xác thực người dùng.");
-
-    const { action, ...payload } = await req.json();
+    const body = await req.json();
+    const { action, userId: payloadUserId, ...payload } = body;
     stepId = payload.stepId;
+
+    let userId;
+    if (payloadUserId) {
+        userId = payloadUserId;
+    } else {
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+        );
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) throw new Error("Không thể xác thực người dùng.");
+        userId = user.id;
+    }
+    
+    if (!userId) throw new Error("Không thể xác định người dùng.");
 
     if (stepId) {
         const { data: stepData, error: stepError } = await supabaseAdmin.from('automation_run_steps').select('run_id').eq('id', stepId).single();
@@ -58,8 +66,8 @@ serve(async (req) => {
 
     await logToDb(supabaseAdmin, runId, `Function 'generate-image' đã bắt đầu.`, 'INFO', stepId);
 
-    const { data: settings, error: settingsError } = await supabaseClient
-      .from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', user.id).single();
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', userId).single();
 
     if (settingsError || !settings || !settings.higgsfield_cookie || !settings.higgsfield_clerk_context) {
       throw new Error('Không tìm thấy thông tin xác thực Higgsfield.');
@@ -96,7 +104,7 @@ serve(async (req) => {
       if (stepId) {
         await supabaseAdmin.from(logTable).update({ status: 'running' }).eq(logIdField, logId);
       } else {
-        const { data: log, error: logError } = await supabaseAdmin.from(logTable).insert({ user_id: user.id, model, prompt, status: 'processing' }).select(logIdField).single();
+        const { data: log, error: logError } = await supabaseAdmin.from(logTable).insert({ user_id: userId, model, prompt, status: 'processing' }).select(logIdField).single();
         if (logError) throw logError;
         logId = log[logIdField];
       }

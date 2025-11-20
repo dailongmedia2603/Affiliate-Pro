@@ -1,0 +1,1 @@
+ALTER TABLE public.automation_run_steps ADD COLUMN IF NOT EXISTS retry_count INTEGER DEFAULT 0;
