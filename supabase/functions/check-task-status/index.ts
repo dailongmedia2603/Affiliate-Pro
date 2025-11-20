@@ -62,7 +62,7 @@ serve(async (req) => {
           const runId = step.run.id;
           const stepId = step.id;
           try {
-            if (step.step_type === 'generate_voice') continue; // Voice worker handles its own polling
+            if (step.step_type === 'generate_voice') continue;
 
             let cachedUser = userCache.get(step.run.user_id);
             if (!cachedUser) {
@@ -90,50 +90,61 @@ serve(async (req) => {
 
               if (newStatus === 'failed') {
                 await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
-                await logToDb(supabaseAdmin, runId, `Phiên chạy bị đánh dấu là thất bại do bước ${stepId} thất bại.`, 'ERROR');
+                await logToDb(supabaseAdmin, runId, `Phiên chạy bị đánh dấu là thất bại do bước ${stepId} thất bại từ API.`, 'ERROR');
                 continue;
               }
 
               const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
               if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
 
-              if (step.step_type === 'generate_image') {
-                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Bắt đầu tạo prompt cho video.`, 'INFO', stepId);
-                
-                const geminiVideoPromptTemplate = config.config_data.videoPromptGenerationTemplate;
-                const geminiVideoPrompt = replacePlaceholders(geminiVideoPromptTemplate, { 
-                  image_prompt: step.input_data.prompt,
-                  product_name: step.sub_product.name,
-                  product_description: step.sub_product.description
-                });
+              if (step.step_type === 'generate_image' && newStatus === 'completed') {
+                try {
+                  await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Bắt đầu tạo prompt cho video.`, 'INFO', stepId);
+                  
+                  const geminiVideoPromptTemplate = config.config_data.videoPromptGenerationTemplate;
+                  const geminiVideoPrompt = replacePlaceholders(geminiVideoPromptTemplate, { 
+                    image_prompt: step.input_data.prompt,
+                    product_name: step.sub_product.name,
+                    product_description: step.sub_product.description
+                  });
 
-                const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
-                    body: { apiUrl: cachedUser.settings.gemini_api_url, prompt: geminiVideoPrompt, token: cachedUser.settings.gemini_api_key }
-                });
-                if (geminiError) throw new Error(`Lỗi gọi Gemini để tạo prompt video: ${geminiError.message}`);
-                if (!geminiResponse.success) throw new Error(`Lỗi từ Gemini: ${geminiResponse.error || geminiResponse.message}`);
-                
-                const finalVideoPrompt = geminiResponse.answer;
-                await logToDb(supabaseAdmin, runId, `AI đã tạo prompt video: "${finalVideoPrompt}"`, 'SUCCESS', stepId);
+                  const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+                      body: { apiUrl: cachedUser.settings.gemini_api_url, prompt: geminiVideoPrompt, token: cachedUser.settings.gemini_api_key }
+                  });
 
-                const videoInputData = { 
-                  prompt: finalVideoPrompt, 
-                  imageUrl: resultUrl, 
-                  model: 'kling',
-                  source_image_step_id: step.id,
-                  gemini_prompt_for_video: geminiVideoPrompt
-                };
+                  if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
+                  if (!geminiResponse || !geminiResponse.success) {
+                    const geminiErrorMessage = geminiResponse?.error || geminiResponse?.message || 'Phản hồi không hợp lệ hoặc không thành công.';
+                    throw new Error(`Lỗi từ Gemini: ${geminiErrorMessage}`);
+                  }
+                  
+                  const finalVideoPrompt = geminiResponse.answer;
+                  if (!finalVideoPrompt) throw new Error("AI không trả về prompt video (trường 'answer' bị trống).");
 
-                const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData }).select('id').single();
-                if (videoStepError) throw videoStepError;
-                
-                await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
-                supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: finalVideoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
-                
-                await logToDb(supabaseAdmin, runId, `Đợi 30 giây trước khi xử lý bước tiếp theo...`, 'INFO');
-                await sleep(30000);
+                  await logToDb(supabaseAdmin, runId, `AI đã tạo prompt video: "${finalVideoPrompt}"`, 'SUCCESS', stepId);
 
-              } else if (step.step_type === 'generate_video') {
+                  const videoInputData = { 
+                    prompt: finalVideoPrompt, 
+                    imageUrl: resultUrl, 
+                    model: 'kling',
+                    source_image_step_id: step.id,
+                    gemini_prompt_for_video: geminiVideoPrompt
+                  };
+
+                  const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData }).select('id').single();
+                  if (videoStepError) throw videoStepError;
+                  
+                  await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
+                  supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: finalVideoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
+                  
+                  await logToDb(supabaseAdmin, runId, `Đợi 30 giây trước khi xử lý bước tiếp theo...`, 'INFO');
+                  await sleep(30000);
+
+                } catch (nextStepError) {
+                  await logToDb(supabaseAdmin, runId, `Lỗi khi chuẩn bị bước tạo video sau bước ảnh ${stepId}: ${nextStepError.message}`, 'ERROR');
+                  await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
+                }
+              } else if (step.step_type === 'generate_video' && newStatus === 'completed') {
                 await logToDb(supabaseAdmin, runId, `Bước 'Tạo Video' hoàn thành. Kích hoạt bước 'Tạo Voice'.`, 'INFO', stepId);
                 const { data: voiceStep, error: voiceStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_voice', status: 'pending', input_data: {} }).select('id').single();
                 if (voiceStepError) throw voiceStepError;
@@ -157,7 +168,7 @@ serve(async (req) => {
         if (allStepsError) continue;
 
         const { data: subProductCount } = await supabaseAdmin.rpc('count_sub_products_for_run', { p_run_id: run.id });
-        const expectedStepCount = subProductCount * 3; // image, video, voice
+        const expectedStepCount = subProductCount * 3;
 
         if (allSteps.length >= expectedStepCount) {
             const isFinished = allSteps.every(s => ['completed', 'failed', 'cancelled', 'stopped'].includes(s.status));

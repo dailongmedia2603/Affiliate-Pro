@@ -52,7 +52,7 @@ serve(async (req) => {
 
     console.log('[INFO] Successfully proxied request to Gemini API.');
     return new Response(responseData, {
-      headers: { ...corsHeaders, 'Content-Type': 'text/plain; charset=utf-8' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (error) {
     console.error('!!! [FATAL] An error occurred in the proxy-gemini-api function:', error.message);
