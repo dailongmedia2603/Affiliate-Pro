@@ -10,7 +10,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Wand2, Loader2, Upload, Info } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -55,7 +54,6 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   const [duration, setDuration] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [wan2Type, setWan2Type] = useState('animate');
-  const [aspectRatio, setAspectRatio] = useState('16:9');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = e.target.files?.[0];
@@ -81,17 +79,16 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
       const imageUrl = imageFile ? await uploadToStorage(imageFile) : null;
-      const videoData = model === 'wan2' && videoFile ? await fileToBase64(videoFile) : null;
+      const videoData = videoFile ? await fileToBase64(videoFile) : null;
 
       const options = {
         kling: { duration, width: 1024, height: 576, resolution: "1080p" },
-        sora: { duration, aspect_ratio: aspectRatio, width: 1024, height: 576, resolution: "1080p" },
         higg_life: { width: 1024, height: 576, steps: 30, frames: 81 },
         wan2: { type: wan2Type },
       };
 
-      const { data, error } = await supabase.functions.invoke('generate-video', {
-        body: { model, prompt, imageUrl, videoData, options: options[model] },
+      const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
+        body: { action: 'generate_video', model, prompt, imageUrl, videoData, options: options[model] },
       });
 
       if (error) throw error;
@@ -113,7 +110,6 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
 
   const modelInfo = {
     kling: { title: "Text/Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
-    sora: { title: "Text/Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     higg_life: { title: "Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     wan2: { title: "Image + Video to Video", input: "Ảnh (bắt buộc), Video (bắt buộc, dưới 5MB) và Prompt (tùy chọn)." },
   };
@@ -137,7 +133,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
         </div>
 
         <div className={`grid grid-cols-1 ${model === 'wan2' ? 'md:grid-cols-2' : ''} gap-6`}>
-          {(model === 'kling' || model === 'higg_life' || model === 'wan2' || model === 'sora') && (
+          {(model === 'kling' || model === 'higg_life' || model === 'wan2') && (
             <div className="space-y-2">
               <Label htmlFor="image-upload">Ảnh đầu vào</Label>
               <div className="w-full h-[152px] border-2 border-dashed rounded-lg flex items-center justify-center relative bg-gray-50">
@@ -159,28 +155,6 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
         
         {model === 'kling' && (
           <div className="space-y-2"><Label>Thời lượng (giây): {duration}</Label><Slider value={[duration]} onValueChange={([v]) => setDuration(v)} min={1} max={10} step={1} /></div>
-        )}
-
-        {model === 'sora' && (
-          <div className="grid grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <Label>Thời lượng (giây): {duration}</Label>
-              <Slider value={[duration]} onValueChange={([v]) => setDuration(v)} min={1} max={4} step={1} />
-            </div>
-            <div className="space-y-2">
-              <Label>Tỷ lệ khung hình</Label>
-              <Select value={aspectRatio} onValueChange={setAspectRatio}>
-                <SelectTrigger><SelectValue placeholder="Chọn tỷ lệ" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="16:9">16:9 (Ngang)</SelectItem>
-                  <SelectItem value="9:16">9:16 (Dọc)</SelectItem>
-                  <SelectItem value="1:1">1:1 (Vuông)</SelectItem>
-                  <SelectItem value="4:3">4:3</SelectItem>
-                  <SelectItem value="3:4">3:4</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
         )}
 
         {model === 'wan2' && (
