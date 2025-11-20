@@ -48,15 +48,60 @@ serve(async (req) => {
 
   try {
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    
+    const userCache = new Map();
+
+    // --- Process Manual Video Tasks ---
+    const { data: manualVideoTasks, error: manualTasksError } = await supabaseAdmin
+      .from('video_tasks')
+      .select('id, user_id, higgsfield_task_id')
+      .in('status', ['pending', 'processing', 'in_progress']);
+
+    if (manualTasksError) console.error("Error fetching manual video tasks:", manualTasksError.message);
+
+    if (manualVideoTasks && manualVideoTasks.length > 0) {
+      for (const task of manualVideoTasks) {
+        try {
+          let cachedUser = userCache.get(task.user_id);
+          if (!cachedUser) {
+            const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', task.user_id).single();
+            if (settingsError || !settings) {
+              userCache.set(task.user_id, { token: null });
+              continue;
+            }
+            const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
+            cachedUser = { token };
+            userCache.set(task.user_id, cachedUser);
+          } else if (!cachedUser.token) continue;
+
+          const statusData = await getTaskStatus(cachedUser.token, task.higgsfield_task_id);
+          const job = statusData?.jobs?.[0];
+          const apiStatus = job?.status;
+
+          if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
+            const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
+            const resultUrl = job?.results?.raw?.url;
+            const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : 'Lỗi không xác định từ API.');
+            
+            await supabaseAdmin.from('video_tasks').update({
+              status: newStatus,
+              result_url: resultUrl,
+              error_message: newStatus === 'failed' ? errorMessage : null
+            }).eq('id', task.id);
+          }
+        } catch (e) {
+          console.error(`Error processing manual video task ${task.id}:`, e.message);
+          await supabaseAdmin.from('video_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
+        }
+      }
+    }
+
+    // --- Process Automation Steps ---
     const { data: runningSteps, error: stepsError } = await supabaseAdmin
       .from('automation_run_steps').select(`*, run:automation_runs(id, channel_id, user_id), sub_product:sub_products(name, description)`)
       .eq('status', 'running').not('api_task_id', 'is', null);
 
     if (stepsError) throw stepsError;
     
-    const userCache = new Map();
-
     if (runningSteps && runningSteps.length > 0) {
         for (const step of runningSteps) {
           const runId = step.run.id;
