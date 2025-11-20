@@ -22,8 +22,6 @@ function replacePlaceholders(template, data) {
   });
 }
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 // --- Main Handler ---
 
 serve(async (req) => {
@@ -90,91 +88,72 @@ serve(async (req) => {
     runId = run.id;
     await logToDb(supabaseAdmin, runId, 'Đã tạo phiên chạy automation thành công.');
 
-    // 4. --- FETCH SUB-PRODUCTS ---
+    // 4. --- FETCH SUB-PRODUCTS & PROCESS THE FIRST ONE ---
     const { data: subProducts, error: subProductsError } = await supabaseAdmin
       .from('sub_products')
       .select('id, name, description, image_url')
-      .eq('product_id', channel.product_id);
+      .eq('product_id', channel.product_id)
+      .order('created_at', { ascending: true }); // Sort to process sequentially
     if (subProductsError) throw subProductsError;
     if (!subProducts || subProducts.length === 0) throw new Error("Không tìm thấy sản phẩm con nào cho sản phẩm của kênh này.");
-    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con để xử lý.`);
+    
+    const firstSubProduct = subProducts[0];
+    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con. Bắt đầu xử lý sản phẩm đầu tiên: "${firstSubProduct.name}".`);
 
-    // 5. --- MAIN LOOP (per sub-product) ---
-    for (const subProduct of subProducts) {
-      await logToDb(supabaseAdmin, runId, `Bắt đầu xử lý sản phẩm con: "${subProduct.name}".`);
+    const geminiPromptData = {
+      product_name: firstSubProduct.name,
+      product_description: firstSubProduct.description,
+      image_count: config.imageCount
+    };
+    const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
+    
+    await logToDb(supabaseAdmin, runId, `Đang gọi Gemini AI để tạo ${config.imageCount} prompt cho ảnh...`);
+    const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+      body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
+    });
 
-      const geminiPromptData = {
-        product_name: subProduct.name,
-        product_description: subProduct.description,
-        image_count: config.imageCount
-      };
-      const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
+    if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
+    if (!geminiResult || !geminiResult.success) {
+      const errorMessage = geminiResult?.error || geminiResult?.message || 'Lỗi không xác định';
+      throw new Error(`Lỗi tạo prompt ảnh từ AI: ${errorMessage}`);
+    }
+    
+    const answerString = geminiResult.answer;
+    if (!answerString) throw new Error("Phản hồi từ AI không chứa trường 'answer'.");
+    
+    const promptRegex = /<prompt>(.*?)<\/prompt>/gs;
+    const imagePrompts = [...answerString.matchAll(promptRegex)].map(match => match[1].trim());
+
+    if (imagePrompts.length === 0) {
+      throw new Error(`AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${firstSubProduct.name}".`);
+    }
+    await logToDb(supabaseAdmin, runId, `Phân tích thành công. Đã lấy ra ${imagePrompts.length} prompt ảnh.`);
+
+    const imageUrls = [channel.character_image_url, firstSubProduct.image_url].filter(Boolean);
+
+    for (const imagePrompt of imagePrompts) {
+      const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
+      const { data: step, error: stepError } = await supabaseAdmin
+        .from('automation_run_steps')
+        .insert({ run_id: run.id, sub_product_id: firstSubProduct.id, step_type: 'generate_image', status: 'pending', input_data: inputData })
+        .select('id')
+        .single();
+      if (stepError) throw stepError;
       
-      await logToDb(supabaseAdmin, runId, `Đang gọi Gemini AI để tạo ${config.imageCount} prompt cho ảnh...`);
-      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
-        body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
+      await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${firstSubProduct.name}`, 'INFO', step.id);
+      supabaseAdmin.functions.invoke('generate-image', {
+        body: { action: 'generate_image', stepId: step.id, userId: user.id, ...inputData },
+      }).catch(err => {
+        console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, err);
+        logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', step.id);
       });
-
-      if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
-      if (!geminiResult) throw new Error("Không nhận được phản hồi từ Gemini API.");
-      
-      if (geminiResult.error || !geminiResult.success) {
-        throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error || geminiResult.message || 'Lỗi không xác định'}`);
-      }
-      
-      const answerString = geminiResult.answer;
-      if (!answerString) throw new Error("Phản hồi từ AI không chứa trường 'answer'.");
-      
-      await logToDb(supabaseAdmin, runId, 'AI đã trả về dữ liệu. Bắt đầu phân tích...', 'INFO', null, { rawResponse: answerString });
-
-      const promptRegex = /<prompt>(.*?)<\/prompt>/gs;
-      const imagePrompts = [];
-      let match;
-      while ((match = promptRegex.exec(answerString)) !== null) {
-          imagePrompts.push(match[1].trim());
-      }
-
-      if (imagePrompts.length === 0) {
-        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${subProduct.name}". Bỏ qua sản phẩm này.`, 'WARN');
-        continue;
-      }
-      await logToDb(supabaseAdmin, runId, `Phân tích thành công. Đã lấy ra ${imagePrompts.length} prompt ảnh.`, 'SUCCESS');
-
-      const imageUrls = [];
-      if (channel.character_image_url) imageUrls.push(channel.character_image_url);
-      if (subProduct.image_url) imageUrls.push(subProduct.image_url);
-
-      await logToDb(supabaseAdmin, runId, `Đang tạo ${imagePrompts.length} bước tạo ảnh...`);
-      
-      for (const imagePrompt of imagePrompts) {
-        const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
-
-        const { data: step, error: stepError } = await supabaseAdmin
-          .from('automation_run_steps')
-          .insert({ run_id: run.id, sub_product_id: subProduct.id, step_type: 'generate_image', status: 'pending', input_data: inputData })
-          .select('id')
-          .single();
-        if (stepError) throw stepError;
-        
-        await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${subProduct.name}`, 'INFO', step.id);
-
-        supabaseAdmin.functions.invoke('generate-image', {
-          body: { action: 'generate_image', stepId: step.id, ...inputData },
-          headers: { 'Authorization': authHeader }
-        }).catch(err => {
-          console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, err);
-          logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', step.id);
-        });
-
-        await sleep(30000); // Đợi 30 giây trước khi gửi yêu cầu tiếp theo
-      }
     }
 
-    // 6. --- FINALIZE RUN START ---
+    // 5. --- FINALIZE RUN START ---
     await supabaseAdmin.from('automation_runs').update({ status: 'running' }).eq('id', run.id);
-    await logToDb(supabaseAdmin, runId, 'Đã kích hoạt tất cả các bước ban đầu. Phiên chạy chuyển sang trạng thái "Đang chạy".', 'SUCCESS');
+    await logToDb(supabaseAdmin, runId, 'Đã kích hoạt các bước ban đầu. Phiên chạy chuyển sang trạng thái "Đang chạy".', 'SUCCESS');
 
-    return new Response(JSON.stringify({ success: true, message: 'Automation started successfully.', runId: run.id }), {
+    return new Response(JSON.stringify({ success: true, message: 'Automation started successfully for the first sub-product.', runId: run.id }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
