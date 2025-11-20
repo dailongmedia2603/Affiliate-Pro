@@ -53,7 +53,6 @@ serve(async (req) => {
     if (userError || !user) throw new Error("Không thể xác thực người dùng.");
 
     // 2. --- PRE-FLIGHT CHECKS ---
-    // Check for existing running automations for this channel
     const { data: existingRun, error: existingRunError } = await supabaseAdmin
       .from('automation_runs')
       .select('id')
@@ -63,7 +62,6 @@ serve(async (req) => {
     if (existingRunError) throw new Error(`Lỗi khi kiểm tra phiên chạy hiện tại: ${existingRunError.message}`);
     if (existingRun) throw new Error("Một luồng automation cho kênh này đã đang chạy. Vui lòng chờ hoàn tất hoặc dừng lại trước khi bắt đầu một luồng mới.");
 
-    // Load automation config
     const { data: configData, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', channelId).maybeSingle();
     if (configError) throw new Error(`Lỗi khi tải cấu hình automation: ${configError.message}`);
     if (!configData?.config_data) throw new Error("Kênh này chưa được cấu hình. Vui lòng nhấn nút 'Cấu hình' và lưu lại trước khi chạy.");
@@ -72,11 +70,12 @@ serve(async (req) => {
       throw new Error("Cấu hình automation không đầy đủ. Thiếu 'Mẫu Prompt cho AI' hoặc 'Số lượng ảnh'.");
     }
 
-    // Load user settings for Vertex AI
-    const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('vertex_ai_service_account').eq('id', user.id).single();
-    if (settingsError || !settings?.vertex_ai_service_account) throw new Error("Chưa cấu hình API Vertex AI trong Cài đặt.");
+    // Load user settings for Gemini API
+    const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('gemini_api_key, gemini_api_url').eq('id', user.id).single();
+    if (settingsError || !settings?.gemini_api_url || !settings?.gemini_api_key) {
+      throw new Error("Chưa cấu hình API Gemini trong Cài đặt (thiếu URL hoặc Key).");
+    }
 
-    // Load channel data
     const { data: channel, error: channelError } = await supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single();
     if (channelError || !channel) throw new Error(`Không tìm thấy kênh với ID: ${channelId}. Lỗi: ${channelError?.message}`);
     if (!channel.product_id) throw new Error("Kênh chưa được liên kết với sản phẩm nào.");
@@ -112,15 +111,15 @@ serve(async (req) => {
       };
       const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
       
-      await logToDb(supabaseAdmin, runId, `Đang gọi AI để tạo ${config.imageCount} prompt cho ảnh...`);
-      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-vertex-ai', {
-        body: { prompt: geminiPrompt, userId: user.id }
+      await logToDb(supabaseAdmin, runId, `Đang gọi Gemini AI để tạo ${config.imageCount} prompt cho ảnh...`);
+      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+        body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
       });
 
-      if (geminiError) throw new Error(`Lỗi gọi function proxy-vertex-ai: ${geminiError.message}`);
+      if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
       if (geminiResult.error) throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error}`);
       
-      const imagePrompts = geminiResult.data.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+      const imagePrompts = geminiResult.split('\n').map(p => p.trim()).filter(p => p.length > 0);
       if (imagePrompts.length === 0) {
         await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào cho sản phẩm "${subProduct.name}". Bỏ qua sản phẩm này.`, 'WARN');
         continue;
@@ -144,7 +143,6 @@ serve(async (req) => {
         
         await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${subProduct.name}`, 'INFO', step.id);
 
-        // Asynchronously invoke the worker function
         supabaseAdmin.functions.invoke('generate-image', {
           body: { action: 'generate_image', stepId: step.id, ...inputData },
           headers: { 'Authorization': authHeader }
