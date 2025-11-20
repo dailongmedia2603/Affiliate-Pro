@@ -116,6 +116,7 @@ serve(async (req) => {
 
       if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
       
+      await logToDb(supabaseAdmin, runId, `AI đã trả về dữ liệu. Bắt đầu phân tích...`, 'INFO');
       let geminiResult;
       try {
         geminiResult = JSON.parse(geminiResponseString);
@@ -132,22 +133,22 @@ serve(async (req) => {
         throw new Error("Phản hồi từ AI không chứa trường 'answer'.");
       }
 
-      const imagePrompts = answerString
-        .split('\n\n')
-        .map(p => p.trim())
-        .map(p => p.replace(/^\s*-\s*/, '').replace(/^\s*\d+\.\s*/, ''))
-        .filter(p => p.length > 10);
+      const matches = answerString.match(/<prompt>(.*?)<\/prompt>/gs);
+      const imagePrompts = matches 
+          ? matches.map(match => match.replace(/<\/?prompt>/g, '').trim()) 
+          : [];
 
       if (imagePrompts.length === 0) {
-        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào cho sản phẩm "${subProduct.name}". Bỏ qua sản phẩm này.`, 'WARN');
+        await logToDb(supabaseAdmin, runId, `Phân tích thất bại. Không tìm thấy prompt nào trong thẻ <prompt>. Dữ liệu thô: ${answerString}`, 'WARN');
         continue;
       }
-      await logToDb(supabaseAdmin, runId, `AI đã trả về ${imagePrompts.length} prompt ảnh.`, 'SUCCESS');
+      await logToDb(supabaseAdmin, runId, `Phân tích thành công. Đã lấy ra ${imagePrompts.length} prompt ảnh.`, 'SUCCESS');
 
       const imageUrls = [];
       if (channel.character_image_url) imageUrls.push(channel.character_image_url);
       if (subProduct.image_url) imageUrls.push(subProduct.image_url);
 
+      await logToDb(supabaseAdmin, runId, `Chuẩn bị tạo ${imagePrompts.length} bước tạo ảnh...`, 'INFO');
       const stepPromises = imagePrompts.map(async (imagePrompt) => {
         const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
 

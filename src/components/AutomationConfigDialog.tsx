@@ -27,7 +27,7 @@ type Config = {
 };
 
 const defaultConfig: Config = {
-  imagePromptGenerationTemplate: 'Vui lòng tạo {{image_count}} prompt khác nhau, mỗi prompt trên một dòng, để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\nYêu cầu:\n- Mỗi prompt phải độc đáo, mô tả một góc nhìn hoặc bối cảnh khác nhau (ví dụ: ảnh cận cảnh, ảnh sản phẩm với người mẫu, ảnh sản phẩm trên nền tự nhiên...).\n- Không thêm số thứ tự hoặc gạch đầu dòng vào trước mỗi prompt.',
+  imagePromptGenerationTemplate: 'Vui lòng tạo {{image_count}} prompt khác nhau để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\nYêu cầu:\n- Mỗi prompt phải độc đáo, mô tả một góc nhìn hoặc bối cảnh khác nhau (ví dụ: ảnh cận cảnh, ảnh sản phẩm với người mẫu, ảnh sản phẩm trên nền tự nhiên...).\n- QUAN TRỌNG: Mỗi prompt phải được đặt trong một cặp thẻ <prompt> và </prompt>. Ví dụ: <prompt>Một prompt mẫu</prompt><prompt>Một prompt khác</prompt>',
   imageCount: 4,
   videoPromptTemplate: 'Tạo một video với chuyển động lia máy từ từ qua sản phẩm, {{image_prompt}}',
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
