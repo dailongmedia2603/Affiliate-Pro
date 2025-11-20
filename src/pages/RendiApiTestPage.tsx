@@ -52,26 +52,86 @@ const RendiApiTestPage = () => {
   const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [task, setTask] = useState<RendiTask | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const pollingIntervalRef = useRef<number | null>(null);
   
   const [transition, setTransition] = useState<string>('fade');
   const [transitionDuration, setTransitionDuration] = useState<number>(1);
   const [clipDuration, setClipDuration] = useState<number>(3);
 
+  const pollTaskStatus = (commandId: string, taskId: string) => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+    }
+    pollingIntervalRef.current = window.setInterval(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('proxy-rendi-api', {
+          body: { action: 'check_status', payload: { command_id: commandId } },
+        });
+
+        if (error) throw error;
+
+        const newApiStatus = data.status;
+        if (newApiStatus === 'SUCCESS' || newApiStatus === 'FAILED') {
+          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+          setIsProcessing(false);
+          const newDbStatus = newApiStatus === 'SUCCESS' ? 'completed' : 'failed';
+          const updatePayload = {
+            status: newDbStatus,
+            output_files: data.output_files,
+            error_message: data.error_message,
+          };
+          const { data: updatedTask, error: updateError } = await supabase.from('rendi_tasks').update(updatePayload).eq('id', taskId).select().single();
+          if (updateError) throw updateError;
+          setTask(updatedTask);
+          if (newDbStatus === 'completed') showSuccess('Video đã được render thành công!');
+          else showError(`Render video thất bại: ${data.error_message}`);
+        } else {
+          setTask(prev => prev && prev.id === taskId ? { ...prev, status: newApiStatus } : prev);
+        }
+      } catch (err) {
+        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
+        setIsProcessing(false);
+        showError(`Lỗi khi kiểm tra trạng thái: ${err.message}`);
+        setTask(prev => prev && prev.id === taskId ? { ...prev, status: 'failed', error_message: err.message } : prev);
+      }
+    }, 10000);
+  };
+
   useEffect(() => {
-    const checkApiKey = async () => {
+    const checkApiKeyAndFetchTask = async () => {
+      setIsLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data, error } = await supabase.from('user_settings').select('rendi_api_key').eq('id', user.id).single();
-        if (error && error.code !== 'PGRST116') {
-          showError('Không thể tải cài đặt API Rendi.');
+        const { data: settings, error: settingsError } = await supabase.from('user_settings').select('rendi_api_key').eq('id', user.id).single();
+        const isKeySet = !!settings?.rendi_api_key;
+        setApiKeySet(isKeySet);
+
+        if (isKeySet) {
+          const { data: latestTask, error: taskError } = await supabase
+            .from('rendi_tasks')
+            .select('*')
+            .eq('user_id', user.id)
+            .in('status', ['QUEUED', 'PROCESSING', 'PREPARED_FFMPEG_COMMAND', 'INITIALIZING', 'UPLOADING', 'BUILDING_COMMAND'])
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          if (latestTask && !taskError) {
+            setTask(latestTask);
+            setIsProcessing(true);
+            if (latestTask.rendi_command_id) {
+              pollTaskStatus(latestTask.rendi_command_id, latestTask.id);
+            }
+          }
         }
-        setApiKeySet(!!data?.rendi_api_key);
       } else {
         setApiKeySet(false);
       }
+      setIsLoading(false);
     };
-    checkApiKey();
+
+    checkApiKeyAndFetchTask();
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -116,44 +176,6 @@ const RendiApiTestPage = () => {
     return data.url;
   };
 
-  const pollTaskStatus = (commandId: string, taskId: string) => {
-    pollingIntervalRef.current = window.setInterval(async () => {
-      try {
-        const { data, error } = await supabase.functions.invoke('proxy-rendi-api', {
-          body: { action: 'check_status', payload: { command_id: commandId } },
-        });
-
-        if (error) throw error;
-
-        const finalOutputKey = Object.keys(data.output_files || {}).find(k => k.startsWith('final_output'));
-
-        if (data.status === 'SUCCESS' || data.status === 'FAILED') {
-          if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-          setIsProcessing(false);
-          const newStatus = data.status === 'SUCCESS' ? 'completed' : 'failed';
-          const updatePayload = {
-            status: newStatus,
-            output_files: data.output_files,
-            error_message: data.error_message,
-          };
-          const { data: updatedTask, error: updateError } = await supabase.from('rendi_tasks').update(updatePayload).eq('id', taskId).select().single();
-          if (updateError) throw updateError;
-          setTask(updatedTask);
-          if (newStatus === 'completed') showSuccess('Video đã được render thành công!');
-          else showError(`Render video thất bại: ${data.error_message}`);
-        } else {
-          await supabase.from('rendi_tasks').update({ status: data.status }).eq('id', taskId);
-          setTask(prev => prev ? { ...prev, status: data.status } : null);
-        }
-      } catch (err) {
-        if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current);
-        setIsProcessing(false);
-        showError(`Lỗi khi kiểm tra trạng thái: ${err.message}`);
-        await supabase.from('rendi_tasks').update({ status: 'failed', error_message: err.message }).eq('id', taskId);
-      }
-    }, 10000);
-  };
-
   const handleMerge = async () => {
     const videosAndImages = mediaFiles.filter(f => f.type === 'video' || f.type === 'image');
     const audioFile = mediaFiles.find(f => f.type === 'audio');
@@ -165,19 +187,33 @@ const RendiApiTestPage = () => {
 
     setIsProcessing(true);
     setTask(null);
-    const loadingToast = showLoading('Đang tải file lên...');
+    const loadingToast = showLoading('Đang chuẩn bị tác vụ...');
+    let dbTask: RendiTask | null = null;
 
     try {
-      const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated.");
+      
+      const { data: newDbTask, error: dbError } = await supabase.from('rendi_tasks').insert({ user_id: user.id, status: 'INITIALIZING' }).select().single();
+      if (dbError) throw dbError;
+      dbTask = newDbTask;
+      setTask(dbTask);
+
       dismissToast(loadingToast);
-      showLoading('Đã tải lên. Đang xây dựng và gửi lệnh render...');
+      showLoading('Đang tải file lên...');
+      const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
+      
+      await supabase.from('rendi_tasks').update({ status: 'BUILDING_COMMAND' }).eq('id', dbTask.id);
+      setTask(prev => prev ? { ...prev, status: 'BUILDING_COMMAND' } : null);
+
+      dismissToast(loadingToast);
+      showLoading('Đang xây dựng và gửi lệnh render...');
 
       const input_files: { [key: string]: string } = {};
       const output_files: { [key: string]: string } = {};
       const ffmpeg_commands: string[] = [];
-
-      // Step 1: Standardize all inputs to video clips of the same duration and resolution
       const resolution = "1280:720";
+
       videosAndImages.forEach((mf, i) => {
         const inputAlias = `in_${i + 1}`;
         const outputAlias = `clip_${i + 1}`;
@@ -187,28 +223,25 @@ const RendiApiTestPage = () => {
         let cmd = '';
         if (mf.type === 'image') {
           cmd = `-loop 1 -t ${clipDuration} -i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -pix_fmt yuv420p {{${outputAlias}}}`;
-        } else { // video
+        } else {
           cmd = `-i {{${inputAlias}}} -t ${clipDuration} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:a copy {{${outputAlias}}}`;
         }
         ffmpeg_commands.push(cmd);
       });
 
-      // Step 2: Chain transitions
       let lastOutput = 'clip_1';
       if (videosAndImages.length > 1) {
         for (let i = 1; i < videosAndImages.length; i++) {
           const currentInput = `clip_${i + 1}`;
           const transitionOutput = `transitioned_${i}`;
           output_files[transitionOutput] = `${transitionOutput}.mp4`;
-          
-          const offset = i * clipDuration;
+          const offset = clipDuration - transitionDuration;
           const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
           ffmpeg_commands.push(cmd);
           lastOutput = transitionOutput;
         }
       }
       
-      // Step 3: Add audio if present, or just copy the final video
       const finalVideoAlias = 'final_output_1';
       output_files[finalVideoAlias] = 'final_output.mp4';
 
@@ -222,19 +255,13 @@ const RendiApiTestPage = () => {
 
       const payload = { input_files, output_files, ffmpeg_commands };
 
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: dbTask, error: dbError } = await supabase.from('rendi_tasks').insert({ user_id: user!.id, status: 'QUEUED' }).select().single();
-      if (dbError) throw dbError;
-      setTask(dbTask);
-
-      const { data: rendiData, error: rendiError } = await supabase.functions.invoke('proxy-rendi-api', {
-        body: { action: 'run_chained_commands', payload },
-      });
-
+      const { data: rendiData, error: rendiError } = await supabase.functions.invoke('proxy-rendi-api', { body: { action: 'run_chained_commands', payload } });
       if (rendiError || rendiData.error) throw new Error(rendiError?.message || rendiData.error);
+      if (!rendiData.command_id) throw new Error("Rendi API did not return a command_id.");
       
-      await supabase.from('rendi_tasks').update({ rendi_command_id: rendiData.command_id, status: 'QUEUED' }).eq('id', dbTask.id);
-      setTask(prev => prev ? { ...prev, rendi_command_id: rendiData.command_id, status: 'QUEUED' } : null);
+      const { data: updatedTask, error: updateError } = await supabase.from('rendi_tasks').update({ rendi_command_id: rendiData.command_id, status: 'QUEUED' }).eq('id', dbTask.id).select().single();
+      if (updateError) throw updateError;
+      setTask(updatedTask);
       
       dismissToast(loadingToast);
       showSuccess('Đã gửi yêu cầu render. Đang xử lý...');
@@ -244,12 +271,16 @@ const RendiApiTestPage = () => {
       dismissToast(loadingToast);
       showError(`Thao tác thất bại: ${err.message}`);
       setIsProcessing(false);
+      if (dbTask) {
+        await supabase.from('rendi_tasks').update({ status: 'failed', error_message: err.message }).eq('id', dbTask.id);
+        setTask(prev => prev ? { ...prev, status: 'failed', error_message: err.message } : null);
+      }
     }
   };
 
   const finalOutputUrl = task?.status === 'completed' ? Object.values(task.output_files || {}).find(f => f.storage_url.includes('final_output'))?.storage_url : null;
 
-  if (apiKeySet === null) {
+  if (isLoading) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>;
   }
 
