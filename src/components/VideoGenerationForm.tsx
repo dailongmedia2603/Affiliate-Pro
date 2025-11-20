@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Wand2, Loader2, Upload, Info } from 'lucide-react';
+import { Wand2, Loader2, Upload, Info, X, Plus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
@@ -46,8 +46,8 @@ const uploadToStorage = async (file: File): Promise<string> => {
 
 const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   const [prompt, setPrompt] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [duration, setDuration] = useState(4);
@@ -55,20 +55,40 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   const [wan2Type, setWan2Type] = useState('animate');
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (type === 'image') {
-          setImageFile(file);
-          setImagePreview(reader.result as string);
-        } else {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (type === 'image') {
+      const newFiles = Array.from(files);
+      setImageFiles(prev => [...prev, ...newFiles]);
+
+      const newPreviewPromises = newFiles.map(file => {
+        return new Promise<string>(resolve => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+      });
+
+      Promise.all(newPreviewPromises).then(newPreviews => {
+        setImagePreviews(prev => [...prev, ...newPreviews]);
+      });
+    } else { // type === 'video'
+      const file = files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
           setVideoFile(file);
           setVideoPreview(reader.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+        };
+        reader.readAsDataURL(file);
+      }
     }
+  };
+  
+  const handleRemoveImage = (indexToRemove: number) => {
+    setImageFiles(prev => prev.filter((_, index) => index !== indexToRemove));
+    setImagePreviews(prev => prev.filter((_, index) => index !== indexToRemove));
   };
 
   const handleSubmit = async () => {
@@ -91,21 +111,20 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
 
       if (model === 'sora') {
         functionName = 'tao-video-sora';
-        const imageBase64 = imageFile ? await fileToBase64(imageFile) : null;
+        const imageBases64 = await Promise.all(imageFiles.map(file => fileToBase64(file)));
         functionPayload = {
           prompt,
-          imageBase64,
-          imageType: imageFile?.type,
+          imageBases64,
           options: options.sora,
         };
       } else {
-        const imageUrl = imageFile ? await uploadToStorage(imageFile) : null;
+        const imageUrls = await Promise.all(imageFiles.map(file => uploadToStorage(file)));
         functionName = 'higgsfield-python-proxy';
         functionPayload = {
           action: 'generate_video',
           model,
           prompt,
-          imageUrl,
+          imageUrls,
           videoData,
           options: options[model],
         };
@@ -161,9 +180,37 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
           {(model === 'sora' || model === 'kling' || model === 'higg_life' || model === 'wan2') && (
             <div className="space-y-2">
               <Label htmlFor="image-upload">Ảnh đầu vào</Label>
-              <div className="w-full h-[152px] border-2 border-dashed rounded-lg flex items-center justify-center relative bg-gray-50">
-                {imagePreview ? <img src={imagePreview} alt="Preview" className="w-full h-full object-contain rounded-lg" /> : <div className="text-center text-gray-500"><Upload className="mx-auto h-8 w-8" /><p className="text-sm mt-1">Tải ảnh lên</p></div>}
-                <Input id="image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'image')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+              <div className="w-full min-h-[152px] border-2 border-dashed rounded-lg p-2 bg-gray-50">
+                {imagePreviews.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className="relative group aspect-square">
+                        <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover rounded-md" />
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => handleRemoveImage(index)}
+                          className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                          aria-label="Remove image"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    <label htmlFor="image-upload" className="flex flex-col items-center justify-center aspect-square border-2 border-dashed rounded-md cursor-pointer hover:bg-gray-100 text-gray-400">
+                      <Plus className="w-6 h-6" />
+                      <span className="text-xs mt-1">Thêm ảnh</span>
+                    </label>
+                  </div>
+                ) : (
+                  <label htmlFor="image-upload" className="w-full h-[136px] flex items-center justify-center relative cursor-pointer">
+                    <div className="text-center text-gray-500">
+                      <Upload className="mx-auto h-8 w-8" />
+                      <p className="text-sm mt-1">Tải ảnh lên</p>
+                    </div>
+                  </label>
+                )}
+                <Input id="image-upload" type="file" accept="image/*" multiple onChange={(e) => handleFileChange(e, 'image')} className="hidden" />
               </div>
             </div>
           )}

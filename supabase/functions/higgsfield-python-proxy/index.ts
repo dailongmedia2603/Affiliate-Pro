@@ -66,12 +66,12 @@ serve(async (req) => {
         })
       }
       case 'generate_video': {
-        const { model, prompt, imageUrl, videoData, options } = payload;
+        const { model, prompt, imageUrls, videoData, options } = payload;
         if (!model) throw new Error("Model is required for video generation.");
 
         let input_image = null;
-        if (imageUrl) {
-          const uploadPayload = { token, url: [imageUrl], cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
+        if (imageUrls && imageUrls.length > 0) {
+          const uploadPayload = { token, url: imageUrls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
           const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

@@ -65,15 +65,15 @@ serve(async (req) => {
     console.log("[tao-video-sora] Higgsfield token retrieved.");
 
     // 4. Process payload
-    const { prompt, imageBase64, imageType, options } = await req.json();
-    console.log("[tao-video-sora] Payload processed. Prompt length:", prompt?.length, "Has image:", !!imageBase64);
+    const { prompt, imageBases64, options } = await req.json();
+    console.log("[tao-video-sora] Payload processed. Prompt length:", prompt?.length, "Image count:", imageBases64?.length || 0);
 
     let input_image = null;
-    if (imageBase64) {
-      console.log("[tao-video-sora] Registering media via base64 data...");
+    if (imageBases64 && imageBases64.length > 0) {
+      console.log(`[tao-video-sora] Registering ${imageBases64.length} media via base64 data...`);
       const uploadPayload = {
         token: token,
-        file_data: [imageBase64],
+        file_data: imageBases64,
       };
       
       const uploadResponse = await fetch(`${API_BASE}/video/uploadmedia`, {
@@ -104,7 +104,7 @@ serve(async (req) => {
     // 5. Call Sora API
     const endpoint = `${API_BASE}/video/sora`;
     const apiPayload = { token, prompt, input_image, ...options };
-    console.log("[tao-video-sora] Calling Sora API with payload:", { ...apiPayload, token: 'REDACTED', input_image: input_image ? 'PRESENT' : 'ABSENT' });
+    console.log("[tao-video-sora] Calling Sora API with payload:", { ...apiPayload, token: 'REDACTED', input_image: input_image ? `PRESENT (${input_image.length} items)` : 'ABSENT' });
 
     const generationResponse = await fetch(endpoint, {
       method: 'POST',
