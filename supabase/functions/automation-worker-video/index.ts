@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { Buffer } from "https://deno.land/std@0.171.0/node/buffer.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,17 @@ async function getHiggsfieldToken(cookie, clerk_active_context) {
     throw new Error('Phản hồi từ Higgsfield không chứa token (jwt). Điều này có thể do Cookie hoặc Clerk Context không hợp lệ hoặc đã hết hạn.');
   }
   return tokenData.jwt;
+}
+
+async function imageUrlToBase64(url) {
+  if (!url) return null;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch image from URL: ${url}. Status: ${response.status}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = new Buffer(arrayBuffer);
+  return buffer.toString('base64');
 }
 
 serve(async (req) => {
@@ -60,21 +72,23 @@ serve(async (req) => {
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
-    const registerMediaUrlForVideo = async (mediaUrl) => {
-        if (!mediaUrl) return null;
-        const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmediav2", {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, url: [mediaUrl] })
-        });
-        const uploadData = await uploadResponse.json();
-        if (!uploadData.status || !uploadData.data || uploadData.data.length === 0) {
-            throw new Error(`Đăng ký media URL cho video thất bại. Phản hồi API: ${JSON.stringify(uploadData)}`);
+    let input_image = null;
+    if (imageUrl) {
+        const imageBase64 = await imageUrlToBase64(imageUrl);
+        if (imageBase64) {
+            const uploadResponse = await fetch("https://api.beautyapp.work/video/uploadmedia", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token, file_data: [imageBase64] })
+            });
+            const uploadData = await uploadResponse.json();
+            if (!uploadResponse.ok || !uploadData.status || !uploadData.data || uploadData.data.length === 0) {
+                throw new Error(`Đăng ký media từ URL thất bại. Phản hồi API: ${JSON.stringify(uploadData)}`);
+            }
+            input_image = uploadData.data;
         }
-        return uploadData.data;
-    };
+    }
 
-    const input_image = await registerMediaUrlForVideo(imageUrl);
     let endpoint = '';
     let apiPayload = {};
     const basePayload = { token, prompt, input_image, ...options };
@@ -101,7 +115,7 @@ serve(async (req) => {
 
     const generationData = await generationResponse.json();
     if (!generationData.job_sets || generationData.job_sets.length === 0) {
-        throw new Error('Phản hồi từ API tạo video không hợp lệ.');
+        throw new Error(`Phản hồi từ API tạo video không hợp lệ. Phản hồi: ${JSON.stringify(generationData)}`);
     }
     
     const newTaskId = generationData.job_sets[0].id;
