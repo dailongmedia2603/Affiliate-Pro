@@ -45,6 +45,8 @@ serve(async (req) => {
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return new Response('Unauthorized', { status: 401, headers: corsHeaders });
   }
+  
+  console.log(`[check-task-status] Cron job started at ${new Date().toISOString()}`);
 
   try {
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
@@ -56,32 +58,52 @@ serve(async (req) => {
       .select('id, user_id, higgsfield_task_id')
       .in('status', ['pending', 'processing', 'in_progress']);
 
-    if (manualTasksError) console.error("Error fetching manual video tasks:", manualTasksError.message);
+    if (manualTasksError) console.error("[check-task-status] Error fetching manual video tasks:", manualTasksError.message);
 
     if (manualVideoTasks && manualVideoTasks.length > 0) {
+      console.log(`[check-task-status] Found ${manualVideoTasks.length} manual video tasks to check.`);
       for (const task of manualVideoTasks) {
         try {
+          console.log(`[check-task-status] Processing manual video task with ID: ${task.id}`);
           let cachedUser = userCache.get(task.user_id);
           if (!cachedUser) {
             const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', task.user_id).single();
             if (settingsError || !settings) {
+              console.warn(`[check-task-status] No settings found for user ${task.user_id}. Skipping task ${task.id}.`);
               userCache.set(task.user_id, { token: null });
               continue;
             }
             const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
             cachedUser = { token };
             userCache.set(task.user_id, cachedUser);
-          } else if (!cachedUser.token) continue;
+          } else if (!cachedUser.token) {
+            console.warn(`[check-task-status] No token for user ${task.user_id} in cache. Skipping task ${task.id}.`);
+            continue;
+          }
 
           const statusData = await getTaskStatus(cachedUser.token, task.higgsfield_task_id);
+          console.log(`[check-task-status] Status for task ${task.id} (API ID: ${task.higgsfield_task_id}):`, JSON.stringify(statusData, null, 2));
+
           const job = statusData?.jobs?.[0];
           const apiStatus = job?.status;
 
           if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
             const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
             const resultUrl = job?.results?.raw?.url;
-            const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : 'Lỗi không xác định từ API.');
             
+            let errorMessage = 'Lỗi không xác định từ API.';
+            if (newStatus === 'failed') {
+                if (job?.error) {
+                    errorMessage = job.error;
+                } else if (apiStatus === 'nsfw') {
+                    errorMessage = 'Nội dung không phù hợp (NSFW).';
+                } else {
+                    errorMessage = `Tác vụ thất bại không có thông báo lỗi cụ thể. Dữ liệu API: ${JSON.stringify(job || statusData)}`;
+                }
+            }
+            
+            console.log(`[check-task-status] Updating task ${task.id} to status: ${newStatus}. Error: ${newStatus === 'failed' ? errorMessage : 'N/A'}`);
+
             await supabaseAdmin.from('video_tasks').update({
               status: newStatus,
               result_url: resultUrl,
@@ -89,7 +111,7 @@ serve(async (req) => {
             }).eq('id', task.id);
           }
         } catch (e) {
-          console.error(`Error processing manual video task ${task.id}:`, e.message);
+          console.error(`[check-task-status] Error processing manual video task ${task.id}:`, e.message);
           await supabaseAdmin.from('video_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
         }
       }
@@ -103,9 +125,11 @@ serve(async (req) => {
     if (stepsError) throw stepsError;
     
     if (runningSteps && runningSteps.length > 0) {
+        console.log(`[check-task-status] Found ${runningSteps.length} automation steps to check.`);
         for (const step of runningSteps) {
           const runId = step.run.id;
           const stepId = step.id;
+          console.log(`[check-task-status] Processing automation step with ID: ${step.id}`);
           try {
             if (step.step_type === 'generate_voice') continue;
 
@@ -122,13 +146,25 @@ serve(async (req) => {
             } else if (!cachedUser.token || !cachedUser.settings) continue;
 
             const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
+            console.log(`[check-task-status] Status for step ${step.id} (API ID: ${step.api_task_id}):`, JSON.stringify(statusData, null, 2));
+            
             const job = statusData?.jobs?.[0];
             const apiStatus = job?.status;
 
             if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
               const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
               const resultUrl = job?.results?.raw?.url;
-              const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : 'Lỗi không xác định từ API.');
+              
+              let errorMessage = 'Lỗi không xác định từ API.';
+              if (newStatus === 'failed') {
+                  if (job?.error) {
+                      errorMessage = job.error;
+                  } else if (apiStatus === 'nsfw') {
+                      errorMessage = 'Nội dung không phù hợp (NSFW).';
+                  } else {
+                      errorMessage = `Tác vụ thất bại không có thông báo lỗi cụ thể. Dữ liệu API: ${JSON.stringify(job || statusData)}`;
+                  }
+              }
 
               if (newStatus === 'failed') {
                 const maxRetries = 3;
