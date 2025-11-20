@@ -81,8 +81,8 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
       const videoData = videoFile ? await fileToBase64(videoFile) : null;
 
       const options = {
-        sora: { duration, width: 1024, height: 576, resolution: "1080p" },
-        kling: { duration, width: 1024, height: 576, resolution: "1080p" },
+        sora: { duration, width: 1024, height: 576, resolution: "1080p", aspect_ratio: "16:9" },
+        kling: { duration, width: 1024, height: 576, resolution: "1080p", aspect_ratio: "16:9" },
         higg_life: { width: 1024, height: 576, steps: 30, frames: 81 },
         wan2: { type: wan2Type },
       };
