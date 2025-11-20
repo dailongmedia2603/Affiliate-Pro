@@ -111,19 +111,13 @@ serve(async (req) => {
       const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
       
       await logToDb(supabaseAdmin, runId, `Đang gọi Gemini AI để tạo ${config.imageCount} prompt cho ảnh...`);
-      const { data: geminiResponseString, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
         body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
       });
 
       if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
+      if (!geminiResult) throw new Error("Không nhận được phản hồi từ Gemini API.");
       
-      let geminiResult;
-      try {
-        geminiResult = JSON.parse(geminiResponseString);
-      } catch (e) {
-        throw new Error(`Không thể phân tích phản hồi JSON từ Gemini API: ${e.message}. Phản hồi nhận được: ${geminiResponseString}`);
-      }
-
       if (geminiResult.error || !geminiResult.success) {
         throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error || geminiResult.message || 'Lỗi không xác định'}`);
       }
