@@ -2,14 +2,24 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AutomationLogViewer from './AutomationLogViewer';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; };
-type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; error_message: string | null; created_at: string; };
+type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[] } | null; error_message: string | null; created_at: string; };
 type AutomationRun = { id: string; status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; started_at: string; finished_at: string | null; automation_run_steps: AutomationRunStep[]; channel_id: string; };
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -36,12 +46,15 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [logs, setLogs] = useState<Record<string, AutomationRunLog[]>>({});
   const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [detailsStep, setDetailsStep] = useState<AutomationRunStep | null>(null);
   const runIdsRef = useRef<string[]>([]);
+  const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
       .from('automation_runs')
-      .select(`id, status, started_at, finished_at, channel_id, automation_run_steps (id, step_type, status, output_data, error_message, created_at)`)
+      .select(`id, status, started_at, finished_at, channel_id, automation_run_steps (id, step_type, status, output_data, input_data, error_message, created_at)`)
       .eq('channel_id', channelId)
       .order('started_at', { ascending: false });
 
@@ -108,6 +121,28 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     }
   };
 
+  const handleDeleteRequest = (run: AutomationRun) => {
+    setRunToDelete(run);
+    setIsAlertOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!runToDelete) return;
+
+    const loadingToast = showLoading('Đang xoá phiên chạy...');
+    const { error } = await supabase.from('automation_runs').delete().eq('id', runToDelete.id);
+    dismissToast(loadingToast);
+
+    if (error) {
+      showError(`Xoá thất bại: ${error.message}`);
+    } else {
+      showSuccess('Đã xoá phiên chạy và các dữ liệu liên quan.');
+      fetchRuns();
+    }
+    setIsAlertOpen(false);
+    setRunToDelete(null);
+  };
+
   if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-orange-500" /></div>;
   if (runs.length === 0) return <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 border-2 border-dashed rounded-lg p-4"><Bot className="w-16 h-16 mb-4" /><h3 className="text-xl font-semibold">Chưa có lần chạy nào</h3><p>Nhấn nút "Chạy" để bắt đầu một luồng tự động hóa cho kênh này.</p></div>;
 
@@ -130,6 +165,9 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                   {(run.status === 'completed' || run.status === 'failed' || run.status === 'stopped') && (
                     <Button variant="outline" size="icon" className="w-8 h-8" onClick={(e) => { e.stopPropagation(); onRerun(run.channel_id); }}><RefreshCw className="w-4 h-4" /></Button>
                   )}
+                  <Button variant="ghost" size="icon" className="w-8 h-8 text-red-500 hover:bg-red-100 hover:text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(run); }}>
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </div>
               </div>
             </AccordionTrigger>
@@ -142,8 +180,14 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                       <StatusBadge status={step.status} />
                     </div>
                     {step.status === 'completed' && step.output_data?.url && (
-                      <div className="mt-3">
-                        {step.step_type === 'generate_image' ? (<button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer"><img src={step.output_data.url} alt="Generated" className="max-w-xs rounded-md border" /></button>) : step.step_type === 'generate_video' ? (<video src={step.output_data.url} controls className="max-w-xs rounded-md border" />) : null}
+                      <div className="mt-3 flex items-start gap-4">
+                        {step.step_type === 'generate_image' ? (<button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer"><img src={step.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" /></button>) : step.step_type === 'generate_video' ? (<video src={step.output_data.url} controls className="max-w-xs rounded-md border" />) : null}
+                        {step.step_type === 'generate_image' && (
+                          <Button variant="outline" size="sm" onClick={() => setDetailsStep(step)}>
+                            <FileText className="w-4 h-4 mr-2" />
+                            Chi tiết
+                          </Button>
+                        )}
                       </div>
                     )}
                     {step.status === 'failed' && step.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>)}
@@ -161,6 +205,56 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
       <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
         <DialogContent className="max-w-5xl w-auto p-0 bg-transparent border-none shadow-none"><img src={selectedImage || ''} alt="Enlarged result" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" /></DialogContent>
       </Dialog>
+      <Dialog open={!!detailsStep} onOpenChange={(isOpen) => !isOpen && setDetailsStep(null)}>
+        <DialogContent className="max-w-4xl">
+            <DialogHeader>
+                <DialogTitle>Chi tiết bước tạo ảnh</DialogTitle>
+                <DialogDescription>
+                    Thông tin đầu vào và kết quả của bước tạo ảnh.
+                </DialogDescription>
+            </DialogHeader>
+            {detailsStep && (
+                <div className="grid md:grid-cols-2 gap-6 pt-4 max-h-[70vh] overflow-y-auto">
+                    <div className="space-y-4">
+                        <div>
+                            <h3 className="font-semibold mb-2 text-gray-800">Prompt đã sử dụng:</h3>
+                            <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt}</p>
+                        </div>
+                        <div>
+                            <h3 className="font-semibold mb-2 text-gray-800">Ảnh đầu vào:</h3>
+                            {(detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                    {detailsStep.input_data.image_urls.map((url, index) => (
+                                        <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                            )}
+                        </div>
+                    </div>
+                    <div>
+                        <h3 className="font-semibold mb-2 text-gray-800">Ảnh kết quả:</h3>
+                        <img src={detailsStep.output_data?.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                    </div>
+                </div>
+            )}
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hành động này không thể được hoàn tác. Phiên chạy <strong>Run #{runToDelete?.id.substring(0, 8)}</strong> và tất cả các bước, logs liên quan sẽ bị xóa vĩnh viễn.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">Xóa</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };
