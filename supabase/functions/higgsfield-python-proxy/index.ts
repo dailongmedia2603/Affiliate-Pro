@@ -7,10 +7,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const HIGGSFIELD_TOKEN_URL = 'https://api.beautyapp.work/gettoken';
+const API_BASE = "https://api.beautyapp.work";
 
 async function getHiggsfieldToken(cookie, clerk_active_context) {
-  const tokenResponse = await fetch(HIGGSFIELD_TOKEN_URL, {
+  const tokenResponse = await fetch(`${API_BASE}/gettoken`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cookie, clerk_active_context }),
@@ -57,15 +57,81 @@ serve(async (req) => {
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     
     const { action, ...payload } = await req.json();
+    const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
 
     switch (action) {
       case 'test_connection': {
-        await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
         return new Response(JSON.stringify({ success: true, message: 'Kết nối thành công!' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
-      // NOTE: generate_video logic has been moved to its own dedicated worker function: automation-worker-video
+      case 'generate_video': {
+        const { model, prompt, imageUrl, videoData, options } = payload;
+        if (!model) throw new Error("Model is required for video generation.");
+
+        let input_image = null;
+        if (imageUrl) {
+          const uploadPayload = { token, url: [imageUrl], cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
+          const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(uploadPayload)
+          });
+          if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${await uploadResponse.text()}`);
+          const uploadData = await uploadResponse.json();
+          if (uploadData?.status === true && uploadData.data) {
+            input_image = uploadData.data;
+          } else {
+            throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadData)}`);
+          }
+        }
+
+        let endpoint = '';
+        let apiPayload = {};
+        const basePayload = { token, prompt, input_image, ...options };
+
+        switch (model) {
+          case 'sora':
+            endpoint = `${API_BASE}/video/sora`;
+            apiPayload = { ...basePayload };
+            break;
+          case 'kling':
+            endpoint = `${API_BASE}/video/kling2.1`;
+            apiPayload = { ...basePayload, model: "kling-v2-5-turbo", motion_id: "7077cde8-7947-46d6-aea2-dbf2ff9d441c" };
+            break;
+          case 'higg_life':
+            endpoint = `${API_BASE}/video/higg_life`;
+            apiPayload = { ...basePayload };
+            break;
+          case 'wan2':
+            endpoint = `${API_BASE}/video/wan2`;
+            apiPayload = { ...basePayload, video_data: videoData };
+            break;
+          default:
+            throw new Error(`Model video không được hỗ trợ: ${model}`);
+        }
+
+        const generationResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(apiPayload)
+        });
+
+        if (!generationResponse.ok) {
+          throw new Error(`Tạo video thất bại: ${await generationResponse.text()}`);
+        }
+        
+        const generationData = await generationResponse.json();
+        const taskId = generationData?.job_sets?.[0]?.id;
+
+        if (!taskId) {
+          throw new Error('Không nhận được ID tác vụ từ API. Phản hồi: ' + JSON.stringify(generationData));
+        }
+
+        return new Response(JSON.stringify({ success: true, taskId }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       default:
         throw new Error(`Hành động không hợp lệ hoặc không được hỗ trợ trong function này: ${action}`);
     }
