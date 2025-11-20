@@ -119,7 +119,12 @@ serve(async (req) => {
       if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
       if (geminiResult.error) throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error}`);
       
-      const imagePrompts = geminiResult.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+      const imagePrompts = geminiResult
+        .split('\n')
+        .map(p => p.trim())
+        .map(p => p.replace(/^\s*-\s*/, '').replace(/^\s*\d+\.\s*/, '')) // Remove prefixes like "- " or "1. "
+        .filter(p => p.length > 10); // Filter out empty or junk lines
+
       if (imagePrompts.length === 0) {
         await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào cho sản phẩm "${subProduct.name}". Bỏ qua sản phẩm này.`, 'WARN');
         continue;
