@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,14 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   const [duration, setDuration] = useState(4);
   const [isGenerating, setIsGenerating] = useState(false);
   const [wan2Type, setWan2Type] = useState('animate');
+
+  useEffect(() => {
+    if (model === 'kling') {
+      setDuration(5);
+    } else if (model === 'sora') {
+      setDuration(4);
+    }
+  }, [model]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const files = e.target.files;
@@ -225,7 +233,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
           )}
         </div>
         
-        {(model === 'sora' || model === 'kling') && (
+        {model === 'sora' && (
           <div className="space-y-2">
             <Label>Thời lượng (giây)</Label>
             <RadioGroup
@@ -244,6 +252,26 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="12" id="duration-12" />
                 <Label htmlFor="duration-12" className="cursor-pointer font-normal">12 giây</Label>
+              </div>
+            </RadioGroup>
+          </div>
+        )}
+
+        {model === 'kling' && (
+          <div className="space-y-2">
+            <Label>Thời lượng (giây)</Label>
+            <RadioGroup
+              value={String(duration)}
+              onValueChange={(value) => setDuration(Number(value))}
+              className="flex items-center gap-6 pt-2"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="5" id="duration-5" />
+                <Label htmlFor="duration-5" className="cursor-pointer font-normal">5 giây</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="10" id="duration-10" />
+                <Label htmlFor="duration-10" className="cursor-pointer font-normal">10 giây</Label>
               </div>
             </RadioGroup>
           </div>
