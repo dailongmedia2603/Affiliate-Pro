@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AutomationLogViewer from './AutomationLogViewer';
@@ -18,9 +18,31 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+type SubProductInfo = {
+  id: string;
+  name: string;
+};
+
 type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; };
-type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; gemini_prompt_for_video?: string; } | null; error_message: string | null; created_at: string; };
-type AutomationRun = { id: string; status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; started_at: string; finished_at: string | null; automation_run_steps: AutomationRunStep[]; channel_id: string; };
+type AutomationRunStep = { 
+  id: string; 
+  step_type: string; 
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; 
+  output_data: { url?: string } | null; 
+  input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; gemini_prompt_for_video?: string; } | null; 
+  error_message: string | null; 
+  created_at: string;
+  sub_product_id: string;
+  sub_product: SubProductInfo | null;
+};
+type AutomationRun = { 
+  id: string; 
+  status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; 
+  started_at: string; 
+  finished_at: string | null; 
+  automation_run_steps: AutomationRunStep[]; 
+  channel_id: string; 
+};
 
 const StatusBadge = ({ status }: { status: string }) => {
   switch (status) {
@@ -56,7 +78,13 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
       .from('automation_runs')
-      .select(`id, status, started_at, finished_at, channel_id, automation_run_steps (id, step_type, status, output_data, input_data, error_message, created_at)`)
+      .select(`
+        id, status, started_at, finished_at, channel_id,
+        automation_run_steps (
+          id, step_type, status, output_data, input_data, error_message, created_at, sub_product_id,
+          sub_product:sub_products (id, name)
+        )
+      `)
       .eq('channel_id', channelId)
       .order('started_at', { ascending: false });
 
@@ -152,22 +180,20 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     <>
       <Accordion type="single" collapsible className="w-full space-y-2">
         {runs.map(run => {
-          const sortedSteps = run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-          
-          const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
-          const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
-          const voiceSteps = sortedSteps.filter(step => step.step_type === 'generate_voice');
+          const stepsBySubProduct = run.automation_run_steps.reduce((acc, step) => {
+            const subProductId = step.sub_product_id;
+            if (!subProductId) return acc;
 
-          const contentPairs = imageSteps.map((imageStep, index) => {
-            const correspondingVideo = videoSteps.find(
-              videoStep => videoStep.input_data?.source_image_step_id === imageStep.id
-            );
-            return {
-              pairNumber: index + 1,
-              imageStep,
-              videoStep: correspondingVideo,
-            };
-          });
+            if (!acc[subProductId]) {
+              acc[subProductId] = {
+                id: subProductId,
+                name: step.sub_product?.name || `Sản phẩm #${subProductId.substring(0, 8)}`,
+                steps: []
+              };
+            }
+            acc[subProductId].steps.push(step);
+            return acc;
+          }, {} as Record<string, { id: string; name: string; steps: AutomationRunStep[] }>);
 
           return (
             <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
@@ -193,103 +219,56 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
               </AccordionTrigger>
               <AccordionContent className="p-4 bg-gray-50/70">
                 <div className="space-y-4">
-                  {contentPairs.map(({ pairNumber, imageStep, videoStep }) => (
-                    <div key={imageStep.id} className="p-4 border rounded-lg bg-white shadow-sm">
-                      <h4 className="font-bold text-md text-gray-700 mb-3">Cặp nội dung {pairNumber}</h4>
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {/* Left Column: Image Step */}
-                        <div className="p-3 border rounded-md bg-gray-50/50 flex flex-col justify-between">
-                          <div>
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-3">
-                                <StepIcon type={imageStep.step_type} />
-                                <div>
-                                  <p className="font-semibold capitalize">Generate Image {pairNumber}</p>
-                                  <p className="text-xs text-gray-500">Tạo lúc: {new Date(imageStep.created_at).toLocaleTimeString()}</p>
-                                </div>
-                              </div>
-                              <StatusBadge status={imageStep.status} />
-                            </div>
-                            {imageStep.status === 'failed' && imageStep.error_message && (
-                              <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>
-                            )}
-                          </div>
-                          <div className="mt-3 flex flex-col items-start gap-4">
-                            {imageStep.status === 'completed' && imageStep.output_data?.url && (
-                              <button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer w-full">
-                                <img src={imageStep.output_data.url} alt="Generated" className="w-full rounded-md border object-contain bg-gray-100" />
-                              </button>
-                            )}
-                            <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}>
-                              <FileText className="w-4 h-4 mr-2" />
-                              Chi tiết
-                            </Button>
-                          </div>
-                        </div>
+                  <Accordion type="multiple" defaultValue={Object.values(stepsBySubProduct).map(g => g.id)} className="space-y-3">
+                    {Object.values(stepsBySubProduct).map((group) => {
+                      const sortedSteps = group.steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                      const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
+                      const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
+                      const contentPairs = imageSteps.map((imageStep, pairIndex) => ({
+                        pairNumber: pairIndex + 1,
+                        imageStep,
+                        videoStep: videoSteps.find(videoStep => videoStep.input_data?.source_image_step_id === imageStep.id),
+                      }));
 
-                        {/* Right Column: Video Step */}
-                        <div className="p-3 border rounded-md bg-gray-50/50 flex flex-col justify-between">
-                          {videoStep ? (
-                            <>
-                              <div>
-                                <div className="flex items-start justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <StepIcon type={videoStep.step_type} />
+                      return (
+                        <AccordionItem value={group.id} key={group.id} className="border rounded-lg bg-white shadow-sm">
+                          <AccordionTrigger className="px-4 py-3 text-lg font-semibold text-gray-800 hover:bg-gray-50 rounded-t-lg">
+                            <div className="flex items-center gap-2">
+                              <Package className="w-5 h-5 text-orange-500" />
+                              {group.name}
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="p-4 border-t space-y-4">
+                            {contentPairs.map(({ pairNumber, imageStep, videoStep }) => (
+                              <div key={imageStep.id} className="p-4 border rounded-lg bg-gray-50/50">
+                                <h4 className="font-bold text-md text-gray-700 mb-3">Cặp nội dung {pairNumber}</h4>
+                                <div className="grid md:grid-cols-2 gap-4">
+                                  {/* Image Step */}
+                                  <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
                                     <div>
-                                      <p className="font-semibold capitalize">Generate Video {pairNumber}</p>
-                                      <p className="text-xs text-gray-500">Tạo lúc: {new Date(videoStep.created_at).toLocaleTimeString()}</p>
+                                      <div className="flex items-start justify-between">
+                                        <div className="flex items-center gap-3"><StepIcon type={imageStep.step_type} /><div><p className="font-semibold capitalize">Generate Image {pairNumber}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(imageStep.created_at).toLocaleTimeString()}</p></div></div>
+                                        <StatusBadge status={imageStep.status} />
+                                      </div>
+                                      {imageStep.status === 'failed' && imageStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>)}
+                                    </div>
+                                    <div className="mt-3 flex flex-col items-start gap-4">
+                                      {imageStep.status === 'completed' && imageStep.output_data?.url && (<button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer w-full"><img src={imageStep.output_data.url} alt="Generated" className="w-full rounded-md border object-contain bg-gray-100" /></button>)}
+                                      <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
                                     </div>
                                   </div>
-                                  <StatusBadge status={videoStep.status} />
+                                  {/* Video Step */}
+                                  <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                    {videoStep ? (<><div><div className="flex items-start justify-between"><div className="flex items-center gap-3"><StepIcon type={videoStep.step_type} /><div><p className="font-semibold capitalize">Generate Video {pairNumber}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(videoStep.created_at).toLocaleTimeString()}</p></div></div><StatusBadge status={videoStep.status} /></div>{videoStep.status === 'failed' && videoStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {videoStep.error_message}</div>)}</div><div className="mt-3 flex flex-col items-start gap-4">{videoStep.status === 'completed' && videoStep.output_data?.url && (<video src={videoStep.output_data.url} controls className="w-full rounded-md border" />)}<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>{videoStep.input_data?.gemini_prompt_for_video && (<Button variant="secondary" size="sm" onClick={() => setAiPromptLog(videoStep.input_data.gemini_prompt_for_video!)}><Bot className="w-4 h-4 mr-2" />Prompt AI Log</Button>)}</div></div></>) : (<div className="flex items-center justify-center h-full text-gray-400"><p className="text-sm">Chờ tạo video...</p></div>)}
+                                  </div>
                                 </div>
-                                {videoStep.status === 'failed' && videoStep.error_message && (
-                                  <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {videoStep.error_message}</div>
-                                )}
                               </div>
-                              <div className="mt-3 flex flex-col items-start gap-4">
-                                {videoStep.status === 'completed' && videoStep.output_data?.url && (
-                                  <video src={videoStep.output_data.url} controls className="w-full rounded-md border" />
-                                )}
-                                 <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}>
-                                        <FileText className="w-4 h-4 mr-2" />
-                                        Chi tiết
-                                    </Button>
-                                    {videoStep.input_data?.gemini_prompt_for_video && (
-                                        <Button variant="secondary" size="sm" onClick={() => setAiPromptLog(videoStep.input_data.gemini_prompt_for_video!)}>
-                                            <Bot className="w-4 h-4 mr-2" />
-                                            Prompt AI Log
-                                        </Button>
-                                    )}
-                                 </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="flex items-center justify-center h-full text-gray-400">
-                              <p className="text-sm">Chờ tạo video...</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* Render voice steps separately */}
-                  {voiceSteps.map(step => (
-                     <div key={step.id} className="p-4 border rounded-lg bg-white shadow-sm">
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-center gap-3">
-                            <StepIcon type={step.step_type} />
-                            <div>
-                              <p className="font-semibold capitalize">Generate Voice</p>
-                              <p className="text-xs text-gray-500">Tạo lúc: {new Date(step.created_at).toLocaleTimeString()}</p>
-                            </div>
-                          </div>
-                          <StatusBadge status={step.status} />
-                        </div>
-                        {/* ... voice step content */}
-                     </div>
-                  ))}
+                            ))}
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                  </Accordion>
                 </div>
                 <div className="mt-4 border-t pt-4">
                   <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}><Terminal className="w-4 h-4 mr-2" />{visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}</Button>
