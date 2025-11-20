@@ -179,18 +179,32 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                       <div className="flex items-center gap-3"><StepIcon type={step.step_type} /><div><p className="font-semibold capitalize">{step.step_type.replace(/_/g, ' ')}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(step.created_at).toLocaleTimeString()}</p></div></div>
                       <StatusBadge status={step.status} />
                     </div>
-                    {step.status === 'completed' && step.output_data?.url && (
-                      <div className="mt-3 flex items-start gap-4">
-                        {step.step_type === 'generate_image' ? (<button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer"><img src={step.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" /></button>) : step.step_type === 'generate_video' ? (<video src={step.output_data.url} controls className="max-w-xs rounded-md border" />) : null}
-                        {step.step_type === 'generate_image' && (
-                          <Button variant="outline" size="sm" onClick={() => setDetailsStep(step)}>
-                            <FileText className="w-4 h-4 mr-2" />
-                            Chi tiết
-                          </Button>
-                        )}
-                      </div>
+                    
+                    <div className="mt-3 flex items-start gap-4">
+                      {step.status === 'completed' && step.output_data?.url && (
+                        <>
+                          {step.step_type === 'generate_image' && (
+                            <button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer">
+                              <img src={step.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" />
+                            </button>
+                          )}
+                          {step.step_type === 'generate_video' && (
+                            <video src={step.output_data.url} controls className="max-w-xs rounded-md border" />
+                          )}
+                        </>
+                      )}
+                      
+                      {step.step_type === 'generate_image' && (
+                        <Button variant="outline" size="sm" onClick={() => setDetailsStep(step)}>
+                          <FileText className="w-4 h-4 mr-2" />
+                          Chi tiết
+                        </Button>
+                      )}
+                    </div>
+
+                    {step.status === 'failed' && step.error_message && (
+                      <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>
                     )}
-                    {step.status === 'failed' && step.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>)}
                   </div>
                 ))}
               </div>
@@ -235,7 +249,13 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                     </div>
                     <div>
                         <h3 className="font-semibold mb-2 text-gray-800">Ảnh kết quả:</h3>
-                        <img src={detailsStep.output_data?.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                        {detailsStep.output_data?.url ? (
+                          <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                        ) : (
+                          <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
+                            <p>Bước này đã thất bại, không có ảnh kết quả.</p>
+                          </div>
+                        )}
                     </div>
                 </div>
             )}

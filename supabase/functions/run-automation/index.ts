@@ -22,6 +22,8 @@ function replacePlaceholders(template, data) {
   });
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // --- Main Handler ---
 
 serve(async (req) => {
@@ -149,7 +151,8 @@ serve(async (req) => {
       if (subProduct.image_url) imageUrls.push(subProduct.image_url);
 
       await logToDb(supabaseAdmin, runId, `Đang tạo ${imagePrompts.length} bước tạo ảnh...`);
-      const stepPromises = imagePrompts.map(async (imagePrompt) => {
+      
+      for (const imagePrompt of imagePrompts) {
         const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
 
         const { data: step, error: stepError } = await supabaseAdmin
@@ -168,9 +171,9 @@ serve(async (req) => {
           console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, err);
           logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', step.id);
         });
-      });
 
-      await Promise.all(stepPromises);
+        await sleep(2000); // Đợi 2 giây trước khi gửi yêu cầu tiếp theo
+      }
     }
 
     // 6. --- FINALIZE RUN START ---
