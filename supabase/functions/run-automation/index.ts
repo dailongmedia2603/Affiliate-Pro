@@ -70,7 +70,6 @@ serve(async (req) => {
       throw new Error("Cấu hình automation không đầy đủ. Thiếu 'Mẫu Prompt cho AI' hoặc 'Số lượng ảnh'.");
     }
 
-    // Load user settings for Gemini API
     const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('gemini_api_key, gemini_api_url').eq('id', user.id).single();
     if (settingsError || !settings?.gemini_api_url || !settings?.gemini_api_key) {
       throw new Error("Chưa cấu hình API Gemini trong Cài đặt (thiếu URL hoặc Key).");
@@ -103,7 +102,6 @@ serve(async (req) => {
     for (const subProduct of subProducts) {
       await logToDb(supabaseAdmin, runId, `Bắt đầu xử lý sản phẩm con: "${subProduct.name}".`);
 
-      // 5a. Prepare and call Gemini to get image prompts
       const geminiPromptData = {
         product_name: subProduct.name,
         product_description: subProduct.description,
@@ -112,18 +110,33 @@ serve(async (req) => {
       const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
       
       await logToDb(supabaseAdmin, runId, `Đang gọi Gemini AI để tạo ${config.imageCount} prompt cho ảnh...`);
-      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+      const { data: geminiResponseString, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
         body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
       });
 
       if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
-      if (geminiResult.error) throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error}`);
       
-      const imagePrompts = geminiResult
-        .split('\n')
+      let geminiResult;
+      try {
+        geminiResult = JSON.parse(geminiResponseString);
+      } catch (e) {
+        throw new Error(`Không thể phân tích phản hồi JSON từ Gemini API: ${e.message}. Phản hồi nhận được: ${geminiResponseString}`);
+      }
+
+      if (geminiResult.error || !geminiResult.success) {
+        throw new Error(`Lỗi tạo prompt ảnh từ AI: ${geminiResult.error || geminiResult.message || 'Lỗi không xác định'}`);
+      }
+      
+      const answerString = geminiResult.answer;
+      if (!answerString) {
+        throw new Error("Phản hồi từ AI không chứa trường 'answer'.");
+      }
+
+      const imagePrompts = answerString
+        .split('\n\n')
         .map(p => p.trim())
-        .map(p => p.replace(/^\s*-\s*/, '').replace(/^\s*\d+\.\s*/, '')) // Remove prefixes like "- " or "1. "
-        .filter(p => p.length > 10); // Filter out empty or junk lines
+        .map(p => p.replace(/^\s*-\s*/, '').replace(/^\s*\d+\.\s*/, ''))
+        .filter(p => p.length > 10);
 
       if (imagePrompts.length === 0) {
         await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào cho sản phẩm "${subProduct.name}". Bỏ qua sản phẩm này.`, 'WARN');
@@ -131,7 +144,6 @@ serve(async (req) => {
       }
       await logToDb(supabaseAdmin, runId, `AI đã trả về ${imagePrompts.length} prompt ảnh.`, 'SUCCESS');
 
-      // 5b. Create multiple image generation steps
       const imageUrls = [];
       if (channel.character_image_url) imageUrls.push(channel.character_image_url);
       if (subProduct.image_url) imageUrls.push(subProduct.image_url);
