@@ -87,8 +87,30 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
         wan2: { type: wan2Type },
       };
 
-      const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
-        body: { action: 'generate_video', model, prompt, imageUrl, videoData, options: options[model] },
+      let functionName: string;
+      let functionPayload: object;
+
+      if (model === 'sora') {
+        functionName = 'tao-video-sora';
+        functionPayload = {
+          prompt,
+          imageUrl,
+          options: options.sora,
+        };
+      } else {
+        functionName = 'higgsfield-python-proxy';
+        functionPayload = {
+          action: 'generate_video',
+          model,
+          prompt,
+          imageUrl,
+          videoData,
+          options: options[model],
+        };
+      }
+
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: functionPayload,
       });
 
       if (error) throw error;

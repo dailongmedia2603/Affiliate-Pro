@@ -91,10 +91,6 @@ serve(async (req) => {
         const basePayload = { token, prompt, input_image, ...options };
 
         switch (model) {
-          case 'sora':
-            endpoint = `${API_BASE}/video/sora`;
-            apiPayload = { ...basePayload };
-            break;
           case 'kling':
             endpoint = `${API_BASE}/video/kling2.1`;
             apiPayload = { ...basePayload, model: "kling-v2-5-turbo", motion_id: "7077cde8-7947-46d6-aea2-dbf2ff9d441c" };
