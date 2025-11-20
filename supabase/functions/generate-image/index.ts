@@ -94,8 +94,7 @@ serve(async (req) => {
       logId = stepId;
 
       if (stepId) {
-        const { error: updateError } = await supabaseAdmin.from(logTable).update({ status: 'running' }).eq(logIdField, logId);
-        if (updateError) throw updateError;
+        await supabaseAdmin.from(logTable).update({ status: 'running' }).eq(logIdField, logId);
       } else {
         const { data: log, error: logError } = await supabaseAdmin.from(logTable).insert({ user_id: user.id, model, prompt, status: 'processing' }).select(logIdField).single();
         if (logError) throw logError;
@@ -106,16 +105,31 @@ serve(async (req) => {
       const endpoint = `${API_BASE}/img/banana`;
       const apiPayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
       const generationResponse = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(apiPayload) });
-      if (!generationResponse.ok) throw new Error(`Tạo ảnh thất bại: ${await generationResponse.text()}`);
       
-      const generationData = await generationResponse.json();
-      if (!generationData.job_sets || generationData.job_sets.length === 0) throw new Error('Phản hồi từ API tạo ảnh không hợp lệ.');
+      const responseText = await generationResponse.text();
+      if (!generationResponse.ok) {
+        throw new Error(`Tạo ảnh thất bại (status ${generationResponse.status}): ${responseText}`);
+      }
+      if (!responseText) {
+        throw new Error('API tạo ảnh trả về một phản hồi rỗng. Prompt có thể không hợp lệ hoặc có vấn đề với API.');
+      }
+
+      let generationData;
+      try {
+        generationData = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error(`Không thể phân tích phản hồi JSON từ API tạo ảnh. Phản hồi: ${responseText}`);
+      }
+
+      if (!generationData || !generationData.job_sets || generationData.job_sets.length === 0) {
+        const apiError = generationData?.message || generationData?.error || JSON.stringify(generationData);
+        throw new Error(`Phản hồi từ API tạo ảnh không hợp lệ: ${apiError}`);
+      }
       
       const api_task_id = generationData.job_sets[0].id;
       await logToDb(supabaseAdmin, runId, `Đã nhận ID tác vụ từ API: ${api_task_id}.`, 'SUCCESS', stepId);
 
-      const { error: updateError } = await supabaseAdmin.from(logTable).update({ api_task_id: api_task_id, status: 'running' }).eq(logIdField, logId);
-      if (updateError) throw updateError;
+      await supabaseAdmin.from(logTable).update({ api_task_id: api_task_id, status: 'running' }).eq(logIdField, logId);
 
       return new Response(JSON.stringify({ success: true, logId: logId, taskId: api_task_id }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     } else {
