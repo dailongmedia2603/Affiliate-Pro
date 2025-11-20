@@ -214,10 +214,10 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                               <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>
                             )}
                           </div>
-                          <div className="mt-3 flex items-start gap-4">
+                          <div className="mt-3 flex flex-col items-start gap-4">
                             {imageStep.status === 'completed' && imageStep.output_data?.url && (
-                              <button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer">
-                                <img src={imageStep.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" />
+                              <button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer w-full">
+                                <img src={imageStep.output_data.url} alt="Generated" className="w-full rounded-md border object-contain bg-gray-100" />
                               </button>
                             )}
                             <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}>
