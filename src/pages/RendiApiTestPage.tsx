@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Upload, Video, X, AlertTriangle, CheckCircle, FileAudio, Film, XCircle, Wand } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 
 type MediaFile = {
   file: File;
@@ -55,6 +56,7 @@ const RendiApiTestPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const pollingIntervalRef = useRef<number | null>(null);
   
+  const [isAdvancedMode, setIsAdvancedMode] = useState(false);
   const [transition, setTransition] = useState<string>('fade');
   const [transitionDuration, setTransitionDuration] = useState<number>(1);
   const [clipDuration, setClipDuration] = useState<number>(3);
@@ -187,7 +189,7 @@ const RendiApiTestPage = () => {
 
     setIsProcessing(true);
     setTask(null);
-    const loadingToast = showLoading('Đang chuẩn bị tác vụ...');
+    let loadingToast = showLoading('Đang chuẩn bị tác vụ...');
     let dbTask: RendiTask | null = null;
 
     try {
@@ -200,59 +202,77 @@ const RendiApiTestPage = () => {
       setTask(dbTask);
 
       dismissToast(loadingToast);
-      showLoading('Đang tải file lên...');
+      loadingToast = showLoading('Đang tải file lên...');
       const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
       
       await supabase.from('rendi_tasks').update({ status: 'BUILDING_COMMAND' }).eq('id', dbTask.id);
       setTask(prev => prev ? { ...prev, status: 'BUILDING_COMMAND' } : null);
 
       dismissToast(loadingToast);
-      showLoading('Đang xây dựng và gửi lệnh render...');
+      loadingToast = showLoading('Đang xây dựng và gửi lệnh render...');
 
       const input_files: { [key: string]: string } = {};
       const output_files: { [key: string]: string } = {};
       const ffmpeg_commands: string[] = [];
       const resolution = "1280:720";
 
-      videosAndImages.forEach((mf, i) => {
-        const inputAlias = `in_${i + 1}`;
-        const outputAlias = `clip_${i + 1}`;
-        input_files[inputAlias] = urls[mediaFiles.indexOf(mf)];
-        output_files[outputAlias] = `${outputAlias}.mp4`;
-        
-        let cmd = '';
-        if (mf.type === 'image') {
-          cmd = `-loop 1 -t ${clipDuration} -i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -pix_fmt yuv420p {{${outputAlias}}}`;
-        } else { // video
-          cmd = `-i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:a copy {{${outputAlias}}}`;
-        }
-        ffmpeg_commands.push(cmd);
-      });
-
-      let lastOutput = 'clip_1';
-      if (videosAndImages.length > 1) {
-        for (let i = 1; i < videosAndImages.length; i++) {
-          const currentInput = `clip_${i + 1}`;
-          const transitionOutput = `transitioned_${i}`;
-          output_files[transitionOutput] = `${transitionOutput}.mp4`;
+      if (isAdvancedMode) {
+        // Advanced mode with transitions
+        videosAndImages.forEach((mf, i) => {
+          const inputAlias = `in_${i + 1}`;
+          const outputAlias = `clip_${i + 1}`;
+          input_files[inputAlias] = urls[mediaFiles.indexOf(mf)];
+          output_files[outputAlias] = `${outputAlias}.mp4`;
           
-          // The xfade filter's offset defaults to the end of the first stream, which is what we want.
-          // We just need to provide the two inputs for the transition.
-          const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
+          let cmd = '';
+          if (mf.type === 'image') {
+            cmd = `-loop 1 -t ${clipDuration} -i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -pix_fmt yuv420p {{${outputAlias}}}`;
+          } else { // video
+            cmd = `-i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -an {{${outputAlias}}}`;
+          }
           ffmpeg_commands.push(cmd);
-          lastOutput = transitionOutput;
-        }
-      }
-      
-      const finalVideoAlias = 'final_output_1';
-      output_files[finalVideoAlias] = 'final_output.mp4';
+        });
 
-      if (audioFile) {
-        const audioAlias = 'in_audio';
-        input_files[audioAlias] = urls[mediaFiles.indexOf(audioFile)];
-        ffmpeg_commands.push(`-i {{${lastOutput}}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{${finalVideoAlias}}}`);
+        let lastOutput = 'clip_1';
+        if (videosAndImages.length > 1) {
+          for (let i = 1; i < videosAndImages.length; i++) {
+            const currentInput = `clip_${i + 1}`;
+            const transitionOutput = `transitioned_${i}`;
+            output_files[transitionOutput] = `${transitionOutput}.mp4`;
+            const offset = (i * clipDuration) - ((i-1) * transitionDuration);
+            const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
+            ffmpeg_commands.push(cmd);
+            lastOutput = transitionOutput;
+          }
+        }
+        const finalVideoAlias = 'final_output_1';
+        output_files[finalVideoAlias] = 'final_output.mp4';
+        if (audioFile) {
+          const audioAlias = 'in_audio';
+          input_files[audioAlias] = urls[mediaFiles.indexOf(audioFile)];
+          ffmpeg_commands.push(`-i {{${lastOutput}}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{${finalVideoAlias}}}`);
+        } else {
+          ffmpeg_commands.push(`-i {{${lastOutput}}} -c copy {{${finalVideoAlias}}}`);
+        }
       } else {
-        ffmpeg_commands.push(`-i {{${lastOutput}}} -c copy {{${finalVideoAlias}}}`);
+        // Simple mode: basic concat
+        const videoInputs = videosAndImages.map((mf, i) => {
+            const alias = `in_${i + 1}`;
+            input_files[alias] = urls[mediaFiles.indexOf(mf)];
+            return `[${i}:v:0]`;
+        }).join('');
+        const concatCmd = `-filter_complex "${videoInputs}concat=n=${videosAndImages.length}:v=1:a=0[v]" -map "[v]" {{out_temp_video}}`;
+        output_files['out_temp_video'] = 'temp_video.mp4';
+        ffmpeg_commands.push(concatCmd);
+
+        output_files['out_final'] = 'final_output.mp4';
+        if (audioFile) {
+            const audioAlias = 'in_audio';
+            input_files[audioAlias] = urls[mediaFiles.indexOf(audioFile)];
+            ffmpeg_commands.push(`-i {{out_temp_video}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{out_final}}`);
+        } else {
+            ffmpeg_commands.push(`-i {{out_temp_video}} -c copy {{out_final}}`);
+        }
       }
 
       const payload = { input_files, output_files, ffmpeg_commands };
@@ -332,25 +352,31 @@ const RendiApiTestPage = () => {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="clip-duration">Thời lượng cho ảnh (s)</Label>
-                    <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="transition-duration">Thời lượng chuyển cảnh (s)</Label>
-                    <Input id="transition-duration" type="number" value={transitionDuration} onChange={e => setTransitionDuration(Number(e.target.value))} min="0.1" step="0.1" />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="transition-effect">Hiệu ứng chuyển cảnh</Label>
-                    <Select value={transition} onValueChange={setTransition}>
-                        <SelectTrigger id="transition-effect"><SelectValue placeholder="Chọn hiệu ứng" /></SelectTrigger>
-                        <SelectContent>
-                            {transitions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
+            <div className="flex items-center space-x-2 pt-4 border-t">
+                <Switch id="advanced-mode" checked={isAdvancedMode} onCheckedChange={setIsAdvancedMode} />
+                <Label htmlFor="advanced-mode">Kích hoạt tùy chọn nâng cao (chuyển cảnh, thời lượng)</Label>
             </div>
+            {isAdvancedMode && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="clip-duration">Thời lượng cho ảnh (s)</Label>
+                        <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="transition-duration">Thời lượng chuyển cảnh (s)</Label>
+                        <Input id="transition-duration" type="number" value={transitionDuration} onChange={e => setTransitionDuration(Number(e.target.value))} min="0.1" step="0.1" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="transition-effect">Hiệu ứng chuyển cảnh</Label>
+                        <Select value={transition} onValueChange={setTransition}>
+                            <SelectTrigger id="transition-effect"><SelectValue placeholder="Chọn hiệu ứng" /></SelectTrigger>
+                            <SelectContent>
+                                {transitions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -361,7 +387,7 @@ const RendiApiTestPage = () => {
           <CardContent className="space-y-4">
             <Button onClick={handleMerge} disabled={isProcessing || mediaFiles.length === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white">
               {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand className="mr-2 h-4 w-4" />}
-              Ghép Video & Áp dụng hiệu ứng
+              {isAdvancedMode ? 'Ghép & Áp dụng hiệu ứng' : 'Ghép Nối Đơn Giản'}
             </Button>
             {task && (
               <div className="space-y-3 pt-4 border-t">
