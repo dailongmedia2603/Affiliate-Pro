@@ -82,14 +82,14 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
         id, status, started_at, finished_at, channel_id,
         automation_run_steps (
           id, step_type, status, output_data, input_data, error_message, created_at, sub_product_id,
-          sub_product:sub_products (id, name)
+          sub_product:sub_products!inner (id, name)
         )
       `)
       .eq('channel_id', channelId)
       .order('started_at', { ascending: false });
 
     if (error) { showError('Không thể tải lịch sử automation.'); } 
-    else { setRuns(data || []); }
+    else { setRuns(data as any[] || []); }
     setLoading(false);
   }, [channelId]);
 
