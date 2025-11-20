@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, HelpCircle } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 type Config = {
   imagePromptGenerationTemplate: string;
@@ -24,6 +25,7 @@ type Config = {
   videoPromptGenerationTemplate: string;
   voiceScriptTemplate: string;
   voiceId: string | null;
+  videoDuration: number;
 };
 
 const defaultConfig: Config = {
@@ -32,6 +34,7 @@ const defaultConfig: Config = {
   videoPromptGenerationTemplate: 'MỤC ĐÍCH: Tạo một prompt mô tả chuyển động (motion prompt) ngắn gọn và tinh tế để biến ảnh tĩnh thành một video ngắn. Chuyển động phải phù hợp với nội dung và cảm xúc của ảnh gốc, liên quan đến sản phẩm "{{product_name}}".\n\nBỐI CẢNH:\n- Sản phẩm: {{product_name}}\n- Mô tả sản phẩm: {{product_description}}\n- Prompt đã dùng để tạo ảnh gốc: "{{image_prompt}}"\n\nYÊU CẦU: Dựa vào các thông tin trên, hãy đề xuất một chuyển động phù hợp bằng tiếng Anh. Các chuyển động nên đơn giản và chuyên nghiệp. Ví dụ: "a slow zoom in", "a gentle pan from left to right", "subtle camera rotation clockwise", "a slight tilt up".\n\nQUAN TRỌNG: KHÔNG thêm bất kỳ lời giải thích, lời chào, hay văn bản nào khác. Chỉ trả về duy nhất một dòng prompt chuyển động.',
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
   voiceId: null,
+  videoDuration: 5,
 };
 
 const PlaceholderTooltip = ({ content }: { content: React.ReactNode }) => (
@@ -177,6 +180,23 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                   </div>
                   <Textarea id="videoPromptGenerationTemplate" value={config.videoPromptGenerationTemplate} onChange={(e) => handleConfigChange('videoPromptGenerationTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
                   <VariablesList variables={['image_prompt', 'product_name', 'product_description']} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Thời lượng video (giây)</Label>
+                  <RadioGroup
+                      value={String(config.videoDuration)}
+                      onValueChange={(value) => handleConfigChange('videoDuration', Number(value))}
+                      className="flex items-center gap-4 pt-1"
+                  >
+                      <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="5" id="duration-5" />
+                          <Label htmlFor="duration-5" className="cursor-pointer">5 giây</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="10" id="duration-10" />
+                          <Label htmlFor="duration-10" className="cursor-pointer">10 giây</Label>
+                      </div>
+                  </RadioGroup>
                 </div>
               </TabsContent>
               <TabsContent value="voice" className="space-y-4">

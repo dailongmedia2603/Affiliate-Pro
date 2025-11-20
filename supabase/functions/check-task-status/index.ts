@@ -123,6 +123,8 @@ serve(async (req) => {
 
                   await logToDb(supabaseAdmin, runId, `AI đã tạo prompt video: "${finalVideoPrompt}"`, 'SUCCESS', stepId);
 
+                  const videoDuration = config.config_data.videoDuration || 5;
+
                   const videoInputData = { 
                     prompt: finalVideoPrompt, 
                     imageUrl: resultUrl, 
@@ -134,8 +136,8 @@ serve(async (req) => {
                   const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData }).select('id').single();
                   if (videoStepError) throw videoStepError;
                   
-                  await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
-                  supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: finalVideoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
+                  await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video' với thời lượng ${videoDuration} giây.`, 'INFO', videoStep.id);
+                  supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: finalVideoPrompt, imageUrl: resultUrl, options: { duration: videoDuration, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
                   
                   await logToDb(supabaseAdmin, runId, `Đợi 30 giây trước khi xử lý bước tiếp theo...`, 'INFO');
                   await sleep(30000);
