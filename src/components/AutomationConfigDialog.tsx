@@ -21,7 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 type Config = {
   imagePromptGenerationTemplate: string;
   imageCount: number;
-  videoPromptTemplate: string;
+  videoPromptGenerationTemplate: string;
   voiceScriptTemplate: string;
   voiceId: string | null;
 };
@@ -29,7 +29,7 @@ type Config = {
 const defaultConfig: Config = {
   imagePromptGenerationTemplate: 'Vui lòng tạo chính xác {{image_count}} prompt khác nhau để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\nYÊU CẦU CỰC KỲ QUAN TRỌNG: Mỗi prompt phải được đặt trong một cặp thẻ <prompt> và </prompt>. Ví dụ: <prompt>Một prompt mẫu.</prompt><prompt>Một prompt mẫu khác.</prompt>. KHÔNG thêm bất kỳ văn bản nào khác ngoài các thẻ prompt.',
   imageCount: 4,
-  videoPromptTemplate: 'Tạo một video với chuyển động lia máy từ từ qua sản phẩm, {{image_prompt}}',
+  videoPromptGenerationTemplate: 'Dựa vào prompt tạo ảnh sau: "{{image_prompt}}", hãy tạo một prompt mô tả chuyển động ngắn gọn cho video, ví dụ: "a slow pan from left to right". Chỉ trả về prompt chuyển động, không thêm lời giải thích.',
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
   voiceId: null,
 };
@@ -149,7 +149,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
               <TabsContent value="image" className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center">
-                    <Label htmlFor="imagePromptGenerationTemplate">Mẫu Prompt cho AI (Gemini)</Label>
+                    <Label htmlFor="imagePromptGenerationTemplate">Mẫu Prompt cho AI (Tạo Prompt Ảnh)</Label>
                     <PlaceholderTooltip content={
                       <div>
                         <p className="font-bold">Đây là câu lệnh để yêu cầu AI tạo ra các prompt tạo ảnh.</p>
@@ -172,17 +172,18 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
               <TabsContent value="video" className="space-y-4">
                 <div className="space-y-2">
                   <div className="flex items-center">
-                    <Label htmlFor="videoPromptTemplate">Mẫu Prompt Tạo Video</Label>
+                    <Label htmlFor="videoPromptGenerationTemplate">Mẫu Prompt cho AI (Tạo Prompt Video)</Label>
                     <PlaceholderTooltip content={
                       <div>
-                        <p className="font-bold">Biến có thể dùng:</p>
+                        <p className="font-bold">Đây là câu lệnh để yêu cầu AI tạo ra prompt mô tả chuyển động cho video.</p>
+                        <p className="mt-2 font-bold">Biến có thể dùng:</p>
                         <ul className="list-disc list-inside">
-                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_prompt}}"}</code>: Prompt đã dùng để tạo ảnh (sẽ lấy prompt của ảnh đầu tiên).</li>
+                          <li><code className="bg-gray-200 px-1 rounded">{"{{image_prompt}}"}</code>: Prompt đã dùng để tạo ảnh gốc.</li>
                         </ul>
                       </div>
                     } />
                   </div>
-                  <Textarea id="videoPromptTemplate" value={config.videoPromptTemplate} onChange={(e) => handleConfigChange('videoPromptTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
+                  <Textarea id="videoPromptGenerationTemplate" value={config.videoPromptGenerationTemplate} onChange={(e) => handleConfigChange('videoPromptGenerationTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
                 </div>
               </TabsContent>
               <TabsContent value="voice" className="space-y-4">

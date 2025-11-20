@@ -66,15 +66,15 @@ serve(async (req) => {
 
             let cachedUser = userCache.get(step.run.user_id);
             if (!cachedUser) {
-              const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('higgsfield_cookie, higgsfield_clerk_context').eq('id', step.run.user_id).single();
+              const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('*').eq('id', step.run.user_id).single();
               if (settingsError || !settings) {
-                userCache.set(step.run.user_id, { token: null });
+                userCache.set(step.run.user_id, { token: null, settings: null });
                 continue;
               }
               const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
-              cachedUser = { token };
+              cachedUser = { token, settings };
               userCache.set(step.run.user_id, cachedUser);
-            } else if (!cachedUser.token) continue;
+            } else if (!cachedUser.token || !cachedUser.settings) continue;
 
             const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
             const job = statusData?.jobs?.[0];
@@ -98,11 +98,22 @@ serve(async (req) => {
               if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
 
               if (step.step_type === 'generate_image') {
-                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Kích hoạt bước 'Tạo Video'.`, 'INFO', stepId);
-                const videoPrompt = replacePlaceholders(config.config_data.videoPromptTemplate, { image_prompt: step.input_data.prompt });
+                await logToDb(supabaseAdmin, runId, `Bước 'Tạo Ảnh' hoàn thành. Bắt đầu tạo prompt cho video.`, 'INFO', stepId);
                 
+                const geminiVideoPromptTemplate = config.config_data.videoPromptGenerationTemplate;
+                const geminiVideoPrompt = replacePlaceholders(geminiVideoPromptTemplate, { image_prompt: step.input_data.prompt });
+
+                const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+                    body: { apiUrl: cachedUser.settings.gemini_api_url, prompt: geminiVideoPrompt, token: cachedUser.settings.gemini_api_key }
+                });
+                if (geminiError) throw new Error(`Lỗi gọi Gemini để tạo prompt video: ${geminiError.message}`);
+                if (!geminiResponse.success) throw new Error(`Lỗi từ Gemini: ${geminiResponse.error || geminiResponse.message}`);
+                
+                const finalVideoPrompt = geminiResponse.answer;
+                await logToDb(supabaseAdmin, runId, `AI đã tạo prompt video: "${finalVideoPrompt}"`, 'SUCCESS', stepId);
+
                 const videoInputData = { 
-                  prompt: videoPrompt, 
+                  prompt: finalVideoPrompt, 
                   imageUrl: resultUrl, 
                   model: 'kling',
                   source_image_step_id: step.id
@@ -112,7 +123,7 @@ serve(async (req) => {
                 if (videoStepError) throw videoStepError;
                 
                 await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Video'.`, 'INFO', videoStep.id);
-                supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: videoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
+                supabaseAdmin.functions.invoke('automation-worker-video', { body: JSON.stringify({ stepId: videoStep.id, userId: step.run.user_id, model: 'kling', prompt: finalVideoPrompt, imageUrl: resultUrl, options: { duration: 5, width: 1024, height: 576, resolution: "1080p" } }) }).catch(console.error);
                 
                 await logToDb(supabaseAdmin, runId, `Đợi 30 giây trước khi xử lý bước tiếp theo...`, 'INFO');
                 await sleep(30000);
