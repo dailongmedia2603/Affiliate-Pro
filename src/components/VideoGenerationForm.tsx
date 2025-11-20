@@ -77,7 +77,6 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
-      const imageUrl = imageFile ? await uploadToStorage(imageFile) : null;
       const videoData = videoFile ? await fileToBase64(videoFile) : null;
 
       const options = {
@@ -92,12 +91,15 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
 
       if (model === 'sora') {
         functionName = 'tao-video-sora';
+        const imageBase64 = imageFile ? await fileToBase64(imageFile) : null;
         functionPayload = {
           prompt,
-          imageUrl,
+          imageBase64,
+          imageType: imageFile?.type,
           options: options.sora,
         };
       } else {
+        const imageUrl = imageFile ? await uploadToStorage(imageFile) : null;
         functionName = 'higgsfield-python-proxy';
         functionPayload = {
           action: 'generate_video',

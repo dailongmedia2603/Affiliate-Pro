@@ -32,6 +32,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log("[tao-video-sora] Function invoked.");
+
     // 1. Authenticate user
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -40,6 +42,7 @@ serve(async (req) => {
     );
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error(userError?.message || "Không thể xác thực người dùng.");
+    console.log("[tao-video-sora] User authenticated:", user.id);
     
     // 2. Get user settings
     const supabaseAdmin = createClient(
@@ -55,25 +58,44 @@ serve(async (req) => {
       throw new Error(`Không tìm thấy thông tin xác thực Higgsfield cho người dùng. Vui lòng kiểm tra lại Cài đặt.`);
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
+    console.log("[tao-video-sora] Settings retrieved.");
     
     // 3. Get Higgsfield token
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
+    console.log("[tao-video-sora] Higgsfield token retrieved.");
 
     // 4. Process payload
-    const { prompt, imageUrl, options } = await req.json();
+    const { prompt, imageBase64, imageType, options } = await req.json();
+    console.log("[tao-video-sora] Payload processed. Prompt length:", prompt?.length, "Has image:", !!imageBase64);
 
     let input_image = null;
-    if (imageUrl) {
-      const uploadPayload = { token, url: [imageUrl], cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
-      const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, {
+    if (imageBase64) {
+      console.log("[tao-video-sora] Registering media via base64 data...");
+      const uploadPayload = {
+        token: token,
+        file_data: [imageBase64],
+      };
+      
+      const uploadResponse = await fetch(`${API_BASE}/video/uploadmedia`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(uploadPayload)
       });
-      if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${await uploadResponse.text()}`);
+
+      console.log("[tao-video-sora] Media upload API response status:", uploadResponse.status);
+      
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error("[tao-video-sora] Media upload API error:", errorText);
+        throw new Error(`Lỗi đăng ký media: ${errorText}`);
+      }
+
       const uploadData = await uploadResponse.json();
+      console.log("[tao-video-sora] Media upload API response data:", uploadData);
+
       if (uploadData?.status === true && uploadData.data) {
         input_image = uploadData.data;
+        console.log("[tao-video-sora] Media registered successfully.");
       } else {
         throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadData)}`);
       }
@@ -82,6 +104,7 @@ serve(async (req) => {
     // 5. Call Sora API
     const endpoint = `${API_BASE}/video/sora`;
     const apiPayload = { token, prompt, input_image, ...options };
+    console.log("[tao-video-sora] Calling Sora API with payload:", { ...apiPayload, token: 'REDACTED', input_image: input_image ? 'PRESENT' : 'ABSENT' });
 
     const generationResponse = await fetch(endpoint, {
       method: 'POST',
@@ -89,18 +112,25 @@ serve(async (req) => {
       body: JSON.stringify(apiPayload)
     });
 
+    console.log("[tao-video-sora] Sora API response status:", generationResponse.status);
+
     if (!generationResponse.ok) {
-      throw new Error(`Tạo video thất bại: ${await generationResponse.text()}`);
+      const errorText = await generationResponse.text();
+      console.error("[tao-video-sora] Sora API error:", errorText);
+      throw new Error(`Tạo video thất bại: ${errorText}`);
     }
     
     const generationData = await generationResponse.json();
     const taskId = generationData?.job_sets?.[0]?.id;
+    console.log("[tao-video-sora] Task ID from API:", taskId);
 
     if (!taskId) {
+      console.error("[tao-video-sora] No task ID in API response:", generationData);
       throw new Error('Không nhận được ID tác vụ từ API. Phản hồi: ' + JSON.stringify(generationData));
     }
 
     // 6. Return task ID
+    console.log("[tao-video-sora] Returning success response with taskId:", taskId);
     return new Response(JSON.stringify({ success: true, taskId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
