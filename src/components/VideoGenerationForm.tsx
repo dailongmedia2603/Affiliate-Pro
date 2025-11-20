@@ -82,6 +82,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
       const videoData = videoFile ? await fileToBase64(videoFile) : null;
 
       const options = {
+        sora: { duration, width: 1024, height: 576, resolution: "1080p" },
         kling: { duration, width: 1024, height: 576, resolution: "1080p" },
         higg_life: { width: 1024, height: 576, steps: 30, frames: 81 },
         wan2: { type: wan2Type },
@@ -109,6 +110,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
   };
 
   const modelInfo = {
+    sora: { title: "Text/Image to Video (Sora)", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     kling: { title: "Text/Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     higg_life: { title: "Image to Video", input: "Prompt (bắt buộc) và Ảnh (tùy chọn)." },
     wan2: { title: "Image + Video to Video", input: "Ảnh (bắt buộc), Video (bắt buộc, dưới 5MB) và Prompt (tùy chọn)." },
@@ -133,7 +135,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
         </div>
 
         <div className={`grid grid-cols-1 ${model === 'wan2' ? 'md:grid-cols-2' : ''} gap-6`}>
-          {(model === 'kling' || model === 'higg_life' || model === 'wan2') && (
+          {(model === 'sora' || model === 'kling' || model === 'higg_life' || model === 'wan2') && (
             <div className="space-y-2">
               <Label htmlFor="image-upload">Ảnh đầu vào</Label>
               <div className="w-full h-[152px] border-2 border-dashed rounded-lg flex items-center justify-center relative bg-gray-50">
@@ -153,7 +155,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
           )}
         </div>
         
-        {model === 'kling' && (
+        {(model === 'sora' || model === 'kling') && (
           <div className="space-y-2"><Label>Thời lượng (giây): {duration}</Label><Slider value={[duration]} onValueChange={([v]) => setDuration(v)} min={1} max={10} step={1} /></div>
         )}
 

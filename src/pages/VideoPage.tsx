@@ -9,7 +9,7 @@ import VideoTaskHistory from '@/components/VideoTaskHistory';
 
 const VideoPage = ({ channelId = null }) => {
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
-  const [activeModel, setActiveModel] = useState('kling');
+  const [activeModel, setActiveModel] = useState('sora');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
@@ -34,6 +34,7 @@ const VideoPage = ({ channelId = null }) => {
   }, []);
 
   const models = [
+    { id: 'sora', name: 'Sora', icon: <Film className="w-4 h-4 mr-2" />, color: "text-blue-500" },
     { id: 'kling', name: 'Kling', icon: <Sparkles className="w-4 h-4 mr-2" />, color: "text-purple-500" },
     { id: 'higg_life', name: 'Higg Life', icon: <Wind className="w-4 h-4 mr-2" />, color: "text-green-500" },
     { id: 'wan2', name: 'Wan2', icon: <Clapperboard className="w-4 h-4 mr-2" />, color: "text-red-500" },
@@ -71,7 +72,7 @@ const VideoPage = ({ channelId = null }) => {
         </Alert>
       )}
       <Tabs value={activeModel} onValueChange={setActiveModel} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 rounded-lg h-auto">
+        <TabsList className="grid w-full grid-cols-4 bg-gray-100 p-1 rounded-lg h-auto">
           {models.map(model => (
             <TabsTrigger key={model.id} value={model.id} className="data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-orange-600 font-semibold flex items-center justify-center">
               <span className={model.color}>{model.icon}</span> {model.name}
