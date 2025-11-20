@@ -149,72 +149,82 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   return (
     <>
       <Accordion type="single" collapsible className="w-full space-y-2">
-        {runs.map(run => (
-          <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
-            <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
-              <div className="flex justify-between items-center w-full pr-4">
-                <div className="flex flex-col items-start text-left">
-                  <span className="font-semibold text-gray-800">Run #{run.id.substring(0, 8)}</span>
-                  <span className="text-sm text-gray-500">Bắt đầu: {new Date(run.started_at).toLocaleString()}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={run.status} />
-                  {(run.status === 'running' || run.status === 'starting') && (
-                    <Button variant="destructive" size="icon" className="w-8 h-8" onClick={(e) => { e.stopPropagation(); handleStop(run.id); }}><StopCircle className="w-4 h-4" /></Button>
-                  )}
-                  {(run.status === 'completed' || run.status === 'failed' || run.status === 'stopped') && (
-                    <Button variant="outline" size="icon" className="w-8 h-8" onClick={(e) => { e.stopPropagation(); onRerun(run.channel_id); }}><RefreshCw className="w-4 h-4" /></Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="w-8 h-8 text-red-500 hover:bg-red-100 hover:text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(run); }}>
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="p-4 bg-gray-50/70">
-              <div className="space-y-4">
-                {run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(step => (
-                  <div key={step.id} className="p-3 border rounded-lg bg-white shadow-sm">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3"><StepIcon type={step.step_type} /><div><p className="font-semibold capitalize">{step.step_type.replace(/_/g, ' ')}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(step.created_at).toLocaleTimeString()}</p></div></div>
-                      <StatusBadge status={step.status} />
-                    </div>
-                    
-                    <div className="mt-3 flex items-start gap-4">
-                      {step.status === 'completed' && step.output_data?.url && (
-                        <>
-                          {step.step_type === 'generate_image' && (
-                            <button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer">
-                              <img src={step.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" />
-                            </button>
-                          )}
-                          {step.step_type === 'generate_video' && (
-                            <video src={step.output_data.url} controls className="max-w-xs rounded-md border" />
-                          )}
-                        </>
-                      )}
-                      
-                      {step.step_type === 'generate_image' && (
-                        <Button variant="outline" size="sm" onClick={() => setDetailsStep(step)}>
-                          <FileText className="w-4 h-4 mr-2" />
-                          Chi tiết
-                        </Button>
-                      )}
-                    </div>
-
-                    {step.status === 'failed' && step.error_message && (
-                      <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>
-                    )}
+        {runs.map(run => {
+          let imageCounter = 0;
+          return (
+            <AccordionItem value={run.id} key={run.id} className="border rounded-lg bg-white">
+              <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
+                <div className="flex justify-between items-center w-full pr-4">
+                  <div className="flex flex-col items-start text-left">
+                    <span className="font-semibold text-gray-800">Run #{run.id.substring(0, 8)}</span>
+                    <span className="text-sm text-gray-500">Bắt đầu: {new Date(run.started_at).toLocaleString()}</span>
                   </div>
-                ))}
-              </div>
-              <div className="mt-4 border-t pt-4">
-                <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}><Terminal className="w-4 h-4 mr-2" />{visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}</Button>
-                {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
+                  <div className="flex items-center gap-2">
+                    <StatusBadge status={run.status} />
+                    {(run.status === 'running' || run.status === 'starting') && (
+                      <Button variant="destructive" size="icon" className="w-8 h-8" onClick={(e) => { e.stopPropagation(); handleStop(run.id); }}><StopCircle className="w-4 h-4" /></Button>
+                    )}
+                    {(run.status === 'completed' || run.status === 'failed' || run.status === 'stopped') && (
+                      <Button variant="outline" size="icon" className="w-8 h-8" onClick={(e) => { e.stopPropagation(); onRerun(run.channel_id); }}><RefreshCw className="w-4 h-4" /></Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="w-8 h-8 text-red-500 hover:bg-red-100 hover:text-red-600" onClick={(e) => { e.stopPropagation(); handleDeleteRequest(run); }}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="p-4 bg-gray-50/70">
+                <div className="space-y-4">
+                  {run.automation_run_steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()).map(step => {
+                    let title = step.step_type.replace(/_/g, ' ');
+                    if (step.step_type === 'generate_image') {
+                      imageCounter++;
+                      title = `Generate Image ${imageCounter}`;
+                    }
+                    return (
+                      <div key={step.id} className="p-3 border rounded-lg bg-white shadow-sm">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-3"><StepIcon type={step.step_type} /><div><p className="font-semibold capitalize">{title}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(step.created_at).toLocaleTimeString()}</p></div></div>
+                          <StatusBadge status={step.status} />
+                        </div>
+                        
+                        <div className="mt-3 flex items-start gap-4">
+                          {step.status === 'completed' && step.output_data?.url && (
+                            <>
+                              {step.step_type === 'generate_image' && (
+                                <button onClick={() => setSelectedImage(step.output_data.url!)} className="cursor-pointer">
+                                  <img src={step.output_data.url} alt="Generated" className="w-32 h-32 object-cover rounded-md border" />
+                                </button>
+                              )}
+                              {step.step_type === 'generate_video' && (
+                                <video src={step.output_data.url} controls className="max-w-xs rounded-md border" />
+                              )}
+                            </>
+                          )}
+                          
+                          {step.step_type === 'generate_image' && (
+                            <Button variant="outline" size="sm" onClick={() => setDetailsStep(step)}>
+                              <FileText className="w-4 h-4 mr-2" />
+                              Chi tiết
+                            </Button>
+                          )}
+                        </div>
+
+                        {step.status === 'failed' && step.error_message && (
+                          <div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {step.error_message}</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-4 border-t pt-4">
+                  <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}><Terminal className="w-4 h-4 mr-2" />{visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}</Button>
+                  {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
       </Accordion>
       <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
         <DialogContent className="max-w-5xl w-auto p-0 bg-transparent border-none shadow-none"><img src={selectedImage || ''} alt="Enlarged result" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" /></DialogContent>
