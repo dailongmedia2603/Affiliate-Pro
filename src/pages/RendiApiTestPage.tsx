@@ -223,8 +223,8 @@ const RendiApiTestPage = () => {
         let cmd = '';
         if (mf.type === 'image') {
           cmd = `-loop 1 -t ${clipDuration} -i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -pix_fmt yuv420p {{${outputAlias}}}`;
-        } else {
-          cmd = `-i {{${inputAlias}}} -t ${clipDuration} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:a copy {{${outputAlias}}}`;
+        } else { // video
+          cmd = `-i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:a copy {{${outputAlias}}}`;
         }
         ffmpeg_commands.push(cmd);
       });
@@ -235,8 +235,10 @@ const RendiApiTestPage = () => {
           const currentInput = `clip_${i + 1}`;
           const transitionOutput = `transitioned_${i}`;
           output_files[transitionOutput] = `${transitionOutput}.mp4`;
-          const offset = clipDuration - transitionDuration;
-          const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
+          
+          // The xfade filter's offset defaults to the end of the first stream, which is what we want.
+          // We just need to provide the two inputs for the transition.
+          const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
           ffmpeg_commands.push(cmd);
           lastOutput = transitionOutput;
         }
@@ -306,7 +308,7 @@ const RendiApiTestPage = () => {
         <Card>
           <CardHeader>
             <CardTitle>1. Tải lên & Cấu hình</CardTitle>
-            <CardDescription>Chọn file, hiệu ứng và thời lượng.</CardDescription>
+            <CardDescription>Chọn file, hiệu ứng và thời lượng. Video sẽ giữ thời lượng gốc.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
@@ -332,7 +334,7 @@ const RendiApiTestPage = () => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                    <Label htmlFor="clip-duration">Thời lượng mỗi clip (s)</Label>
+                    <Label htmlFor="clip-duration">Thời lượng cho ảnh (s)</Label>
                     <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
                 </div>
                 <div className="space-y-2">
