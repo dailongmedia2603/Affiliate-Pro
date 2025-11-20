@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud } from "lucide-react";
+import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video } from "lucide-react";
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -20,6 +20,7 @@ const SettingsPage = () => {
   const [cloudflareSecretAccessKey, setCloudflareSecretAccessKey] = useState('');
   const [cloudflareR2BucketName, setCloudflareR2BucketName] = useState('');
   const [cloudflareR2PublicUrl, setCloudflareR2PublicUrl] = useState('');
+  const [rendiApiKey, setRendiApiKey] = useState('');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -35,6 +36,8 @@ const SettingsPage = () => {
   const [vertexAiConnectionStatus, setVertexAiConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTestingR2, setIsTestingR2] = useState(false);
   const [r2ConnectionStatus, setR2ConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTestingRendi, setIsTestingRendi] = useState(false);
+  const [rendiConnectionStatus, setRendiConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const fetchVoiceCredits = async (apiKey: string) => {
     if (!apiKey) return;
@@ -65,7 +68,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key')
           .eq('id', user.id)
           .single();
 
@@ -84,6 +87,7 @@ const SettingsPage = () => {
           setCloudflareSecretAccessKey(data.cloudflare_secret_access_key || '');
           setCloudflareR2BucketName(data.cloudflare_r2_bucket_name || '');
           setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
+          setRendiApiKey(data.rendi_api_key || '');
           if (data.voice_api_key) {
             fetchVoiceCredits(data.voice_api_key);
           }
@@ -93,7 +97,7 @@ const SettingsPage = () => {
     fetchSettings();
   }, []);
 
-  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2') => {
+  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2' | 'rendi') => {
     setIsSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -131,6 +135,9 @@ const SettingsPage = () => {
           cloudflare_r2_bucket_name: cloudflareR2BucketName,
           cloudflare_r2_public_url: cloudflareR2PublicUrl,
         };
+        break;
+      case 'rendi':
+        updateData = { rendi_api_key: rendiApiKey };
         break;
     }
 
@@ -286,16 +293,41 @@ const SettingsPage = () => {
     }
   };
 
+  const handleTestRendiConnection = async () => {
+    if (!rendiApiKey) {
+      setRendiConnectionStatus('error');
+      showError('Vui lòng nhập Rendi API key.');
+      return;
+    }
+    setIsTestingRendi(true);
+    setRendiConnectionStatus('idle');
+    try {
+      const { error } = await supabase.functions.invoke('proxy-rendi-api', {
+        body: { action: 'test_connection' },
+      });
+      if (error) throw error;
+      setRendiConnectionStatus('success');
+      showSuccess('Kết nối API Rendi thành công!');
+    } catch (error) {
+      setRendiConnectionStatus('error');
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi kết nối Rendi: ${errorMessage}`);
+    } finally {
+      setIsTestingRendi(false);
+    }
+  };
+
   return (
     <div className="w-full p-6 bg-gray-50/50">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Cài Đặt</h1>
       <Tabs defaultValue="gemini">
-        <TabsList className="bg-gray-100 p-1 rounded-lg h-auto">
+        <TabsList className="bg-gray-100 p-1 rounded-lg h-auto flex flex-wrap justify-start">
           <TabsTrigger value="gemini" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Sparkles className="w-4 h-4 mr-2" /> API Gemini</TabsTrigger>
           <TabsTrigger value="vertex_ai" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Cloud className="w-4 h-4 mr-2" /> API Vertex AI</TabsTrigger>
           <TabsTrigger value="cloudflare_r2" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Cloud className="w-4 h-4 mr-2" /> Cloudflare R2</TabsTrigger>
           <TabsTrigger value="higgsfield" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Film className="w-4 h-4 mr-2" /> API Higgsfield</TabsTrigger>
           <TabsTrigger value="voice" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Mic className="w-4 h-4 mr-2" /> API Voice</TabsTrigger>
+          <TabsTrigger value="rendi" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Video className="w-4 h-4 mr-2" /> API Rendi</TabsTrigger>
         </TabsList>
         <TabsContent value="gemini" className="mt-6">
           <div className="p-6 border rounded-lg bg-white space-y-6">
@@ -408,6 +440,40 @@ const SettingsPage = () => {
               <h3 className="text-lg font-semibold text-gray-700">Thông tin Credits</h3>
               {isFetchingCredits ? (<div className="flex items-center text-gray-500"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Đang tải...</div>) : voiceCredits !== null ? (<p className="text-gray-800 font-medium">Số dư credits hiện tại: <span className="font-bold text-orange-600">{voiceCredits}</span></p>) : (<p className="text-gray-500">Nhập API key và kiểm tra kết nối để xem số dư.</p>)}
             </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="rendi" className="mt-6">
+          <div className="p-6 border rounded-lg bg-white space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Rendi Ffmpeg</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập API key của bạn để kết nối với dịch vụ Rendi.</p>
+              <div className="space-y-2 max-w-md">
+                <label htmlFor="rendi-api-key" className="text-sm font-medium text-gray-700">Rendi API Key</label>
+                <Input id="rendi-api-key" type="password" placeholder="Nhập API key của bạn..." value={rendiApiKey} onChange={(e) => { setRendiApiKey(e.target.value); setRendiConnectionStatus('idle'); }} />
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <Button onClick={handleTestRendiConnection} disabled={isTestingRendi} variant="outline">
+                  {isTestingRendi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối
+                </Button>
+                <Button onClick={() => handleSaveSettings('rendi')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">
+                  {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi
+                </Button>
+              </div>
+            </div>
+            {rendiConnectionStatus === 'success' && (
+              <Alert variant="default" className="bg-green-50 border-green-200">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <AlertTitle className="text-green-800">Thành công!</AlertTitle>
+                <AlertDescription className="text-green-700">Kết nối tới API Rendi thành công.</AlertDescription>
+              </Alert>
+            )}
+            {rendiConnectionStatus === 'error' && (
+              <Alert variant="destructive" className="bg-red-50 border-red-200">
+                <XCircle className="h-4 w-4 text-red-600" />
+                <AlertTitle className="text-red-800">Thất bại!</AlertTitle>
+                <AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API key.</AlertDescription>
+              </Alert>
+            )}
           </div>
         </TabsContent>
       </Tabs>
