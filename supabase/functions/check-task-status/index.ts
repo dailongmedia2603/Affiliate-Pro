@@ -120,7 +120,8 @@ serve(async (req) => {
                   prompt: finalVideoPrompt, 
                   imageUrl: resultUrl, 
                   model: 'kling',
-                  source_image_step_id: step.id
+                  source_image_step_id: step.id,
+                  gemini_prompt_for_video: geminiVideoPrompt
                 };
 
                 const { data: videoStep, error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData }).select('id').single();

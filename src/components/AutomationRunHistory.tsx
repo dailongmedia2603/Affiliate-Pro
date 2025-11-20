@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 
 type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; };
-type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; } | null; error_message: string | null; created_at: string; };
+type AutomationRunStep = { id: string; step_type: string; status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; output_data: { url?: string } | null; input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; gemini_prompt_for_video?: string; } | null; error_message: string | null; created_at: string; };
 type AutomationRun = { id: string; status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; started_at: string; finished_at: string | null; automation_run_steps: AutomationRunStep[]; channel_id: string; };
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -48,6 +48,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [detailsStep, setDetailsStep] = useState<AutomationRunStep | null>(null);
+  const [aiPromptLog, setAiPromptLog] = useState<string | null>(null);
   const runIdsRef = useRef<string[]>([]);
   const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -249,10 +250,18 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                 {videoStep.status === 'completed' && videoStep.output_data?.url && (
                                   <video src={videoStep.output_data.url} controls className="w-full rounded-md border" />
                                 )}
-                                 <Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}>
-                                    <FileText className="w-4 h-4 mr-2" />
-                                    Chi tiết
-                                </Button>
+                                 <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}>
+                                        <FileText className="w-4 h-4 mr-2" />
+                                        Chi tiết
+                                    </Button>
+                                    {videoStep.input_data?.gemini_prompt_for_video && (
+                                        <Button variant="secondary" size="sm" onClick={() => setAiPromptLog(videoStep.input_data.gemini_prompt_for_video!)}>
+                                            <Bot className="w-4 h-4 mr-2" />
+                                            Prompt AI Log
+                                        </Button>
+                                    )}
+                                 </div>
                               </div>
                             </>
                           ) : (
@@ -349,6 +358,19 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                     </div>
                 </div>
             )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!aiPromptLog} onOpenChange={(isOpen) => !isOpen && setAiPromptLog(null)}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Prompt đã gửi đến AI</DialogTitle>
+                <DialogDescription>
+                    Đây là prompt chính xác đã được hệ thống gửi đến Gemini để tạo ra prompt chuyển động cho video.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 p-4 bg-gray-100 rounded-md border max-h-96 overflow-y-auto">
+                <pre className="whitespace-pre-wrap text-sm font-mono">{aiPromptLog}</pre>
+            </div>
         </DialogContent>
       </Dialog>
       <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
