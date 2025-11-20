@@ -166,7 +166,7 @@ serve(async (req) => {
           logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', step.id);
         });
 
-        await sleep(2000); // Đợi 2 giây trước khi gửi yêu cầu tiếp theo
+        await sleep(30000); // Đợi 30 giây trước khi gửi yêu cầu tiếp theo
       }
     }
 
