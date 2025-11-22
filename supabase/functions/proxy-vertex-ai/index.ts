@@ -99,7 +99,7 @@ serve(async (req) => {
 
     const accessToken = await getGoogleAccessToken(vertexAiServiceAccount);
 
-    const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-1.5-pro:generateContent`;
+    const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`;
     
     const vertexResponse = await fetch(vertexUrl, {
       method: 'POST',
