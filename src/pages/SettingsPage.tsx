@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video } from "lucide-react";
+import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info } from "lucide-react";
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -356,9 +356,16 @@ const SettingsPage = () => {
         </TabsContent>
         <TabsContent value="vertex_ai" className="mt-6">
           <div className="p-6 border rounded-lg bg-white space-y-6">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Phương pháp bảo mật hơn</AlertTitle>
+              <AlertDescription>
+                Để tăng cường bảo mật, bạn nên lưu trữ Service Account JSON dưới dạng một secret trong Supabase. Tạo một secret mới có tên <strong>VERTEX_AI_SERVICE_ACCOUNT_JSON</strong> và dán nội dung file JSON vào đó. Hệ thống sẽ ưu tiên sử dụng secret này nếu có.
+              </AlertDescription>
+            </Alert>
             <div>
-              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Vertex AI</h2>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Dán toàn bộ nội dung file JSON Service Account của bạn vào ô bên dưới.</p>
+              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Vertex AI (Phương pháp cũ)</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Dán toàn bộ nội dung file JSON Service Account của bạn vào ô bên dưới. <strong>Lưu ý:</strong> Phương pháp này kém an toàn hơn so với việc sử dụng secret.</p>
               <div className="space-y-4 max-w-lg">
                 <div className="space-y-2"><label htmlFor="vertex-ai-service-account" className="text-sm font-medium text-gray-700">Nội dung Service Account (JSON)</label><Textarea id="vertex-ai-service-account" placeholder="Dán toàn bộ nội dung file JSON của bạn vào đây..." value={vertexAiServiceAccount} onChange={(e) => { setVertexAiServiceAccount(e.target.value); setVertexAiConnectionStatus('idle'); }} className="min-h-[200px] font-mono text-xs" /></div>
               </div>

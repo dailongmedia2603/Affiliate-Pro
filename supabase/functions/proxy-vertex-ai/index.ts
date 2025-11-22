@@ -10,7 +10,9 @@ const corsHeaders = {
 };
 
 async function getGoogleAccessToken(credentials) {
-  const privateKey = await jose.importPKCS8(credentials.private_key, 'RS256');
+  // Replace literal '\n' with actual newlines, in case it's been stringified incorrectly.
+  const formattedPrivateKey = credentials.private_key.replace(/\\n/g, '\n');
+  const privateKey = await jose.importPKCS8(formattedPrivateKey, 'RS256');
   
   const jwt = await new jose.SignJWT({
     scope: 'https://www.googleapis.com/auth/cloud-platform'
@@ -45,6 +47,11 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+
   try {
     const { prompt, userId: payloadUserId } = await req.json();
     if (!prompt) throw new Error("Thiếu tham số bắt buộc: prompt");
@@ -63,28 +70,34 @@ serve(async (req) => {
         userId = user.id;
     }
 
-    const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    let vertexAiServiceAccount;
+    const secret = Deno.env.get('VERTEX_AI_SERVICE_ACCOUNT_JSON');
 
-    const { data: settings, error: settingsError } = await supabaseAdmin
-      .from('user_settings')
-      .select('vertex_ai_service_account')
-      .eq('id', userId)
-      .single();
+    if (secret) {
+      try {
+        vertexAiServiceAccount = JSON.parse(secret);
+      } catch (e) {
+        throw new Error("Lỗi phân tích VERTEX_AI_SERVICE_ACCOUNT_JSON secret. Vui lòng kiểm tra định dạng JSON trong cài đặt secret của Supabase.");
+      }
+    } else {
+      const { data: settings, error: settingsError } = await supabaseAdmin
+        .from('user_settings')
+        .select('vertex_ai_service_account')
+        .eq('id', userId)
+        .single();
 
-    if (settingsError || !settings || !settings.vertex_ai_service_account) {
-      throw new Error('Không tìm thấy Service Account. Vui lòng kiểm tra lại cài đặt.');
+      if (settingsError || !settings || !settings.vertex_ai_service_account) {
+        throw new Error('Không tìm thấy Service Account. Vui lòng kiểm tra lại cài đặt hoặc cấu hình secret VERTEX_AI_SERVICE_ACCOUNT_JSON.');
+      }
+      vertexAiServiceAccount = settings.vertex_ai_service_account;
     }
-    const { vertex_ai_service_account } = settings;
     
-    const gcp_project_id = vertex_ai_service_account.project_id;
+    const gcp_project_id = vertexAiServiceAccount.project_id;
     if (!gcp_project_id) {
         throw new Error("File JSON Service Account không chứa 'project_id'.");
     }
 
-    const accessToken = await getGoogleAccessToken(vertex_ai_service_account);
+    const accessToken = await getGoogleAccessToken(vertexAiServiceAccount);
 
     const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-1.5-pro-preview-0409:generateContent`;
     
