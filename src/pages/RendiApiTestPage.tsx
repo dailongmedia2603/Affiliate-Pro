@@ -217,7 +217,7 @@ const RendiApiTestPage = () => {
       loadingToast = showLoading('Đang xây dựng và gửi lệnh render...');
 
       const input_files: { [key: string]: string } = {};
-      const output_files: { [key: string]: string } = { 'output': 'final_output.mp4' };
+      const output_files: { [key: string]: string } = { 'out_final': 'final_output.mp4' };
       
       mediaFiles.forEach((mf, i) => {
           input_files[`in_${i}`] = urls[i];
@@ -237,7 +237,7 @@ const RendiApiTestPage = () => {
           map_args += ` -map ${audioInputIndex}:a:0`;
       }
 
-      const ffmpeg_command = `-filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{output}}`;
+      const ffmpeg_command = `-filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
       
       const payload = { input_files, output_files, ffmpeg_command };
 
