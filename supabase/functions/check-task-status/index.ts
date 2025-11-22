@@ -9,6 +9,7 @@ const corsHeaders = {
 
 const IMAGE_CONCURRENCY = 4;
 const VIDEO_CONCURRENCY = 3;
+const MAX_RETRIES = 2; // Cho phép thử lại 2 lần, tổng cộng 3 lần chạy
 const API_BASE = "https://api.beautyapp.work";
 
 // --- Helper Functions ---
@@ -39,6 +40,22 @@ function replacePlaceholders(template, data) {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => data[key] || match);
 }
 
+const handleStepFailure = async (supabaseAdmin, step, errorMessage) => {
+    const runId = step.run.id;
+    const stepId = step.id;
+    const currentRetryCount = step.retry_count || 0;
+
+    if (currentRetryCount < MAX_RETRIES) {
+        await logToDb(supabaseAdmin, runId, `Bước ${step.step_type} thất bại. Thử lại lần ${currentRetryCount + 1}/${MAX_RETRIES}. Lỗi: ${errorMessage}`, 'WARN', stepId);
+        await supabaseAdmin.from('automation_run_steps').update({ status: 'pending', retry_count: currentRetryCount + 1 }).eq('id', stepId);
+    } else {
+        await logToDb(supabaseAdmin, runId, `Bước ${step.step_type} đã thất bại sau ${MAX_RETRIES} lần thử lại. Dừng phiên chạy. Lỗi: ${errorMessage}`, 'ERROR', stepId);
+        await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: errorMessage }).eq('id', stepId);
+        await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
+    }
+};
+
+
 // --- Main Handler ---
 
 serve(async (req) => {
@@ -65,8 +82,6 @@ serve(async (req) => {
     
     if (runningSteps) {
       for (const step of runningSteps) {
-        const runId = step.run.id;
-        const stepId = step.id;
         try {
           if (step.step_type === 'generate_voice') continue; // Skip voice for now
 
@@ -84,20 +99,18 @@ serve(async (req) => {
           const apiStatus = job?.status;
 
           if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
-            const newStatus = apiStatus === 'completed' ? 'completed' : 'failed';
+            const isSuccess = apiStatus === 'completed';
             const resultUrl = job?.results?.raw?.url;
             const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : `Tác vụ thất bại không có thông báo lỗi cụ thể.`);
 
-            if (newStatus === 'failed') {
-              await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: errorMessage }).eq('id', stepId);
-              await logToDb(supabaseAdmin, runId, `Bước ${step.step_type} đã thất bại. Dừng phiên chạy. Lỗi: ${errorMessage}`, 'ERROR', stepId);
-              await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
-              continue;
+            if (!isSuccess) {
+                await handleStepFailure(supabaseAdmin, step, errorMessage);
+                continue;
             }
 
             // If completed
-            await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: resultUrl }, error_message: null }).eq('id', stepId);
-            await logToDb(supabaseAdmin, runId, `Bước ${step.step_type} đã hoàn thành.`, 'SUCCESS', stepId);
+            await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: resultUrl }, error_message: null }).eq('id', step.id);
+            await logToDb(supabaseAdmin, step.run.id, `Bước ${step.step_type} đã hoàn thành.`, 'SUCCESS', step.id);
 
             if (step.step_type === 'generate_image') {
               const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
@@ -114,22 +127,20 @@ serve(async (req) => {
               if (!finalVideoPrompt) throw new Error("AI không trả về prompt video.");
 
               const videoInputData = { prompt: finalVideoPrompt, imageUrl: resultUrl, source_image_step_id: step.id, gemini_prompt_for_video: geminiVideoPrompt };
-              const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: runId, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData });
+              const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData });
               if (videoStepError) throw videoStepError;
-              await logToDb(supabaseAdmin, runId, `Đã xếp hàng bước tạo video.`, 'INFO');
+              await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo video.`, 'INFO');
 
             } else if (step.step_type === 'generate_video') {
-              const { count: remainingSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', runId).in('status', ['pending', 'running']);
+              const { count: remainingSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).in('status', ['pending', 'running']);
               if (remainingSteps === 0) {
-                await logToDb(supabaseAdmin, runId, 'Tất cả các bước đã hoàn thành. Kết thúc phiên chạy.', 'SUCCESS');
-                await supabaseAdmin.from('automation_runs').update({ status: 'completed', finished_at: new Date().toISOString() }).eq('id', runId);
+                await logToDb(supabaseAdmin, step.run.id, 'Tất cả các bước đã hoàn thành. Kết thúc phiên chạy.', 'SUCCESS');
+                await supabaseAdmin.from('automation_runs').update({ status: 'completed', finished_at: new Date().toISOString() }).eq('id', step.run.id);
               }
             }
           }
         } catch (e) {
-          await logToDb(supabaseAdmin, runId, `Lỗi khi xử lý bước ${stepId}: ${e.message}`, 'ERROR', stepId);
-          await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: e.message }).eq('id', stepId);
-          await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
+          await handleStepFailure(supabaseAdmin, step, e.message);
         }
       }
     }
