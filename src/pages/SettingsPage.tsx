@@ -180,7 +180,7 @@ const SettingsPage = () => {
     } catch (error) {
       setGeminiConnectionStatus('error');
       const errorMessage = error.context?.json?.error || error.message;
-      setTestResult(`Lỗi: ${errorMessage}`);
+      setTestResult(errorMessage);
     } finally {
       setIsLoadingApiTest(false);
     }
@@ -206,7 +206,7 @@ const SettingsPage = () => {
     } catch (error) {
       setVertexAiConnectionStatus('error');
       const errorMessage = error.context?.json?.error || error.message;
-      setTestResult(`Lỗi: ${errorMessage}`);
+      setTestResult(errorMessage);
     } finally {
       setIsTestingVertexAi(false);
     }
@@ -340,7 +340,7 @@ const SettingsPage = () => {
               </div>
             </div>
             {geminiConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Gemini thành công.</AlertDescription></Alert>)}
-            {geminiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API key và URL.</AlertDescription></Alert>)}
+            {geminiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">{testResult || 'Không thể kết nối. Vui lòng kiểm tra lại API key và URL.'}</AlertDescription></Alert>)}
             <div className="border-t pt-6">
               <h2 className="text-lg font-semibold text-gray-700">Kiểm tra Prompt</h2>
               <p className="text-sm text-gray-500 mt-1 mb-4">Gửi một prompt để kiểm tra đầu ra của API.</p>
@@ -371,7 +371,7 @@ const SettingsPage = () => {
               </div>
             </div>
             {vertexAiConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Vertex AI thành công.</AlertDescription></Alert>)}
-            {vertexAiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại nội dung Service Account.</AlertDescription></Alert>)}
+            {vertexAiConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">{testResult || 'Không thể kết nối. Vui lòng kiểm tra lại nội dung Service Account.'}</AlertDescription></Alert>)}
             <div className="border-t pt-6">
               <h2 className="text-lg font-semibold text-gray-700">Kiểm tra Prompt</h2>
               <p className="text-sm text-gray-500 mt-1 mb-4">Gửi một prompt để kiểm tra đầu ra của API.</p>
