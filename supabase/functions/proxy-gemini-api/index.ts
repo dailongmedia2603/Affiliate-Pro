@@ -29,16 +29,15 @@ serve(async (req) => {
 
     const targetUrl = token ? `${apiUrl}?token=${encodeURIComponent(token)}` : apiUrl;
 
-    const body = new URLSearchParams();
-    body.append('prompt', prompt);
+    // Use FormData to send as multipart/form-data, matching `curl --form`
+    const formData = new FormData();
+    formData.append('prompt', prompt);
 
-    console.log(`[INFO] Sending POST request to Gemini API proxy at ${targetUrl} with urlencoded data.`);
+    console.log(`[INFO] Sending POST request to Gemini API proxy at ${targetUrl} with multipart/form-data.`);
     const response = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: body.toString(),
+      // Let fetch set the Content-Type header automatically for FormData
+      body: formData,
     })
 
     const responseData = await response.text()
