@@ -86,80 +86,96 @@ serve(async (req) => {
       .single();
     if (runError) throw runError;
     runId = run.id;
-    await logToDb(supabaseAdmin, runId, 'Đã tạo phiên chạy automation thành công.');
+    await logToDb(supabaseAdmin, runId, 'Đã tạo phiên chạy automation. Bắt đầu xếp hàng các công việc.');
 
-    // 4. --- FETCH SUB-PRODUCTS & PROCESS THE FIRST ONE ---
+    // 4. --- QUEUE ALL TASKS ---
     const { data: subProducts, error: subProductsError } = await supabaseAdmin
       .from('sub_products')
       .select('id, name, description, image_url')
       .eq('product_id', channel.product_id)
-      .order('created_at', { ascending: true }); // Sort to process sequentially
+      .order('created_at', { ascending: true });
     if (subProductsError) throw subProductsError;
     if (!subProducts || subProducts.length === 0) throw new Error("Không tìm thấy sản phẩm con nào cho sản phẩm của kênh này.");
     
-    const firstSubProduct = subProducts[0];
-    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con. Bắt đầu xử lý sản phẩm đầu tiên: "${firstSubProduct.name}".`);
+    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con. Bắt đầu tạo prompt và xếp hàng các bước tạo ảnh.`);
 
-    const geminiPromptData = {
-      product_name: firstSubProduct.name,
-      product_description: firstSubProduct.description,
-      image_count: config.imageCount
-    };
-    const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
-    
-    await logToDb(supabaseAdmin, runId, `Đang gọi Gemini AI để tạo ${config.imageCount} prompt cho ảnh...`);
-    const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
-      body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
-    });
-
-    if (geminiError) throw new Error(`Lỗi gọi function proxy-gemini-api: ${geminiError.message}`);
-    if (!geminiResult || !geminiResult.success) {
-      const errorMessage = geminiResult?.error || geminiResult?.message || 'Lỗi không xác định';
-      throw new Error(`Lỗi tạo prompt ảnh từ AI: ${errorMessage}`);
-    }
-    
-    const answerString = geminiResult.answer;
-    if (!answerString) throw new Error("Phản hồi từ AI không chứa trường 'answer'.");
-    
-    const promptRegex = /<prompt>(.*?)<\/prompt>/gs;
-    const imagePrompts = [...answerString.matchAll(promptRegex)].map(match => match[1].trim());
-
-    if (imagePrompts.length === 0) {
-      throw new Error(`AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${firstSubProduct.name}".`);
-    }
-    await logToDb(supabaseAdmin, runId, `Phân tích thành công. Đã lấy ra ${imagePrompts.length} prompt ảnh.`);
-
-    const imageUrls = [channel.character_image_url, firstSubProduct.image_url].filter(Boolean);
-
-    for (const imagePrompt of imagePrompts) {
-      const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
-      const { data: step, error: stepError } = await supabaseAdmin
-        .from('automation_run_steps')
-        .insert({ run_id: run.id, sub_product_id: firstSubProduct.id, step_type: 'generate_image', status: 'pending', input_data: inputData })
-        .select('id')
-        .single();
-      if (stepError) throw stepError;
+    let totalStepsCreated = 0;
+    for (const subProduct of subProducts) {
+      await logToDb(supabaseAdmin, runId, `Đang xử lý sản phẩm con: "${subProduct.name}".`);
       
-      await logToDb(supabaseAdmin, runId, `Đã tạo bước 'Tạo Ảnh' cho sản phẩm con: ${firstSubProduct.name}`, 'INFO', step.id);
-      supabaseAdmin.functions.invoke('generate-image', {
-        body: { action: 'generate_image', stepId: step.id, userId: user.id, ...inputData },
-      }).catch(err => {
-        console.error(`Lỗi khi gọi function generate-image cho bước ${step.id}:`, err);
-        logToDb(supabaseAdmin, runId, `LỖI NGHIÊM TRỌNG: Không thể gọi function 'generate-image'. Lỗi: ${err.message}`, 'ERROR', step.id);
+      const geminiPromptData = {
+        product_name: subProduct.name,
+        product_description: subProduct.description,
+        image_count: config.imageCount
+      };
+      const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
+      
+      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
+        body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
       });
+
+      if (geminiError || !geminiResult || !geminiResult.success) {
+        const errorMessage = geminiError?.message || geminiResult?.error || geminiResult?.message || 'Lỗi không xác định từ Gemini API';
+        await logToDb(supabaseAdmin, runId, `Lỗi tạo prompt ảnh từ AI cho sản phẩm "${subProduct.name}": ${errorMessage}. Bỏ qua sản phẩm này.`, 'ERROR');
+        continue; // Skip to the next sub-product on error
+      }
+      
+      const answerString = geminiResult.answer;
+      if (!answerString) {
+        await logToDb(supabaseAdmin, runId, `Phản hồi từ AI cho sản phẩm "${subProduct.name}" không chứa trường 'answer'. Bỏ qua.`, 'WARN');
+        continue;
+      }
+      
+      const promptRegex = /<prompt>(.*?)<\/prompt>/gs;
+      const imagePrompts = [...answerString.matchAll(promptRegex)].map(match => match[1].trim());
+
+      if (imagePrompts.length === 0) {
+        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${subProduct.name}". Bỏ qua.`, 'WARN');
+        continue;
+      }
+      
+      await logToDb(supabaseAdmin, runId, `Đã tạo ${imagePrompts.length} prompt ảnh cho sản phẩm "${subProduct.name}".`);
+
+      const imageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
+      const stepsToInsert = [];
+
+      for (const imagePrompt of imagePrompts) {
+        const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
+        stepsToInsert.push({
+            run_id: run.id,
+            sub_product_id: subProduct.id,
+            step_type: 'generate_image',
+            status: 'pending', // All steps are queued as pending
+            input_data: inputData
+        });
+      }
+
+      if (stepsToInsert.length > 0) {
+        const { error: stepInsertError } = await supabaseAdmin.from('automation_run_steps').insert(stepsToInsert);
+        if (stepInsertError) {
+            await logToDb(supabaseAdmin, runId, `Lỗi khi lưu các bước tạo ảnh cho sản phẩm "${subProduct.name}": ${stepInsertError.message}`, 'ERROR');
+            continue; // Skip to next sub-product
+        }
+        totalStepsCreated += stepsToInsert.length;
+        await logToDb(supabaseAdmin, runId, `Đã xếp hàng ${stepsToInsert.length} bước tạo ảnh cho sản phẩm "${subProduct.name}".`);
+      }
     }
 
     // 5. --- FINALIZE RUN START ---
-    await supabaseAdmin.from('automation_runs').update({ status: 'running' }).eq('id', run.id);
-    await logToDb(supabaseAdmin, runId, 'Đã kích hoạt các bước ban đầu. Phiên chạy chuyển sang trạng thái "Đang chạy".', 'SUCCESS');
+    if (totalStepsCreated === 0) {
+        throw new Error("Không có bước nào được tạo. Vui lòng kiểm tra lại cấu hình và prompt template.");
+    }
 
-    return new Response(JSON.stringify({ success: true, message: 'Automation started successfully for the first sub-product.', runId: run.id }), {
+    await supabaseAdmin.from('automation_runs').update({ status: 'running' }).eq('id', run.id);
+    await logToDb(supabaseAdmin, runId, `Hoàn tất xếp hàng. Tổng cộng ${totalStepsCreated} bước đã được đưa vào hàng đợi. Phiên chạy chuyển sang trạng thái "Đang chạy" và chờ người điều phối.`, 'SUCCESS');
+
+    return new Response(JSON.stringify({ success: true, message: `Automation queued successfully with ${totalStepsCreated} image generation steps.`, runId: run.id }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     if (runId) {
-      await logToDb(supabaseAdmin, runId, `Lỗi nghiêm trọng trong run-automation: ${error.message}`, 'ERROR');
+      await logToDb(supabaseAdmin, runId, `Lỗi nghiêm trọng khi khởi tạo phiên chạy: ${error.message}`, 'ERROR');
       await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
     }
     console.error('Error in run-automation function:', error);
