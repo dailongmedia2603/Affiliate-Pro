@@ -187,6 +187,11 @@ const RendiApiTestPage = () => {
       return;
     }
 
+    if (isAdvancedMode) {
+        showError("Chế độ nâng cao yêu cầu gói Rendi trả phí. Vui lòng sử dụng chế độ ghép nối đơn giản hoặc nâng cấp tài khoản của bạn.");
+        return;
+    }
+
     setIsProcessing(true);
     setTask(null);
     let loadingToast = showLoading('Đang chuẩn bị tác vụ...');
@@ -212,72 +217,31 @@ const RendiApiTestPage = () => {
       loadingToast = showLoading('Đang xây dựng và gửi lệnh render...');
 
       const input_files: { [key: string]: string } = {};
-      const output_files: { [key: string]: string } = {};
-      const ffmpeg_commands: string[] = [];
-      const resolution = "1280:720";
+      const output_files: { [key: string]: string } = { 'output': 'final_output.mp4' };
+      
+      mediaFiles.forEach((mf, i) => {
+          input_files[`in_${i}`] = urls[i];
+      });
 
-      if (isAdvancedMode) {
-        // Advanced mode with transitions
-        videosAndImages.forEach((mf, i) => {
-          const inputAlias = `in_${i + 1}`;
-          const outputAlias = `clip_${i + 1}`;
-          input_files[inputAlias] = urls[mediaFiles.indexOf(mf)];
-          output_files[outputAlias] = `${outputAlias}.mp4`;
-          
-          let cmd = '';
-          if (mf.type === 'image') {
-            cmd = `-loop 1 -t ${clipDuration} -i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -c:v libx264 -pix_fmt yuv420p {{${outputAlias}}}`;
-          } else { // video
-            cmd = `-i {{${inputAlias}}} -vf "scale=${resolution}:force_original_aspect_ratio=decrease,pad=${resolution}:(ow-iw)/2:(oh-ih)/2,setsar=1" -an {{${outputAlias}}}`;
-          }
-          ffmpeg_commands.push(cmd);
-        });
+      // SIMPLE MODE - SINGLE COMMAND
+      const videoInputStreams = videosAndImages.map((mf) => {
+          const inputIndex = mediaFiles.indexOf(mf);
+          return `[${inputIndex}:v:0]`;
+      }).join('');
 
-        let lastOutput = 'clip_1';
-        if (videosAndImages.length > 1) {
-          for (let i = 1; i < videosAndImages.length; i++) {
-            const currentInput = `clip_${i + 1}`;
-            const transitionOutput = `transitioned_${i}`;
-            output_files[transitionOutput] = `${transitionOutput}.mp4`;
-            const offset = (i * clipDuration) - ((i-1) * transitionDuration);
-            const cmd = `-i {{${lastOutput}}} -i {{${currentInput}}} -filter_complex "[0:v][1:v]xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}[v]" -map "[v]" -movflags +faststart {{${transitionOutput}}}`;
-            ffmpeg_commands.push(cmd);
-            lastOutput = transitionOutput;
-          }
-        }
-        const finalVideoAlias = 'final_output_1';
-        output_files[finalVideoAlias] = 'final_output.mp4';
-        if (audioFile) {
-          const audioAlias = 'in_audio';
-          input_files[audioAlias] = urls[mediaFiles.indexOf(audioFile)];
-          ffmpeg_commands.push(`-i {{${lastOutput}}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{${finalVideoAlias}}}`);
-        } else {
-          ffmpeg_commands.push(`-i {{${lastOutput}}} -c copy {{${finalVideoAlias}}}`);
-        }
-      } else {
-        // Simple mode: basic concat
-        const videoInputs = videosAndImages.map((mf, i) => {
-            const alias = `in_${i + 1}`;
-            input_files[alias] = urls[mediaFiles.indexOf(mf)];
-            return `[${i}:v:0]`;
-        }).join('');
-        const concatCmd = `-filter_complex "${videoInputs}concat=n=${videosAndImages.length}:v=1:a=0[v]" -map "[v]" {{out_temp_video}}`;
-        output_files['out_temp_video'] = 'temp_video.mp4';
-        ffmpeg_commands.push(concatCmd);
+      let filter_complex = `"${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]"`;
+      let map_args = `-map "[v]"`;
 
-        output_files['out_final'] = 'final_output.mp4';
-        if (audioFile) {
-            const audioAlias = 'in_audio';
-            input_files[audioAlias] = urls[mediaFiles.indexOf(audioFile)];
-            ffmpeg_commands.push(`-i {{out_temp_video}} -i {{${audioAlias}}} -c:v copy -c:a aac -shortest {{out_final}}`);
-        } else {
-            ffmpeg_commands.push(`-i {{out_temp_video}} -c copy {{out_final}}`);
-        }
+      if (audioFile) {
+          const audioInputIndex = mediaFiles.indexOf(audioFile);
+          map_args += ` -map ${audioInputIndex}:a:0`;
       }
 
-      const payload = { input_files, output_files, ffmpeg_commands };
+      const ffmpeg_command = `-filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{output}}`;
+      
+      const payload = { input_files, output_files, ffmpeg_command };
 
-      const { data: rendiData, error: rendiError } = await supabase.functions.invoke('proxy-rendi-api', { body: { action: 'run_chained_commands', payload } });
+      const { data: rendiData, error: rendiError } = await supabase.functions.invoke('proxy-rendi-api', { body: { action: 'run_command', payload } });
       if (rendiError || rendiData.error) throw new Error(rendiError?.message || rendiData.error);
       if (!rendiData.command_id) throw new Error("Rendi API did not return a command_id.");
       
