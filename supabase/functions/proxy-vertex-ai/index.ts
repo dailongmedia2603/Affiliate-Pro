@@ -77,7 +77,7 @@ serve(async (req) => {
       try {
         vertexAiServiceAccount = JSON.parse(secret);
       } catch (e) {
-        throw new Error("Lỗi phân tích VERTEX_AI_SERVICE_ACCOUNT_JSON secret. Vui lòng kiểm tra định dạng JSON trong cài đặt secret của Supabase.");
+        throw new Error("Lỗi phân tích VERTEX_AI_SERVICE_ACCOUNT_JSON secret. Điều này thường xảy ra khi bạn sao chép-dán nội dung JSON nhiều dòng. Vui lòng chuyển đổi nó thành một chuỗi JSON trên một dòng duy nhất trước khi lưu làm secret.");
       }
     } else {
       const { data: settings, error: settingsError } = await supabaseAdmin

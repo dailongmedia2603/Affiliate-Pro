@@ -119,7 +119,8 @@ const SettingsPage = () => {
         break;
       case 'vertex_ai':
         try {
-          const parsedServiceAccount = JSON.parse(vertexAiServiceAccount);
+          // Allow saving an empty string to clear the setting if user wants to rely solely on the secret
+          const parsedServiceAccount = vertexAiServiceAccount ? JSON.parse(vertexAiServiceAccount) : null;
           updateData = { vertex_ai_service_account: parsedServiceAccount };
         } catch (e) {
           showError("Nội dung Service Account không phải là một file JSON hợp lệ.");
@@ -186,11 +187,6 @@ const SettingsPage = () => {
   };
 
   const handleTestVertexAiApi = async () => {
-    if (!vertexAiServiceAccount) {
-      setVertexAiConnectionStatus('error');
-      setTestResult('Vui lòng dán nội dung file Service Account.');
-      return;
-    }
     setIsTestingVertexAi(true);
     setVertexAiConnectionStatus('idle');
     setTestResult('');
@@ -380,7 +376,7 @@ const SettingsPage = () => {
               <h2 className="text-lg font-semibold text-gray-700">Kiểm tra Prompt</h2>
               <p className="text-sm text-gray-500 mt-1 mb-4">Gửi một prompt để kiểm tra đầu ra của API.</p>
               <div className="space-y-2"><label htmlFor="test-prompt-vertex" className="text-sm font-medium text-gray-700">Prompt</label><Textarea id="test-prompt-vertex" placeholder="Nhập prompt của bạn ở đây..." value={testPrompt} onChange={(e) => setTestPrompt(e.target.value)} className="min-h-[100px]" /></div>
-              <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi || !vertexAiServiceAccount} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt</Button>
+              <Button onClick={handleTestVertexAiApi} disabled={isTestingVertexAi} className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isTestingVertexAi ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Gửi Prompt</Button>
               {testResult && !isTestingVertexAi && (<div className="mt-4"><h3 className="text-sm font-semibold text-gray-700 mb-2">Kết quả:</h3><div className="bg-gray-900 text-white p-4 rounded-lg max-h-60 overflow-y-auto"><pre className="whitespace-pre-wrap text-sm font-mono">{testResult}</pre></div></div>)}
             </div>
           </div>
