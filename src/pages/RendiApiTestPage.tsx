@@ -223,6 +223,9 @@ const RendiApiTestPage = () => {
           input_files[`in_${i}`] = urls[i];
       });
 
+      // Build the input flags part of the command
+      const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
+
       // SIMPLE MODE - SINGLE COMMAND
       const videoInputStreams = videosAndImages.map((mf) => {
           const inputIndex = mediaFiles.indexOf(mf);
@@ -237,7 +240,7 @@ const RendiApiTestPage = () => {
           map_args += ` -map ${audioInputIndex}:a:0`;
       }
 
-      const ffmpeg_command = `-filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
+      const ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
       
       const payload = { input_files, output_files, ffmpeg_command };
 
