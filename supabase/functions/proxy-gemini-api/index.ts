@@ -27,14 +27,13 @@ serve(async (req) => {
       })
     }
 
+    const targetUrl = token ? `${apiUrl}?token=${encodeURIComponent(token)}` : apiUrl;
+
     const body = new URLSearchParams();
     body.append('prompt', prompt);
-    if (token) {
-      body.append('token', token);
-    }
 
-    console.log(`[INFO] Sending POST request to Gemini API proxy at ${apiUrl} with urlencoded data.`);
-    const response = await fetch(apiUrl, {
+    console.log(`[INFO] Sending POST request to Gemini API proxy at ${targetUrl} with urlencoded data.`);
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

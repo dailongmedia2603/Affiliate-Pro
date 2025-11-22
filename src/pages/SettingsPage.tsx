@@ -176,7 +176,7 @@ const SettingsPage = () => {
       if (data && data.error) { throw new Error(data.error); }
 
       setGeminiConnectionStatus('success');
-      setTestResult(data);
+      setTestResult(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
     } catch (error) {
       setGeminiConnectionStatus('error');
       const errorMessage = error.context?.json?.error || error.message;
