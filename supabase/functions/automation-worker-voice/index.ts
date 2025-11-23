@@ -47,7 +47,7 @@ serve(async (req) => {
     const [configRes, subProductRes, settingsRes] = await Promise.all([
         supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', runData.channel_id).single(),
         supabaseAdmin.from('sub_products').select('name, description').eq('id', stepData.sub_product_id).single(),
-        supabaseAdmin.from('user_settings').select('voice_api_key').eq('id', userId).single()
+        supabaseAdmin.from('user_settings').select('voice_api_key, vertex_ai_service_account').eq('id', userId).single()
     ]);
 
     if (configRes.error || !configRes.data) throw new Error("Không tìm thấy cấu hình automation.");
@@ -60,6 +60,7 @@ serve(async (req) => {
 
     if (!settings.voice_api_key) throw new Error("Chưa cấu hình Voice API Key trong Cài đặt.");
     if (!config.voiceId) throw new Error("Chưa chọn giọng nói trong Cấu hình Automation.");
+    if (!config.voiceScriptTemplate) throw new Error("Chưa có mẫu kịch bản voice trong Cấu hình Automation.");
 
     await logToDb(supabaseAdmin, runId, "Đang tạo kịch bản voice...", 'INFO', stepId);
     const scriptPrompt = replacePlaceholders(config.voiceScriptTemplate, { product_name: subProduct.name, product_description: subProduct.description });

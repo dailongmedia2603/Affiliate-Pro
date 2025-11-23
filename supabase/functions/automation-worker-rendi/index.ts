@@ -62,7 +62,7 @@ serve(async (req) => {
 
     const rendiApiKey = settingsRes.data.rendi_api_key;
     const config = configRes.data.config_data;
-    const { video_urls } = step.input_data;
+    const { video_urls, audio_url } = step.input_data;
 
     if (!video_urls || video_urls.length === 0) {
       throw new Error("Không có video nào để ghép.");
@@ -72,13 +72,23 @@ serve(async (req) => {
     video_urls.forEach((url, i) => {
       input_files[`in_${i}`] = url;
     });
+    if (audio_url) {
+      input_files['in_audio'] = audio_url;
+    }
 
     const output_files = { 'out_final': 'final_output.mp4' };
     let ffmpeg_command = '';
+    const inputFlags = video_urls.map((_, i) => `-i {{in_${i}}}`).join(' ');
 
     if (video_urls.length === 1) {
-      ffmpeg_command = `-i {{in_0}} -c copy {{out_final}}`;
-      await logToDb(supabaseAdmin, runId, 'Chỉ có 1 video, sao chép trực tiếp.', 'INFO', stepId);
+      let audioInput = '';
+      let mapCommand = '-map 0:v:0';
+      if (audio_url) {
+        audioInput = '-i {{in_audio}}';
+        mapCommand += ' -map 1:a:0';
+      }
+      ffmpeg_command = `${inputFlags} ${audioInput} ${mapCommand} -c:v copy -c:a aac -shortest {{out_final}}`;
+      await logToDb(supabaseAdmin, runId, 'Chỉ có 1 video, sao chép video và chèn audio (nếu có).', 'INFO', stepId);
     } else {
       const videoDuration = config.videoDuration || 5;
       const transitionDuration = 1;
@@ -86,9 +96,6 @@ serve(async (req) => {
       if (videoDuration <= transitionDuration) {
         throw new Error(`Thời lượng video (${videoDuration}s) phải lớn hơn thời lượng chuyển cảnh (${transitionDuration}s).`);
       }
-
-      // **FIX:** Add input flags for each video
-      const inputFlags = video_urls.map((_, i) => `-i {{in_${i}}}`).join(' ');
 
       const filterComplexParts = [];
       video_urls.forEach((_, i) => {
@@ -104,18 +111,22 @@ serve(async (req) => {
       }
 
       const filterComplex = `"${filterComplexParts.join(';')}"`;
-      // **FIX:** Combine input flags with the rest of the command
-      ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} -map "[vout]" -c:v libx264 -pix_fmt yuv420p {{out_final}}`;
-      await logToDb(supabaseAdmin, runId, `Đã xây dựng lệnh FFMPEG để ghép ${video_urls.length} video.`, 'INFO', stepId);
+      
+      let audioInput = '';
+      let mapCommand = '-map "[vout]"';
+      if (audio_url) {
+        audioInput = `-i {{in_audio}}`;
+        // The audio input will be the last one after all video inputs
+        mapCommand += ` -map ${video_urls.length}:a:0`;
+      }
+
+      ffmpeg_command = `${inputFlags} ${audioInput} -filter_complex ${filterComplex} ${mapCommand} -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {{out_final}}`;
+      await logToDb(supabaseAdmin, runId, `Đã xây dựng lệnh FFMPEG để ghép ${video_urls.length} video và chèn audio (nếu có).`, 'INFO', stepId);
     }
 
     const payload = { input_files, output_files, ffmpeg_command };
     const { data: rendiData, error: rendiError } = await supabaseAdmin.functions.invoke('proxy-rendi-api', {
-      body: {
-        action: 'run_command',
-        payload,
-        rendi_api_key: rendiApiKey // Pass the key directly
-      }
+      body: { action: 'run_command', payload, rendi_api_key: rendiApiKey }
     });
 
     if (rendiError) {
@@ -126,11 +137,7 @@ serve(async (req) => {
     if (rendiData.error) throw new Error(rendiData.error);
     if (!rendiData.command_id) throw new Error("Rendi API không trả về command_id.");
 
-    await supabaseAdmin
-      .from('automation_run_steps')
-      .update({ api_task_id: rendiData.command_id })
-      .eq('id', stepId);
-
+    await supabaseAdmin.from('automation_run_steps').update({ api_task_id: rendiData.command_id }).eq('id', stepId);
     await logToDb(supabaseAdmin, runId, `Đã gửi yêu cầu đến Rendi thành công. Command ID: ${rendiData.command_id}`, 'SUCCESS', stepId);
 
     return new Response(JSON.stringify({ success: true, command_id: rendiData.command_id }), {
