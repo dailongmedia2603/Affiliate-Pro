@@ -19,8 +19,6 @@ const replacePlaceholders = (template, data) => {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => data[key] || match);
 };
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 serve(async (req) => {
   const supabaseAdmin = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -104,36 +102,8 @@ serve(async (req) => {
     await supabaseAdmin.from('automation_run_steps').update({ api_task_id: voiceTaskId }).eq('id', stepId);
     await logToDb(supabaseAdmin, runId, `Đã gửi yêu cầu tạo audio thành công. Task ID: ${voiceTaskId}`, 'SUCCESS', stepId);
 
-    let attempts = 0;
-    const maxAttempts = 60;
-    while (attempts < maxAttempts) {
-        await sleep(5000);
-        attempts++;
-        await logToDb(supabaseAdmin, runId, `Đang kiểm tra trạng thái tác vụ voice (Lần ${attempts})...`, 'INFO', stepId);
-
-        const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-voice-api', {
-            body: { path: `v1/task/${voiceTaskId}`, token: settings.voice_api_key, method: 'GET' }
-        });
-
-        if (statusError) {
-            await logToDb(supabaseAdmin, runId, `Lỗi khi kiểm tra trạng thái: ${statusError.message}`, 'WARN', stepId);
-            continue;
-        }
-
-        if (statusData.status === 'done') {
-            const audioUrl = statusData.metadata?.audio_url;
-            if (!audioUrl) throw new Error("Tác vụ voice hoàn thành nhưng không có URL audio.");
-            
-            await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: audioUrl } }).eq('id', stepId);
-            await logToDb(supabaseAdmin, runId, "Bước tạo voice đã hoàn thành.", 'SUCCESS', stepId);
-            return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-        }
-
-        if (statusData.status === 'error') {
-            throw new Error(`Tác vụ voice thất bại: ${statusData.error_message || 'Lỗi không xác định'}`);
-        }
-    }
-    throw new Error("Tác vụ tạo voice đã quá thời gian chờ.");
+    // Worker's job is done. It has initiated the task. The dispatcher will handle polling.
+    return new Response(JSON.stringify({ success: true, taskId: voiceTaskId }), { headers: corsHeaders });
 
   } catch (error) {
     if (stepId) {
