@@ -9,6 +9,7 @@ import { Loader2, Upload, Video, X, AlertTriangle, CheckCircle, FileAudio, Film,
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 
 type MediaFile = {
   file: File;
@@ -64,6 +65,7 @@ const RendiApiTestPage = () => {
 
   const [overlayX, setOverlayX] = useState(10);
   const [overlayY, setOverlayY] = useState(10);
+  const [overlayScale, setOverlayScale] = useState(0.25);
   const [overlayStartTime, setOverlayStartTime] = useState(0);
   const [overlayDuration, setOverlayDuration] = useState(5);
 
@@ -225,7 +227,7 @@ const RendiApiTestPage = () => {
         
         input_files = { 'in_video': videoUrl, 'in_image': imageUrl };
         const endTime = overlayStartTime + overlayDuration;
-        ffmpeg_command = `-i {{in_video}} -i {{in_image}} -filter_complex "[0:v][1:v] overlay=x=${overlayX}:y=${overlayY}:enable='between(t,${overlayStartTime},${endTime})'" -pix_fmt yuv420p -c:a copy {{out_final}}`;
+        ffmpeg_command = `-i {{in_video}} -i {{in_image}} -filter_complex "[1:v]scale=iw*${overlayScale}:-1[scaled_img];[0:v][scaled_img] overlay=x=${overlayX}:y=${overlayY}:enable='between(t,${overlayStartTime},${endTime})'" -pix_fmt yuv420p -c:a copy {{out_final}}`;
 
       } else { // 'merge' mode
         const videosAndImages = mediaFiles.filter(f => f.type === 'video' || f.type === 'image');
@@ -493,8 +495,13 @@ const RendiApiTestPage = () => {
                       <img
                         ref={overlayImageRef}
                         src={imageFile.previewUrl}
-                        className="absolute cursor-move max-w-[25%] max-h-[25%]"
-                        style={{ left: `${overlayX}px`, top: `${overlayY}px` }}
+                        className="absolute cursor-move"
+                        style={{
+                          left: `${overlayX}px`,
+                          top: `${overlayY}px`,
+                          width: `${overlayScale * 100}%`,
+                          height: 'auto'
+                        }}
                         onMouseDown={handleMouseDown}
                         alt="Overlay Preview"
                       />
@@ -520,6 +527,17 @@ const RendiApiTestPage = () => {
                           <Label htmlFor="overlay-duration">Thời lượng hiển thị (giây)</Label>
                           <Input id="overlay-duration" type="number" value={overlayDuration} onChange={e => setOverlayDuration(Number(e.target.value))} min="1" />
                       </div>
+                  </div>
+                  <div className="space-y-2 pt-2">
+                    <Label htmlFor="overlay-scale">Tỷ lệ (Scale): {Math.round(overlayScale * 100)}%</Label>
+                    <Slider
+                        id="overlay-scale"
+                        min={0.05}
+                        max={1}
+                        step={0.01}
+                        value={[overlayScale]}
+                        onValueChange={(value) => setOverlayScale(value[0])}
+                    />
                   </div>
                 </div>
               </>
