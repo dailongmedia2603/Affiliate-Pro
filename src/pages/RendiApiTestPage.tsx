@@ -187,11 +187,6 @@ const RendiApiTestPage = () => {
       return;
     }
 
-    if (isAdvancedMode) {
-        showError("Chế độ nâng cao yêu cầu gói Rendi trả phí. Vui lòng sử dụng chế độ ghép nối đơn giản hoặc nâng cấp tài khoản của bạn.");
-        return;
-    }
-
     setIsProcessing(true);
     setTask(null);
     let loadingToast = showLoading('Đang chuẩn bị tác vụ...');
@@ -217,36 +212,87 @@ const RendiApiTestPage = () => {
       loadingToast = showLoading('Đang xây dựng và gửi lệnh render...');
 
       const input_files: { [key: string]: string } = {};
-      const output_files: { [key: string]: string } = { 'out_final': 'final_output.mp4' };
-      
       mediaFiles.forEach((mf, i) => {
           input_files[`in_${i}`] = urls[i];
       });
 
-      // Build the input flags part of the command
-      const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
+      const output_files: { [key:string]: string } = { 'out_final': 'final_output.mp4' };
+      let ffmpeg_command = '';
 
-      // SIMPLE MODE - SINGLE COMMAND
-      const videoInputStreams = videosAndImages.map((mf) => {
-          const inputIndex = mediaFiles.indexOf(mf);
-          return `[${inputIndex}:v:0]`;
-      }).join('');
+      if (isAdvancedMode) {
+          if (videosAndImages.length < 2) {
+              throw new Error("Chế độ nâng cao yêu cầu ít nhất 2 video hoặc hình ảnh để tạo chuyển cảnh.");
+          }
 
-      let filter_complex = `"${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]"`;
-      let map_args = `-map "[v]"`;
+          let inputFlags = '';
+          const filterComplexParts: string[] = [];
+          
+          videosAndImages.forEach((mf, i) => {
+              const inputIndex = mediaFiles.indexOf(mf);
+              const inputKey = `in_${inputIndex}`;
+              
+              if (mf.type === 'image') {
+                  inputFlags += ` -loop 1 -t ${clipDuration} -i {{${inputKey}}}`;
+              } else {
+                  inputFlags += ` -i {{${inputKey}}}`;
+              }
+              
+              const trimFilter = mf.type === 'video' ? `trim=duration=${clipDuration},` : '';
+              filterComplexParts.push(`[${i}:v]${trimFilter}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
+          });
 
-      if (audioFile) {
-          const audioInputIndex = mediaFiles.indexOf(audioFile);
-          map_args += ` -map ${audioInputIndex}:a:0`;
+          if (audioFile) {
+              const audioInputIndex = mediaFiles.indexOf(audioFile);
+              inputFlags += ` -i {{in_${audioInputIndex}}}`;
+          }
+
+          let lastStream = '[v0]';
+          let offset = clipDuration - transitionDuration;
+          for (let i = 1; i < videosAndImages.length; i++) {
+              const nextStream = `[v${i}]`;
+              const outStream = i === videosAndImages.length - 1 ? '[vout]' : `[vt${i}]`;
+              filterComplexParts.push(`${lastStream}${nextStream}xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}${outStream}`);
+              lastStream = outStream;
+              offset += (clipDuration - transitionDuration);
+          }
+
+          const filterComplex = `"${filterComplexParts.join(';')}"`;
+          
+          let mapArgs = `-map "[vout]"`;
+          if (audioFile) {
+              mapArgs += ` -map ${videosAndImages.length}:a:0`;
+          }
+
+          ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} ${mapArgs} -c:v libx264 -c:a aac -shortest {{out_final}}`;
+
+      } else { // Simple Mode
+          const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
+          const videoInputStreams = videosAndImages.map((mf) => {
+              const inputIndex = mediaFiles.indexOf(mf);
+              return `[${inputIndex}:v:0]`;
+          }).join('');
+
+          let filter_complex = `"${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]"`;
+          let map_args = `-map "[v]"`;
+
+          if (audioFile) {
+              const audioInputIndex = mediaFiles.indexOf(audioFile);
+              map_args += ` -map ${audioInputIndex}:a:0`;
+          }
+
+          ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
       }
-
-      const ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
       
       const payload = { input_files, output_files, ffmpeg_command };
 
       const { data: rendiData, error: rendiError } = await supabase.functions.invoke('proxy-rendi-api', { body: { action: 'run_command', payload } });
-      if (rendiError || rendiData.error) throw new Error(rendiError?.message || rendiData.error);
-      if (!rendiData.command_id) throw new Error("Rendi API did not return a command_id.");
+      
+      if (rendiError || (rendiData && rendiData.error)) {
+        throw new Error(rendiError?.message || rendiData.error);
+      }
+      if (!rendiData.command_id) {
+        throw new Error("Rendi API did not return a command_id.");
+      }
       
       const { data: updatedTask, error: updateError } = await supabase.from('rendi_tasks').update({ rendi_command_id: rendiData.command_id, status: 'QUEUED' }).eq('id', dbTask.id).select().single();
       if (updateError) throw updateError;
