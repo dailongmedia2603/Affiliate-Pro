@@ -16,6 +16,7 @@ type MediaFile = {
   file: File;
   type: 'video' | 'image' | 'audio';
   previewUrl: string;
+  duration?: number;
 };
 
 type RendiTask = {
@@ -49,6 +50,21 @@ const transitions = [
     { value: 'diagbl', label: 'Chéo Dưới Trái (Diagonal BL)' },
     { value: 'diagbr', label: 'Chéo Dưới Phải (Diagonal BR)' },
 ];
+
+const getVideoDuration = (file: File): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.onloadedmetadata = () => {
+      window.URL.revokeObjectURL(video.src);
+      resolve(video.duration);
+    };
+    video.onerror = (e) => {
+      reject(`Could not get duration for video ${file.name}. Error: ${e}`);
+    };
+    video.src = URL.createObjectURL(file);
+  });
+};
 
 const RendiApiTestPage = () => {
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
@@ -174,17 +190,29 @@ const RendiApiTestPage = () => {
     };
   }, []);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files) return;
 
-    const newMediaFiles: MediaFile[] = Array.from(files).map(file => {
+    const newMediaFilePromises = Array.from(files).map(async (file) => {
       let type: 'video' | 'image' | 'audio' = 'video';
       if (file.type.startsWith('image/')) type = 'image';
       if (file.type.startsWith('audio/')) type = 'audio';
-      return { file, type, previewUrl: URL.createObjectURL(file) };
+      
+      let duration: number | undefined = undefined;
+      if (type === 'video') {
+        try {
+          duration = await getVideoDuration(file);
+        } catch (error) {
+          console.error(error);
+          showError(`Không thể lấy thời lượng của video: ${file.name}`);
+        }
+      }
+
+      return { file, type, previewUrl: URL.createObjectURL(file), duration };
     });
 
+    const newMediaFiles = await Promise.all(newMediaFilePromises);
     setMediaFiles(prev => [...prev, ...newMediaFiles]);
   };
 
@@ -275,28 +303,29 @@ const RendiApiTestPage = () => {
           if (videosAndImages.length < 2) {
               throw new Error("Chế độ nâng cao yêu cầu ít nhất 2 video hoặc hình ảnh để tạo chuyển cảnh.");
           }
-          if (clipDuration <= 0) {
-            throw new Error("Thời lượng mỗi clip phải lớn hơn 0.");
-          }
-          if (clipDuration <= transitionDuration) {
-            throw new Error('Thời lượng cho mỗi clip phải lớn hơn thời lượng chuyển cảnh.');
-          }
-
+          
+          const clipDurations: number[] = [];
           let inputFlags = '';
           const filterComplexParts: string[] = [];
-          
-          videosAndImages.forEach((mf, i) => {
+
+          for (const mf of videosAndImages) {
               const inputIndex = mediaFiles.indexOf(mf);
               const inputKey = `in_${inputIndex}`;
-              
               if (mf.type === 'image') {
+                  if (clipDuration <= 0) throw new Error("Thời lượng cho ảnh phải lớn hơn 0.");
                   inputFlags += ` -loop 1 -t ${clipDuration} -i {{${inputKey}}}`;
-              } else {
+                  clipDurations.push(clipDuration);
+              } else { // video
                   inputFlags += ` -i {{${inputKey}}}`;
+                  if (typeof mf.duration !== 'number') {
+                      throw new Error(`Không thể lấy thời lượng cho video: ${mf.file.name}. Vui lòng thử tải lại file.`);
+                  }
+                  clipDurations.push(mf.duration);
               }
-              
-              const trimFilter = mf.type === 'video' ? `trim=duration=${clipDuration},` : '';
-              filterComplexParts.push(`[${i}:v]${trimFilter}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
+          }
+
+          videosAndImages.forEach((mf, i) => {
+              filterComplexParts.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
           });
 
           if (audioFile) {
@@ -305,23 +334,28 @@ const RendiApiTestPage = () => {
           }
 
           let lastStream = '[v0]';
-          let currentTimelineDuration = clipDuration;
+          let currentTimelineDuration = clipDurations[0];
           for (let i = 1; i < videosAndImages.length; i++) {
               const nextStream = `[v${i}]`;
               const outStream = i === videosAndImages.length - 1 ? '[vout]' : `[vt${i}]`;
+              
+              if (currentTimelineDuration <= transitionDuration) {
+                  throw new Error(`Thời lượng của clip #${i} (${currentTimelineDuration}s) phải lớn hơn thời lượng chuyển cảnh (${transitionDuration}s).`);
+              }
               const offset = currentTimelineDuration - transitionDuration;
               
               filterComplexParts.push(`${lastStream}${nextStream}xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}${outStream}`);
               
               lastStream = outStream;
-              currentTimelineDuration += (clipDuration - transitionDuration);
+              currentTimelineDuration += (clipDurations[i] - transitionDuration);
           }
 
           const filterComplex = `"${filterComplexParts.join(';')}"`;
           
           let mapArgs = `-map "[vout]"`;
           if (audioFile) {
-              mapArgs += ` -map ${videosAndImages.length}:a:0`;
+              const audioInputIndex = mediaFiles.findIndex(mf => mf.type === 'audio');
+              mapArgs += ` -map ${audioInputIndex}:a:0`;
           }
 
           ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} ${mapArgs} -c:v libx264 -c:a aac -shortest {{out_final}}`;
@@ -515,7 +549,7 @@ const RendiApiTestPage = () => {
                 {isAdvancedMode && (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
-                            <Label htmlFor="clip-duration">Thời lượng mỗi clip (s)</Label>
+                            <Label htmlFor="clip-duration">Thời lượng cho ảnh (s)</Label>
                             <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
                         </div>
                         <div className="space-y-2">
