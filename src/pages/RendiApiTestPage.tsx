@@ -78,7 +78,7 @@ const RendiApiTestPage = () => {
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
   const [transition, setTransition] = useState<string>('fade');
   const [transitionDuration, setTransitionDuration] = useState<number>(1);
-  const [clipDuration, setClipDuration] = useState<number>(3);
+  const [clipDuration] = useState<number>(3); // Default duration for images
 
   const [overlayX, setOverlayX] = useState(10);
   const [overlayY, setOverlayY] = useState(10);
@@ -544,14 +544,10 @@ const RendiApiTestPage = () => {
               <div className="space-y-4 pt-4 border-t">
                 <div className="flex items-center space-x-2">
                     <Switch id="advanced-mode" checked={isAdvancedMode} onCheckedChange={setIsAdvancedMode} />
-                    <Label htmlFor="advanced-mode">Kích hoạt tùy chọn nâng cao (chuyển cảnh, thời lượng)</Label>
+                    <Label htmlFor="advanced-mode">Kích hoạt tùy chọn nâng cao (chuyển cảnh)</Label>
                 </div>
                 {isAdvancedMode && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="clip-duration">Thời lượng cho ảnh (s)</Label>
-                            <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label htmlFor="transition-duration">Thời lượng chuyển cảnh (s)</Label>
                             <Input id="transition-duration" type="number" value={transitionDuration} onChange={e => setTransitionDuration(Number(e.target.value))} min="0.1" step="0.1" />
