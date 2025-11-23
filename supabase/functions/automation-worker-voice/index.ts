@@ -75,6 +75,18 @@ serve(async (req) => {
     const voiceScript = scriptData.data;
     await logToDb(supabaseAdmin, runId, `Đã tạo kịch bản thành công: "${voiceScript.slice(0, 100)}..."`, 'SUCCESS', stepId);
 
+    // Save the prompt and script to the step's input_data
+    const { error: updateInputError } = await supabaseAdmin.from('automation_run_steps').update({
+        input_data: {
+            script_generation_prompt: scriptPrompt,
+            generated_script: voiceScript
+        }
+    }).eq('id', stepId);
+
+    if (updateInputError) {
+        await logToDb(supabaseAdmin, runId, `Lỗi khi lưu log kịch bản: ${updateInputError.message}`, 'WARN', stepId);
+    }
+
     await logToDb(supabaseAdmin, runId, "Đang gửi yêu cầu tạo audio...", 'INFO', stepId);
     const { data: voiceTaskData, error: voiceTaskError } = await supabaseAdmin.functions.invoke('proxy-voice-api', {
         body: {

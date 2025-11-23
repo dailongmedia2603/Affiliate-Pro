@@ -30,7 +30,16 @@ type AutomationRunStep = {
   step_type: string; 
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; 
   output_data: { url?: string; final_video_url?: string; } | null; 
-  input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; gemini_prompt_for_video?: string; video_urls?: string[]; } | null; 
+  input_data: { 
+    prompt?: string; 
+    image_urls?: string[]; 
+    imageUrl?: string; 
+    source_image_step_id?: string; 
+    gemini_prompt_for_video?: string; 
+    video_urls?: string[];
+    script_generation_prompt?: string;
+    generated_script?: string;
+  } | null; 
   error_message: string | null; 
   created_at: string;
   sub_product_id: string;
@@ -73,6 +82,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [detailsStep, setDetailsStep] = useState<AutomationRunStep | null>(null);
   const [aiPromptLog, setAiPromptLog] = useState<string | null>(null);
+  const [voiceScriptLog, setVoiceScriptLog] = useState<{ prompt: string; script: string } | null>(null);
   const runIdsRef = useRef<string[]>([]);
   const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -304,6 +314,12 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                   <div className="mt-3 flex flex-col items-start gap-4">
                                     {voiceStep.status === 'completed' && voiceStep.output_data?.url && (<CustomAudioPlayer src={voiceStep.output_data.url} />)}
                                     <div className="flex items-center gap-2">
+                                      {voiceStep.input_data?.script_generation_prompt && voiceStep.input_data?.generated_script && (
+                                        <Button variant="secondary" size="sm" onClick={() => setVoiceScriptLog({ prompt: voiceStep.input_data!.script_generation_prompt!, script: voiceStep.input_data!.generated_script! })}>
+                                          <Bot className="w-4 h-4 mr-2" />
+                                          Kịch bản & Prompt
+                                        </Button>
+                                      )}
                                       {voiceStep.status === 'failed' && (
                                         <Button variant="secondary" size="sm" onClick={() => handleRetryStep(voiceStep.id)} disabled={retryingStepId === voiceStep.id}>
                                           {retryingStepId === voiceStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
@@ -455,6 +471,26 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
             </DialogHeader>
             <div className="mt-4 p-4 bg-gray-100 rounded-md border max-h-96 overflow-y-auto">
                 <pre className="whitespace-pre-wrap text-sm font-mono">{aiPromptLog}</pre>
+            </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!voiceScriptLog} onOpenChange={(isOpen) => !isOpen && setVoiceScriptLog(null)}>
+        <DialogContent className="max-w-2xl">
+            <DialogHeader>
+                <DialogTitle>Log Kịch Bản Voice</DialogTitle>
+                <DialogDescription>
+                    Prompt đã được gửi đến AI để tạo kịch bản và kịch bản được tạo ra.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto p-1">
+                <div>
+                    <h3 className="font-semibold mb-2 text-gray-800">Prompt đã gửi:</h3>
+                    <pre className="whitespace-pre-wrap text-sm font-mono p-4 bg-gray-100 rounded-md border">{voiceScriptLog?.prompt}</pre>
+                </div>
+                <div>
+                    <h3 className="font-semibold mb-2 text-gray-800">Kịch bản được tạo:</h3>
+                    <pre className="whitespace-pre-wrap text-sm font-mono p-4 bg-blue-50 rounded-md border border-blue-200">{voiceScriptLog?.script}</pre>
+                </div>
             </div>
         </DialogContent>
       </Dialog>
