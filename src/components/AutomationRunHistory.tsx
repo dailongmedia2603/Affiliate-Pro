@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import CustomAudioPlayer from './CustomAudioPlayer';
 
 type SubProductInfo = {
   id: string;
@@ -247,6 +248,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                       const sortedSteps = group.steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                       const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
                       const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
+                      const voiceStep = sortedSteps.find(step => step.step_type === 'generate_voice');
                       const mergeStep = sortedSteps.find(step => step.step_type === 'merge_videos');
                       const contentPairs = imageSteps.map((imageStep, pairIndex) => ({
                         pairNumber: pairIndex + 1,
@@ -288,6 +290,31 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                 </div>
                               </div>
                             ))}
+                            {voiceStep && (
+                              <div key={voiceStep.id} className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                                <h4 className="font-bold text-md text-blue-800 mb-3">Bước Tạo Voice</h4>
+                                <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                  <div>
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex items-center gap-3"><StepIcon type={voiceStep.step_type} /><div><p className="font-semibold capitalize">Tạo Voice & Kịch bản</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(voiceStep.created_at).toLocaleTimeString()}</p></div></div>
+                                      <StatusBadge status={voiceStep.status} />
+                                    </div>
+                                    {voiceStep.status === 'failed' && voiceStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {voiceStep.error_message}</div>)}
+                                  </div>
+                                  <div className="mt-3 flex flex-col items-start gap-4">
+                                    {voiceStep.status === 'completed' && voiceStep.output_data?.url && (<CustomAudioPlayer src={voiceStep.output_data.url} />)}
+                                    <div className="flex items-center gap-2">
+                                      {voiceStep.status === 'failed' && (
+                                        <Button variant="secondary" size="sm" onClick={() => handleRetryStep(voiceStep.id)} disabled={retryingStepId === voiceStep.id}>
+                                          {retryingStepId === voiceStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                          Thử lại
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                             {mergeStep && (
                               <div key={mergeStep.id} className="p-4 border rounded-lg bg-orange-50 border-orange-200">
                                 <h4 className="font-bold text-md text-orange-800 mb-3">Bước Ghép Video</h4>
