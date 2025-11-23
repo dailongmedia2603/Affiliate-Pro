@@ -9,7 +9,8 @@ const corsHeaders = {
 
 const IMAGE_CONCURRENCY = 4;
 const VIDEO_CONCURRENCY = 3;
-const MAX_RETRIES = 2; // Cho phép thử lại 2 lần, tổng cộng 3 lần chạy
+const MERGE_CONCURRENCY = 2; // Giới hạn số tác vụ ghép video chạy đồng thời
+const MAX_RETRIES = 2;
 const API_BASE = "https://api.beautyapp.work";
 
 // --- Helper Functions ---
@@ -83,55 +84,122 @@ serve(async (req) => {
     if (runningSteps) {
       for (const step of runningSteps) {
         try {
-          if (step.step_type === 'generate_voice') continue; // Skip voice for now
+          // Handle Higgsfield (Image/Video) tasks
+          if (['generate_image', 'generate_video'].includes(step.step_type)) {
+            let cachedUser = userCache.get(step.run.user_id);
+            if (!cachedUser) {
+              const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('*').eq('id', step.run.user_id).single();
+              if (settingsError || !settings) { userCache.set(step.run.user_id, { token: null, settings: null }); continue; }
+              const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
+              cachedUser = { token, settings };
+              userCache.set(step.run.user_id, cachedUser);
+            } else if (!cachedUser.token || !cachedUser.settings) continue;
 
-          let cachedUser = userCache.get(step.run.user_id);
-          if (!cachedUser) {
-            const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('*').eq('id', step.run.user_id).single();
-            if (settingsError || !settings) { userCache.set(step.run.user_id, { token: null, settings: null }); continue; }
-            const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
-            cachedUser = { token, settings };
-            userCache.set(step.run.user_id, cachedUser);
-          } else if (!cachedUser.token || !cachedUser.settings) continue;
+            const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
+            const job = statusData?.jobs?.[0];
+            const apiStatus = job?.status;
 
-          const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
-          const job = statusData?.jobs?.[0];
-          const apiStatus = job?.status;
+            if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
+              const isSuccess = apiStatus === 'completed';
+              const resultUrl = job?.results?.raw?.url;
+              const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : `Tác vụ thất bại không có thông báo lỗi cụ thể.`);
 
-          if (apiStatus && ['completed', 'failed', 'nsfw'].includes(apiStatus)) {
-            const isSuccess = apiStatus === 'completed';
-            const resultUrl = job?.results?.raw?.url;
-            const errorMessage = job?.error || (apiStatus === 'nsfw' ? 'Nội dung không phù hợp (NSFW).' : `Tác vụ thất bại không có thông báo lỗi cụ thể.`);
+              if (!isSuccess) {
+                  await handleStepFailure(supabaseAdmin, step, errorMessage);
+                  continue;
+              }
 
-            if (!isSuccess) {
+              // If completed
+              await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: resultUrl }, error_message: null }).eq('id', step.id);
+              await logToDb(supabaseAdmin, step.run.id, `Bước ${step.step_type} đã hoàn thành.`, 'SUCCESS', step.id);
+
+              if (step.step_type === 'generate_image') {
+                // Queue video step
+                const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+                if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
+                
+                const { data: subProduct, error: subProductError } = await supabaseAdmin.from('sub_products').select('name, description').eq('id', step.sub_product_id).single();
+                if (subProductError) throw subProductError;
+
+                const geminiVideoPrompt = replacePlaceholders(config.config_data.videoPromptGenerationTemplate, { image_prompt: step.input_data.prompt, product_name: subProduct.name, product_description: subProduct.description });
+                const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', { body: { apiUrl: cachedUser.settings.gemini_api_url, prompt: geminiVideoPrompt, token: cachedUser.settings.gemini_api_key } });
+                if (geminiError || !geminiResponse.success) throw new Error(`Lỗi tạo prompt video từ AI: ${geminiError?.message || geminiResponse?.error}`);
+                
+                const finalVideoPrompt = geminiResponse.answer;
+                if (!finalVideoPrompt) throw new Error("AI không trả về prompt video.");
+
+                const videoInputData = { prompt: finalVideoPrompt, imageUrl: resultUrl, source_image_step_id: step.id, gemini_prompt_for_video: geminiVideoPrompt };
+                const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData });
+                if (videoStepError) throw videoStepError;
+                await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo video.`, 'INFO');
+              } 
+              else if (step.step_type === 'generate_video') {
+                // NEW LOGIC: Check if all videos for this sub-product are done
+                const { count: totalImageSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_image');
+                const { count: completedVideoSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_video').eq('status', 'completed');
+
+                if (totalImageSteps > 0 && totalImageSteps === completedVideoSteps) {
+                    await logToDb(supabaseAdmin, step.run.id, `Tất cả ${completedVideoSteps} video cho sản phẩm con đã hoàn thành. Chuẩn bị ghép video.`, 'SUCCESS', step.sub_product_id);
+                    
+                    const { data: videosToMerge, error: videosError } = await supabaseAdmin
+                        .from('automation_run_steps')
+                        .select('output_data, created_at')
+                        .eq('run_id', step.run.id)
+                        .eq('sub_product_id', step.sub_product_id)
+                        .eq('step_type', 'generate_video')
+                        .eq('status', 'completed')
+                        .order('created_at', { ascending: true });
+
+                    if (videosError || !videosToMerge || videosToMerge.length === 0) {
+                        throw new Error(`Không thể truy xuất URL video để ghép: ${videosError?.message || 'Không tìm thấy video'}`);
+                    }
+
+                    const videoUrls = videosToMerge.map(v => v.output_data.url);
+                    const mergeInputData = { video_urls: videoUrls };
+
+                    const { error: mergeStepError } = await supabaseAdmin.from('automation_run_steps').insert({
+                        run_id: step.run.id,
+                        sub_product_id: step.sub_product_id,
+                        step_type: 'merge_videos',
+                        status: 'pending',
+                        input_data: mergeInputData
+                    });
+                    if (mergeStepError) throw mergeStepError;
+                    await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước ghép video.`, 'INFO');
+                }
+              }
+            }
+          }
+          // Handle Rendi (Merge Video) tasks
+          else if (step.step_type === 'merge_videos') {
+            const { data: rendiStatus, error: rendiError } = await supabaseAdmin.functions.invoke('proxy-rendi-api', {
+              body: { action: 'check_status', payload: { command_id: step.api_task_id } }
+            });
+
+            if (rendiError) throw rendiError;
+            if (rendiStatus.error) throw new Error(rendiStatus.error);
+
+            const apiStatus = rendiStatus.status;
+
+            if (['SUCCESS', 'FAILED'].includes(apiStatus)) {
+              const isSuccess = apiStatus === 'SUCCESS';
+              const finalVideoUrl = rendiStatus.output_files?.out_final?.storage_url;
+              const errorMessage = rendiStatus.error_message || 'Tác vụ Rendi thất bại không có lỗi cụ thể.';
+
+              if (!isSuccess) {
                 await handleStepFailure(supabaseAdmin, step, errorMessage);
                 continue;
-            }
+              }
 
-            // If completed
-            await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: resultUrl }, error_message: null }).eq('id', step.id);
-            await logToDb(supabaseAdmin, step.run.id, `Bước ${step.step_type} đã hoàn thành.`, 'SUCCESS', step.id);
+              if (!finalVideoUrl) {
+                await handleStepFailure(supabaseAdmin, step, 'Tác vụ Rendi thành công nhưng không tìm thấy URL video cuối cùng.');
+                continue;
+              }
 
-            if (step.step_type === 'generate_image') {
-              const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
-              if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
-              
-              const { data: subProduct, error: subProductError } = await supabaseAdmin.from('sub_products').select('name, description').eq('id', step.sub_product_id).single();
-              if (subProductError) throw subProductError;
+              await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { final_video_url: finalVideoUrl }, error_message: null }).eq('id', step.id);
+              await logToDb(supabaseAdmin, step.run.id, `Bước ghép video đã hoàn thành.`, 'SUCCESS', step.id);
 
-              const geminiVideoPrompt = replacePlaceholders(config.config_data.videoPromptGenerationTemplate, { image_prompt: step.input_data.prompt, product_name: subProduct.name, product_description: subProduct.description });
-              const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', { body: { apiUrl: cachedUser.settings.gemini_api_url, prompt: geminiVideoPrompt, token: cachedUser.settings.gemini_api_key } });
-              if (geminiError || !geminiResponse.success) throw new Error(`Lỗi tạo prompt video từ AI: ${geminiError?.message || geminiResponse?.error}`);
-              
-              const finalVideoPrompt = geminiResponse.answer;
-              if (!finalVideoPrompt) throw new Error("AI không trả về prompt video.");
-
-              const videoInputData = { prompt: finalVideoPrompt, imageUrl: resultUrl, source_image_step_id: step.id, gemini_prompt_for_video: geminiVideoPrompt };
-              const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData });
-              if (videoStepError) throw videoStepError;
-              await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo video.`, 'INFO');
-
-            } else if (step.step_type === 'generate_video') {
+              // Check if all steps for the entire run are complete
               const { count: remainingSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).in('status', ['pending', 'running']);
               if (remainingSteps === 0) {
                 await logToDb(supabaseAdmin, step.run.id, 'Tất cả các bước đã hoàn thành. Kết thúc phiên chạy.', 'SUCCESS');
@@ -176,7 +244,22 @@ serve(async (req) => {
       }
     }
 
-    // --- 4. Process Manual Video Tasks (existing logic) ---
+    // --- 4. DISPATCH NEW MERGE TASKS ---
+    const { count: activeMergeTasks } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('step_type', 'merge_videos').eq('status', 'running');
+    const mergeSlotsAvailable = MERGE_CONCURRENCY - (activeMergeTasks || 0);
+
+    if (mergeSlotsAvailable > 0) {
+        const { data: pendingMergeSteps, error: pendingMergeError } = await supabaseAdmin.from('automation_run_steps').select('id, input_data, run:automation_runs(user_id)').eq('step_type', 'merge_videos').eq('status', 'pending').order('created_at', { ascending: true }).limit(mergeSlotsAvailable);
+        if (pendingMergeError) throw pendingMergeError;
+
+        for (const step of pendingMergeSteps) {
+            await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
+            // We need a new worker for this. Let's call it 'automation-worker-rendi'
+            supabaseAdmin.functions.invoke('automation-worker-rendi', { body: { stepId: step.id, userId: step.run.user_id } }).catch(err => console.error(`Error invoking automation-worker-rendi for step ${step.id}:`, err));
+        }
+    }
+
+    // --- 5. Process Manual Video Tasks (existing logic) ---
     const { data: manualVideoTasks, error: manualTasksError } = await supabaseAdmin.from('video_tasks').select('id, user_id, higgsfield_task_id').in('status', ['pending', 'processing', 'in_progress']);
     if (manualTasksError) console.error("Error fetching manual video tasks:", manualTasksError.message);
     if (manualVideoTasks) {
