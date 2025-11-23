@@ -75,6 +75,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const runIdsRef = useRef<string[]>([]);
   const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const [retryingStepId, setRetryingStepId] = useState<string | null>(null);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
@@ -172,6 +173,27 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     }
     setIsAlertOpen(false);
     setRunToDelete(null);
+  };
+
+  const handleRetryStep = async (stepId: string) => {
+    setRetryingStepId(stepId);
+    const loadingToast = showLoading('Đang gửi yêu cầu thử lại...');
+    try {
+      const { data, error } = await supabase.functions.invoke('retry-automation-step', {
+        body: { stepId },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      showSuccess('Đã gửi yêu cầu thử lại thành công. Vui lòng chờ hệ thống xử lý.');
+      // The real-time subscription will handle the UI update
+    } catch (error) {
+      showError(`Thử lại thất bại: ${error.message}`);
+    } finally {
+      dismissToast(loadingToast);
+      setRetryingStepId(null);
+    }
   };
 
   if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-orange-500" /></div>;
@@ -279,7 +301,15 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                   </div>
                                   <div className="mt-3 flex flex-col items-start gap-4">
                                     {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (<video src={mergeStep.output_data.final_video_url} controls className="w-full rounded-md border" />)}
-                                    <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                    <div className="flex items-center gap-2">
+                                      <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                      {mergeStep.status === 'failed' && (
+                                        <Button variant="secondary" size="sm" onClick={() => handleRetryStep(mergeStep.id)} disabled={retryingStepId === mergeStep.id}>
+                                          {retryingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                          Thử lại
+                                        </Button>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
