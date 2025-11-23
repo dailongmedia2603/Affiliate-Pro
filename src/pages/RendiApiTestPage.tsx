@@ -74,9 +74,24 @@ const RendiApiTestPage = () => {
   const dragStartPos = useRef({ x: 0, y: 0 });
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const overlayImageRef = useRef<HTMLImageElement>(null);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const videoFile = mediaFiles.find(f => f.type === 'video');
   const imageFile = mediaFiles.find(f => f.type === 'image');
+
+  useEffect(() => {
+    if (videoFile) {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.onloadedmetadata = () => {
+            window.URL.revokeObjectURL(video.src);
+            setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+        };
+        video.src = URL.createObjectURL(videoFile.file);
+    } else {
+        setVideoDimensions(null);
+    }
+  }, [videoFile]);
 
   const pollTaskStatus = (commandId: string, taskId: string) => {
     if (pollingIntervalRef.current) {
@@ -202,9 +217,36 @@ const RendiApiTestPage = () => {
         if (!videoFile || !imageFile) {
           throw new Error('Chế độ Chèn ảnh yêu cầu chính xác 1 video và 1 ảnh.');
         }
-        if (mediaFiles.filter(f => f.type === 'video' || f.type === 'image').length > 2) {
-          showError('Chế độ Chèn ảnh chỉ hỗ trợ 1 video và 1 ảnh. Các file khác sẽ bị bỏ qua.');
+        if (!previewContainerRef.current || !videoDimensions) {
+            throw new Error("Không thể tính toán tọa độ overlay, thiếu thông tin video.");
         }
+
+        const containerW = previewContainerRef.current.clientWidth;
+        const containerH = previewContainerRef.current.clientHeight;
+        const videoW = videoDimensions.width;
+        const videoH = videoDimensions.height;
+        const containerRatio = containerW / containerH;
+        const videoRatio = videoW / videoH;
+
+        let displayedVideoW, displayedVideoH, offsetX, offsetY;
+
+        if (videoRatio > containerRatio) {
+            displayedVideoW = containerW;
+            displayedVideoH = containerW / videoRatio;
+            offsetX = 0;
+            offsetY = (containerH - displayedVideoH) / 2;
+        } else {
+            displayedVideoH = containerH;
+            displayedVideoW = containerH * videoRatio;
+            offsetY = 0;
+            offsetX = (containerW - displayedVideoW) / 2;
+        }
+
+        const overlayX_relative = overlayX - offsetX;
+        const overlayY_relative = overlayY - offsetY;
+        const scaleFactor = videoW / displayedVideoW;
+        const finalX = Math.round(overlayX_relative * scaleFactor);
+        const finalY = Math.round(overlayY_relative * scaleFactor);
 
         dismissToast(loadingToast);
         loadingToast = showLoading('Đang tải file lên...');
@@ -212,7 +254,7 @@ const RendiApiTestPage = () => {
         
         input_files = { 'in_video': videoUrl, 'in_image': imageUrl };
         const endTime = overlayStartTime + overlayDuration;
-        ffmpeg_command = `-i {{in_video}} -i {{in_image}} -filter_complex "[1:v]scale=iw*${overlayScale}:-1[scaled_img];[0:v][scaled_img] overlay=x=${overlayX}:y=${overlayY}:enable='between(t,${overlayStartTime},${endTime})'" -pix_fmt yuv420p -c:a copy {{out_final}}`;
+        ffmpeg_command = `-i {{in_video}} -i {{in_image}} -filter_complex "[1:v]scale=iw*${overlayScale}:-1[scaled_img];[0:v][scaled_img] overlay=x=${finalX}:y=${finalY}:enable='between(t,${overlayStartTime},${endTime})'" -pix_fmt yuv420p -c:a copy {{out_final}}`;
 
       } else { // 'merge' mode
         const videosAndImages = mediaFiles.filter(f => f.type === 'video' || f.type === 'image');
@@ -341,25 +383,55 @@ const RendiApiTestPage = () => {
 
   const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
     e.preventDefault();
-    setIsDragging(true);
+    if (!overlayImageRef.current) return;
+    const imageRect = overlayImageRef.current.getBoundingClientRect();
     dragStartPos.current = {
-      x: e.clientX - overlayX,
-      y: e.clientY - overlayY,
+      x: e.clientX - imageRect.left,
+      y: e.clientY - imageRect.top,
     };
+    setIsDragging(true);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging || !previewContainerRef.current || !overlayImageRef.current) return;
+    if (!isDragging || !previewContainerRef.current || !overlayImageRef.current || !videoDimensions) return;
     e.preventDefault();
-    
+
     const containerRect = previewContainerRef.current.getBoundingClientRect();
     const imageRect = overlayImageRef.current.getBoundingClientRect();
 
-    let newX = e.clientX - dragStartPos.current.x;
-    let newY = e.clientY - dragStartPos.current.y;
+    const mouseXInContainer = e.clientX - containerRect.left;
+    const mouseYInContainer = e.clientY - containerRect.top;
 
-    newX = Math.max(0, Math.min(newX, containerRect.width - imageRect.width));
-    newY = Math.max(0, Math.min(newY, containerRect.height - imageRect.height));
+    let newX = mouseXInContainer - dragStartPos.current.x;
+    let newY = mouseYInContainer - dragStartPos.current.y;
+
+    const containerW = containerRect.width;
+    const containerH = containerRect.height;
+    const videoW = videoDimensions.width;
+    const videoH = videoDimensions.height;
+    const containerRatio = containerW / containerH;
+    const videoRatio = videoW / videoH;
+
+    let displayedVideoW, displayedVideoH, offsetX, offsetY;
+    if (videoRatio > containerRatio) {
+        displayedVideoW = containerW;
+        displayedVideoH = containerW / videoRatio;
+        offsetX = 0;
+        offsetY = (containerH - displayedVideoH) / 2;
+    } else {
+        displayedVideoH = containerH;
+        displayedVideoW = containerH * videoRatio;
+        offsetY = 0;
+        offsetX = (containerW - displayedVideoW) / 2;
+    }
+
+    const minX = offsetX;
+    const minY = offsetY;
+    const maxX = offsetX + displayedVideoW - imageRect.width;
+    const maxY = offsetY + displayedVideoH - imageRect.height;
+
+    newX = Math.max(minX, Math.min(newX, maxX));
+    newY = Math.max(minY, Math.min(newY, maxY));
 
     setOverlayX(Math.round(newX));
     setOverlayY(Math.round(newY));
