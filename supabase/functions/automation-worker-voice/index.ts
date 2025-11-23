@@ -84,9 +84,11 @@ serve(async (req) => {
     });
 
     if (voiceTaskError) throw new Error(`Lỗi gọi function proxy-voice-api: ${voiceTaskError.message}`);
-    if (!voiceTaskData.success || !voiceTaskData.data.id) throw new Error(`Gửi yêu cầu TTS thất bại: ${voiceTaskData.error || 'Phản hồi không hợp lệ'}`);
+    if (!voiceTaskData.success || !voiceTaskData.task_id) {
+        throw new Error(`Gửi yêu cầu TTS thất bại: ${voiceTaskData.error || 'Phản hồi không hợp lệ hoặc không có task_id'}`);
+    }
     
-    const voiceTaskId = voiceTaskData.data.id;
+    const voiceTaskId = voiceTaskData.task_id;
     await supabaseAdmin.from('automation_run_steps').update({ api_task_id: voiceTaskId }).eq('id', stepId);
     await logToDb(supabaseAdmin, runId, `Đã gửi yêu cầu tạo audio thành công. Task ID: ${voiceTaskId}`, 'SUCCESS', stepId);
 
