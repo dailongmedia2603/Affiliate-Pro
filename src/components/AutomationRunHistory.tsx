@@ -202,7 +202,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   return (
     <>
       <Accordion type="single" collapsible className="w-full space-y-2">
-        {runs.map(run => {
+        {runs.map((run, index) => {
           const stepsBySubProduct = run.automation_run_steps.reduce((acc, step) => {
             const subProductId = step.sub_product_id;
             if (!subProductId) return acc;
@@ -223,7 +223,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
               <AccordionTrigger className="hover:bg-gray-50 px-4 rounded-lg data-[state=open]:border-b">
                 <div className="flex justify-between items-center w-full pr-4">
                   <div className="flex flex-col items-start text-left">
-                    <span className="font-semibold text-gray-800">Run #{run.id.substring(0, 8)}</span>
+                    <span className="font-semibold text-gray-800">Lần chạy #{runs.length - index} <span className="text-gray-400 font-normal">(#{run.id.substring(0, 6)})</span></span>
                     <span className="text-sm text-gray-500">Bắt đầu: {new Date(run.started_at).toLocaleString()}</span>
                   </div>
                   <div className="flex items-center gap-2">
