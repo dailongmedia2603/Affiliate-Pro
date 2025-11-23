@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package, Layers } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AutomationLogViewer from './AutomationLogViewer';
@@ -28,8 +28,8 @@ type AutomationRunStep = {
   id: string; 
   step_type: string; 
   status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'; 
-  output_data: { url?: string } | null; 
-  input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; gemini_prompt_for_video?: string; } | null; 
+  output_data: { url?: string; final_video_url?: string; } | null; 
+  input_data: { prompt?: string; image_urls?: string[]; imageUrl?: string; source_image_step_id?: string; gemini_prompt_for_video?: string; video_urls?: string[]; } | null; 
   error_message: string | null; 
   created_at: string;
   sub_product_id: string;
@@ -58,6 +58,7 @@ const StepIcon = ({ type }: { type: string }) => {
   switch (type) {
     case 'generate_image': return <ImageIcon className="w-5 h-5 text-gray-500" />;
     case 'generate_video': return <VideoIcon className="w-5 h-5 text-gray-500" />;
+    case 'merge_videos': return <Layers className="w-5 h-5 text-gray-500" />;
     case 'generate_voice': return <Bot className="w-5 h-5 text-gray-500" />;
     default: return <Bot className="w-5 h-5 text-gray-500" />;
   }
@@ -224,6 +225,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                       const sortedSteps = group.steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                       const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
                       const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
+                      const mergeStep = sortedSteps.find(step => step.step_type === 'merge_videos');
                       const contentPairs = imageSteps.map((imageStep, pairIndex) => ({
                         pairNumber: pairIndex + 1,
                         imageStep,
@@ -264,6 +266,24 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                 </div>
                               </div>
                             ))}
+                            {mergeStep && (
+                              <div key={mergeStep.id} className="p-4 border rounded-lg bg-orange-50 border-orange-200">
+                                <h4 className="font-bold text-md text-orange-800 mb-3">Bước Ghép Video</h4>
+                                <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                  <div>
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex items-center gap-3"><StepIcon type={mergeStep.step_type} /><div><p className="font-semibold capitalize">Ghép Video Tổng Hợp</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(mergeStep.created_at).toLocaleTimeString()}</p></div></div>
+                                      <StatusBadge status={mergeStep.status} />
+                                    </div>
+                                    {mergeStep.status === 'failed' && mergeStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {mergeStep.error_message}</div>)}
+                                  </div>
+                                  <div className="mt-3 flex flex-col items-start gap-4">
+                                    {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (<video src={mergeStep.output_data.final_video_url} controls className="w-full rounded-md border" />)}
+                                    <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </AccordionContent>
                         </AccordionItem>
                       );
@@ -292,49 +312,78 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
             </DialogHeader>
             {detailsStep && (
                 <div className="grid md:grid-cols-2 gap-6 pt-4 max-h-[70vh] overflow-y-auto">
-                    {/* Input Column */}
-                    <div className="space-y-4">
-                        <div>
-                            <h3 className="font-semibold mb-2 text-gray-800">Prompt đã sử dụng:</h3>
-                            <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt || "Không có prompt"}</p>
+                    {detailsStep.step_type === 'merge_videos' ? (
+                      <>
+                        <div className="space-y-4">
+                          <h3 className="font-semibold mb-2 text-gray-800">Video đầu vào:</h3>
+                          {(detailsStep.input_data?.video_urls && detailsStep.input_data.video_urls.length > 0) ? (
+                            <div className="grid grid-cols-2 gap-2">
+                              {detailsStep.input_data.video_urls.map((url, index) => (
+                                <video key={index} src={url} controls className="rounded-md border w-full" />
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500">Không có video đầu vào.</p>
+                          )}
                         </div>
                         <div>
-                            <h3 className="font-semibold mb-2 text-gray-800">Ảnh đầu vào:</h3>
-                            {detailsStep.step_type === 'generate_image' && (
-                                (detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {detailsStep.input_data.image_urls.map((url, index) => (
-                                            <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
-                                )
-                            )}
-                            {detailsStep.step_type === 'generate_video' && (
-                                detailsStep.input_data?.imageUrl ? (
-                                    <img src={detailsStep.input_data.imageUrl} alt="Input" className="rounded-md border object-cover w-full" />
-                                ) : (
-                                    <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
-                                )
-                            )}
+                          <h3 className="font-semibold mb-2 text-gray-800">Video kết quả:</h3>
+                          {detailsStep.output_data?.final_video_url ? (
+                            <video src={detailsStep.output_data.final_video_url} controls className="rounded-md border w-full" />
+                          ) : (
+                            <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
+                              <p>Chưa có video kết quả.</p>
+                            </div>
+                          )}
                         </div>
-                    </div>
-                    {/* Output Column */}
-                    <div>
-                        <h3 className="font-semibold mb-2 text-gray-800">Kết quả:</h3>
-                        {detailsStep.output_data?.url ? (
-                            detailsStep.step_type === 'generate_image' ? (
-                                <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                      </>
+                    ) : (
+                      <>
+                        {/* Input Column */}
+                        <div className="space-y-4">
+                            <div>
+                                <h3 className="font-semibold mb-2 text-gray-800">Prompt đã sử dụng:</h3>
+                                <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt || "Không có prompt"}</p>
+                            </div>
+                            <div>
+                                <h3 className="font-semibold mb-2 text-gray-800">Ảnh đầu vào:</h3>
+                                {detailsStep.step_type === 'generate_image' && (
+                                    (detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {detailsStep.input_data.image_urls.map((url, index) => (
+                                                <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                                    )
+                                )}
+                                {detailsStep.step_type === 'generate_video' && (
+                                    detailsStep.input_data?.imageUrl ? (
+                                        <img src={detailsStep.input_data.imageUrl} alt="Input" className="rounded-md border object-cover w-full" />
+                                    ) : (
+                                        <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                                    )
+                                )}
+                            </div>
+                        </div>
+                        {/* Output Column */}
+                        <div>
+                            <h3 className="font-semibold mb-2 text-gray-800">Kết quả:</h3>
+                            {detailsStep.output_data?.url ? (
+                                detailsStep.step_type === 'generate_image' ? (
+                                    <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                                ) : (
+                                    <video src={detailsStep.output_data.url} controls className="rounded-md border w-full" />
+                                )
                             ) : (
-                                <video src={detailsStep.output_data.url} controls className="rounded-md border w-full" />
-                            )
-                        ) : (
-                          <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
-                            <p>Bước này chưa hoàn thành hoặc đã thất bại, không có kết quả.</p>
-                          </div>
-                        )}
-                    </div>
+                              <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
+                                <p>Bước này chưa hoàn thành hoặc đã thất bại, không có kết quả.</p>
+                              </div>
+                            )}
+                        </div>
+                      </>
+                    )}
                 </div>
             )}
         </DialogContent>
