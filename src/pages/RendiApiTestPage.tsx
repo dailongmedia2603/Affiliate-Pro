@@ -187,6 +187,21 @@ const RendiApiTestPage = () => {
       return;
     }
 
+    if (isAdvancedMode) {
+      if (videosAndImages.length < 2) {
+        showError("Chế độ nâng cao yêu cầu ít nhất 2 video hoặc hình ảnh để tạo chuyển cảnh.");
+        return;
+      }
+      if (clipDuration <= 0) {
+        showError("Ở chế độ nâng cao, thời lượng mỗi clip phải lớn hơn 0.");
+        return;
+      }
+      if (clipDuration <= transitionDuration) {
+        showError('Thời lượng cho mỗi clip phải lớn hơn thời lượng chuyển cảnh.');
+        return;
+      }
+    }
+
     setIsProcessing(true);
     setTask(null);
     let loadingToast = showLoading('Đang chuẩn bị tác vụ...');
@@ -220,10 +235,6 @@ const RendiApiTestPage = () => {
       let ffmpeg_command = '';
 
       if (isAdvancedMode) {
-          if (videosAndImages.length < 2) {
-              throw new Error("Chế độ nâng cao yêu cầu ít nhất 2 video hoặc hình ảnh để tạo chuyển cảnh.");
-          }
-
           let inputFlags = '';
           const filterComplexParts: string[] = [];
           
@@ -247,13 +258,16 @@ const RendiApiTestPage = () => {
           }
 
           let lastStream = '[v0]';
-          let offset = clipDuration - transitionDuration;
+          let currentTimelineDuration = clipDuration;
           for (let i = 1; i < videosAndImages.length; i++) {
               const nextStream = `[v${i}]`;
               const outStream = i === videosAndImages.length - 1 ? '[vout]' : `[vt${i}]`;
+              const offset = currentTimelineDuration - transitionDuration;
+              
               filterComplexParts.push(`${lastStream}${nextStream}xfade=transition=${transition}:duration=${transitionDuration}:offset=${offset}${outStream}`);
+              
               lastStream = outStream;
-              offset += (clipDuration - transitionDuration);
+              currentTimelineDuration += (clipDuration - transitionDuration);
           }
 
           const filterComplex = `"${filterComplexParts.join(';')}"`;
@@ -372,7 +386,7 @@ const RendiApiTestPage = () => {
             {isAdvancedMode && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="clip-duration">Thời lượng cho ảnh (s)</Label>
+                        <Label htmlFor="clip-duration">Thời lượng mỗi clip (s)</Label>
                         <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
                     </div>
                     <div className="space-y-2">
