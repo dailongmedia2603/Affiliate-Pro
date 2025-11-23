@@ -67,6 +67,14 @@ const RendiApiTestPage = () => {
   const [overlayStartTime, setOverlayStartTime] = useState(0);
   const [overlayDuration, setOverlayDuration] = useState(5);
 
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartPos = useRef({ x: 0, y: 0 });
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const overlayImageRef = useRef<HTMLImageElement>(null);
+
+  const videoFile = mediaFiles.find(f => f.type === 'video');
+  const imageFile = mediaFiles.find(f => f.type === 'image');
+
   const pollTaskStatus = (commandId: string, taskId: string) => {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
@@ -204,9 +212,6 @@ const RendiApiTestPage = () => {
       const output_files: { [key: string]: string } = { 'out_final': 'final_output.mp4' };
 
       if (operationMode === 'overlay') {
-        const videoFile = mediaFiles.find(f => f.type === 'video');
-        const imageFile = mediaFiles.find(f => f.type === 'image');
-
         if (!videoFile || !imageFile) {
           throw new Error('Chế độ Chèn ảnh yêu cầu chính xác 1 video và 1 ảnh.');
         }
@@ -347,6 +352,36 @@ const RendiApiTestPage = () => {
     }
   };
 
+  const handleMouseDown = (e: React.MouseEvent<HTMLImageElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartPos.current = {
+      x: e.clientX - overlayX,
+      y: e.clientY - overlayY,
+    };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDragging || !previewContainerRef.current || !overlayImageRef.current) return;
+    e.preventDefault();
+    
+    const containerRect = previewContainerRef.current.getBoundingClientRect();
+    const imageRect = overlayImageRef.current.getBoundingClientRect();
+
+    let newX = e.clientX - dragStartPos.current.x;
+    let newY = e.clientY - dragStartPos.current.y;
+
+    newX = Math.max(0, Math.min(newX, containerRect.width - imageRect.width));
+    newY = Math.max(0, Math.min(newY, containerRect.height - imageRect.height));
+
+    setOverlayX(Math.round(newX));
+    setOverlayY(Math.round(newY));
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
   const finalOutputUrl = task?.status === 'completed' ? Object.values(task.output_files || {}).find(f => f.storage_url.includes('final_output'))?.storage_url : null;
 
   if (isLoading) {
@@ -443,27 +478,51 @@ const RendiApiTestPage = () => {
             )}
 
             {operationMode === 'overlay' && (
-              <div className="space-y-4 pt-4 border-t">
-                <h3 className="text-sm font-semibold text-gray-700">Tùy chọn chèn ảnh</h3>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="overlay-x">Vị trí X (px)</Label>
-                        <Input id="overlay-x" type="number" value={overlayX} onChange={e => setOverlayX(Number(e.target.value))} />
+              <>
+                {videoFile && imageFile && (
+                  <div className="space-y-2 pt-4 border-t">
+                    <Label>Xem trước vị trí</Label>
+                    <div
+                      ref={previewContainerRef}
+                      className="relative w-full aspect-video bg-gray-800 rounded-md overflow-hidden select-none"
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={handleMouseUp}
+                      onMouseLeave={handleMouseUp}
+                    >
+                      <video src={videoFile.previewUrl} className="w-full h-full object-contain" muted playsInline />
+                      <img
+                        ref={overlayImageRef}
+                        src={imageFile.previewUrl}
+                        className="absolute cursor-move max-w-[25%] max-h-[25%]"
+                        style={{ left: `${overlayX}px`, top: `${overlayY}px` }}
+                        onMouseDown={handleMouseDown}
+                        alt="Overlay Preview"
+                      />
                     </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="overlay-y">Vị trí Y (px)</Label>
-                        <Input id="overlay-y" type="number" value={overlayY} onChange={e => setOverlayY(Number(e.target.value))} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="overlay-start">Bắt đầu sau (giây)</Label>
-                        <Input id="overlay-start" type="number" value={overlayStartTime} onChange={e => setOverlayStartTime(Number(e.target.value))} min="0" />
-                    </div>
-                    <div className="space-y-2">
-                        <Label htmlFor="overlay-duration">Thời lượng hiển thị (giây)</Label>
-                        <Input id="overlay-duration" type="number" value={overlayDuration} onChange={e => setOverlayDuration(Number(e.target.value))} min="1" />
-                    </div>
+                  </div>
+                )}
+                <div className="space-y-4 pt-4 border-t">
+                  <h3 className="text-sm font-semibold text-gray-700">Tùy chọn chèn ảnh</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                          <Label htmlFor="overlay-x">Vị trí X (px)</Label>
+                          <Input id="overlay-x" type="number" value={overlayX} onChange={e => setOverlayX(Number(e.target.value))} />
+                      </div>
+                      <div className="space-y-2">
+                          <Label htmlFor="overlay-y">Vị trí Y (px)</Label>
+                          <Input id="overlay-y" type="number" value={overlayY} onChange={e => setOverlayY(Number(e.target.value))} />
+                      </div>
+                      <div className="space-y-2">
+                          <Label htmlFor="overlay-start">Bắt đầu sau (giây)</Label>
+                          <Input id="overlay-start" type="number" value={overlayStartTime} onChange={e => setOverlayStartTime(Number(e.target.value))} min="0" />
+                      </div>
+                      <div className="space-y-2">
+                          <Label htmlFor="overlay-duration">Thời lượng hiển thị (giây)</Label>
+                          <Input id="overlay-duration" type="number" value={overlayDuration} onChange={e => setOverlayDuration(Number(e.target.value))} min="1" />
+                      </div>
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </CardContent>
         </Card>
