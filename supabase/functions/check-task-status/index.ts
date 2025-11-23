@@ -73,7 +73,81 @@ serve(async (req) => {
   const userCache = new Map();
 
   try {
-    // --- 1. UPDATE RUNNING TASKS ---
+    // --- UN-STUCK RUNS ---
+    const { data: activeRuns, error: activeRunsError } = await supabaseAdmin
+      .from('automation_runs')
+      .select('id, user_id, channel_id')
+      .eq('status', 'running');
+
+    if (activeRunsError) throw activeRunsError;
+
+    if (activeRuns) {
+      for (const run of activeRuns) {
+        const { data: allSteps, error: allStepsError } = await supabaseAdmin
+          .from('automation_run_steps')
+          .select('id, step_type, status, sub_product_id, output_data, input_data')
+          .eq('run_id', run.id);
+        
+        if (allStepsError) {
+          console.error(`Could not get steps for run ${run.id}`);
+          continue;
+        }
+
+        const stepsBySubProduct = allSteps.reduce((acc, step) => {
+          if (!step.sub_product_id) return acc;
+          if (!acc[step.sub_product_id]) {
+            acc[step.sub_product_id] = [];
+          }
+          acc[step.sub_product_id].push(step);
+          return acc;
+        }, {});
+
+        for (const subProductId in stepsBySubProduct) {
+          const subProductSteps = stepsBySubProduct[subProductId];
+          
+          const voiceStep = subProductSteps.find(s => s.step_type === 'generate_voice');
+          const mergeStep = subProductSteps.find(s => s.step_type === 'merge_videos');
+
+          if (voiceStep && voiceStep.status === 'completed' && !mergeStep) {
+            await logToDb(supabaseAdmin, run.id, `Phát hiện trạng thái bị kẹt: voice đã hoàn thành nhưng chưa có bước ghép video. Tự động tạo bước ghép.`, 'WARN', voiceStep.id);
+
+            const videosToMergeRaw = allSteps.filter(s => s.sub_product_id === subProductId && s.step_type === 'generate_video' && s.status === 'completed');
+
+            if (!videosToMergeRaw || videosToMergeRaw.length === 0) {
+              await logToDb(supabaseAdmin, run.id, `Không thể tìm thấy video đã hoàn thành để ghép cho sub-product ${subProductId}.`, 'ERROR', voiceStep.id);
+              continue;
+            }
+
+            const videosToMerge = videosToMergeRaw.sort((a, b) => (a.input_data?.sequence_number ?? Infinity) - (b.input_data?.sequence_number ?? Infinity));
+            const videoUrls = videosToMerge.map(v => v.output_data.url);
+            const audioUrl = voiceStep.output_data.url;
+
+            if (!audioUrl) {
+              await logToDb(supabaseAdmin, run.id, `Bước voice hoàn thành nhưng không có URL audio. Không thể tạo bước ghép.`, 'ERROR', voiceStep.id);
+              continue;
+            }
+
+            const mergeInputData = { video_urls: videoUrls, audio_url: audioUrl };
+
+            const { error: mergeStepError } = await supabaseAdmin.from('automation_run_steps').insert({
+              run_id: run.id,
+              sub_product_id: subProductId,
+              step_type: 'merge_videos',
+              status: 'pending',
+              input_data: mergeInputData
+            });
+
+            if (mergeStepError) {
+              await logToDb(supabaseAdmin, run.id, `Lỗi khi tự động tạo bước ghép video bị thiếu: ${mergeStepError.message}`, 'ERROR', voiceStep.id);
+            } else {
+              await logToDb(supabaseAdmin, run.id, `Đã tự động tạo và xếp hàng bước ghép video bị thiếu.`, 'SUCCESS', voiceStep.id);
+            }
+          }
+        }
+      }
+    }
+
+    // --- UPDATE RUNNING TASKS ---
     const { data: runningSteps, error: stepsError } = await supabaseAdmin
       .from('automation_run_steps')
       .select(`*, run:automation_runs(id, channel_id, user_id)`)
