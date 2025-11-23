@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, Upload, Video, X, AlertTriangle, CheckCircle, FileAudio, Film, XCircle, Wand } from 'lucide-react';
+import { Loader2, Upload, Video, X, AlertTriangle, CheckCircle, FileAudio, Film, XCircle, Wand, Layers } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -56,10 +56,16 @@ const RendiApiTestPage = () => {
   const [isLoading, setIsLoading] = useState(true);
   const pollingIntervalRef = useRef<number | null>(null);
   
+  const [operationMode, setOperationMode] = useState<'merge' | 'overlay'>('merge');
   const [isAdvancedMode, setIsAdvancedMode] = useState(false);
   const [transition, setTransition] = useState<string>('fade');
   const [transitionDuration, setTransitionDuration] = useState<number>(1);
   const [clipDuration, setClipDuration] = useState<number>(3);
+
+  const [overlayX, setOverlayX] = useState(10);
+  const [overlayY, setOverlayY] = useState(10);
+  const [overlayStartTime, setOverlayStartTime] = useState(0);
+  const [overlayDuration, setOverlayDuration] = useState(5);
 
   const pollTaskStatus = (commandId: string, taskId: string) => {
     if (pollingIntervalRef.current) {
@@ -178,30 +184,7 @@ const RendiApiTestPage = () => {
     return data.url;
   };
 
-  const handleMerge = async () => {
-    const videosAndImages = mediaFiles.filter(f => f.type === 'video' || f.type === 'image');
-    const audioFile = mediaFiles.find(f => f.type === 'audio');
-
-    if (videosAndImages.length === 0) {
-      showError('Vui lòng chọn ít nhất một video hoặc hình ảnh.');
-      return;
-    }
-
-    if (isAdvancedMode) {
-      if (videosAndImages.length < 2) {
-        showError("Chế độ nâng cao yêu cầu ít nhất 2 video hoặc hình ảnh để tạo chuyển cảnh.");
-        return;
-      }
-      if (clipDuration <= 0) {
-        showError("Ở chế độ nâng cao, thời lượng mỗi clip phải lớn hơn 0.");
-        return;
-      }
-      if (clipDuration <= transitionDuration) {
-        showError('Thời lượng cho mỗi clip phải lớn hơn thời lượng chuyển cảnh.');
-        return;
-      }
-    }
-
+  const handleProcess = async () => {
     setIsProcessing(true);
     setTask(null);
     let loadingToast = showLoading('Đang chuẩn bị tác vụ...');
@@ -216,25 +199,55 @@ const RendiApiTestPage = () => {
       dbTask = newDbTask;
       setTask(dbTask);
 
-      dismissToast(loadingToast);
-      loadingToast = showLoading('Đang tải file lên...');
-      const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
-      
-      await supabase.from('rendi_tasks').update({ status: 'BUILDING_COMMAND' }).eq('id', dbTask.id);
-      setTask(prev => prev ? { ...prev, status: 'BUILDING_COMMAND' } : null);
-
-      dismissToast(loadingToast);
-      loadingToast = showLoading('Đang xây dựng và gửi lệnh render...');
-
-      const input_files: { [key: string]: string } = {};
-      mediaFiles.forEach((mf, i) => {
-          input_files[`in_${i}`] = urls[i];
-      });
-
-      const output_files: { [key:string]: string } = { 'out_final': 'final_output.mp4' };
       let ffmpeg_command = '';
+      let input_files: { [key: string]: string } = {};
+      const output_files: { [key: string]: string } = { 'out_final': 'final_output.mp4' };
 
-      if (isAdvancedMode) {
+      if (operationMode === 'overlay') {
+        const videoFile = mediaFiles.find(f => f.type === 'video');
+        const imageFile = mediaFiles.find(f => f.type === 'image');
+
+        if (!videoFile || !imageFile) {
+          throw new Error('Chế độ Chèn ảnh yêu cầu chính xác 1 video và 1 ảnh.');
+        }
+        if (mediaFiles.filter(f => f.type === 'video' || f.type === 'image').length > 2) {
+          showError('Chế độ Chèn ảnh chỉ hỗ trợ 1 video và 1 ảnh. Các file khác sẽ bị bỏ qua.');
+        }
+
+        dismissToast(loadingToast);
+        loadingToast = showLoading('Đang tải file lên...');
+        const [videoUrl, imageUrl] = await Promise.all([uploadFile(videoFile.file), uploadFile(imageFile.file)]);
+        
+        input_files = { 'in_video': videoUrl, 'in_image': imageUrl };
+        const endTime = overlayStartTime + overlayDuration;
+        ffmpeg_command = `-i {{in_video}} -i {{in_image}} -filter_complex "[0:v][1:v] overlay=x=${overlayX}:y=${overlayY}:enable='between(t,${overlayStartTime},${endTime})'" -pix_fmt yuv420p -c:a copy {{out_final}}`;
+
+      } else { // 'merge' mode
+        const videosAndImages = mediaFiles.filter(f => f.type === 'video' || f.type === 'image');
+        const audioFile = mediaFiles.find(f => f.type === 'audio');
+
+        if (videosAndImages.length === 0) {
+          throw new Error('Vui lòng chọn ít nhất một video hoặc hình ảnh.');
+        }
+
+        dismissToast(loadingToast);
+        loadingToast = showLoading('Đang tải file lên...');
+        const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
+        mediaFiles.forEach((mf, i) => {
+            input_files[`in_${i}`] = urls[i];
+        });
+
+        if (isAdvancedMode) {
+          if (videosAndImages.length < 2) {
+              throw new Error("Chế độ nâng cao yêu cầu ít nhất 2 video hoặc hình ảnh để tạo chuyển cảnh.");
+          }
+          if (clipDuration <= 0) {
+            throw new Error("Thời lượng mỗi clip phải lớn hơn 0.");
+          }
+          if (clipDuration <= transitionDuration) {
+            throw new Error('Thời lượng cho mỗi clip phải lớn hơn thời lượng chuyển cảnh.');
+          }
+
           let inputFlags = '';
           const filterComplexParts: string[] = [];
           
@@ -279,24 +292,31 @@ const RendiApiTestPage = () => {
 
           ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} ${mapArgs} -c:v libx264 -c:a aac -shortest {{out_final}}`;
 
-      } else { // Simple Mode
-          const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
-          const videoInputStreams = videosAndImages.map((mf) => {
-              const inputIndex = mediaFiles.indexOf(mf);
-              return `[${inputIndex}:v:0]`;
-          }).join('');
+        } else { // Simple Merge Mode
+            const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
+            const videoInputStreams = videosAndImages.map((mf) => {
+                const inputIndex = mediaFiles.indexOf(mf);
+                return `[${inputIndex}:v:0]`;
+            }).join('');
 
-          let filter_complex = `"${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]"`;
-          let map_args = `-map "[v]"`;
+            let filter_complex = `"${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]"`;
+            let map_args = `-map "[v]"`;
 
-          if (audioFile) {
-              const audioInputIndex = mediaFiles.indexOf(audioFile);
-              map_args += ` -map ${audioInputIndex}:a:0`;
-          }
+            if (audioFile) {
+                const audioInputIndex = mediaFiles.indexOf(audioFile);
+                map_args += ` -map ${audioInputIndex}:a:0`;
+            }
 
-          ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
+            ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
+        }
       }
       
+      await supabase.from('rendi_tasks').update({ status: 'BUILDING_COMMAND' }).eq('id', dbTask.id);
+      setTask(prev => prev ? { ...prev, status: 'BUILDING_COMMAND' } : null);
+
+      dismissToast(loadingToast);
+      loadingToast = showLoading('Đang xây dựng và gửi lệnh render...');
+
       const payload = { input_files, output_files, ffmpeg_command };
 
       const { data: rendiData, error: rendiError } = await supabase.functions.invoke('proxy-rendi-api', { body: { action: 'run_command', payload } });
@@ -355,9 +375,21 @@ const RendiApiTestPage = () => {
         <Card>
           <CardHeader>
             <CardTitle>1. Tải lên & Cấu hình</CardTitle>
-            <CardDescription>Chọn file, hiệu ứng và thời lượng. Video sẽ giữ thời lượng gốc.</CardDescription>
+            <CardDescription>Chọn chế độ, tải file và thiết lập các thông số.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
+            <div className="space-y-2">
+              <Label>Chế độ hoạt động</Label>
+              <Select value={operationMode} onValueChange={(value) => setOperationMode(value as 'merge' | 'overlay')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn chế độ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="merge">Ghép nối Video/Ảnh</SelectItem>
+                  <SelectItem value="overlay">Chèn ảnh vào Video (Overlay)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="file-upload" className="cursor-pointer inline-block mb-2">Chọn Video/Ảnh/Audio</Label>
               <Input id="file-upload" type="file" multiple accept="video/*,image/*,audio/*" onChange={handleFileChange} />
@@ -379,42 +411,71 @@ const RendiApiTestPage = () => {
                 )}
               </div>
             </div>
-            <div className="flex items-center space-x-2 pt-4 border-t">
-                <Switch id="advanced-mode" checked={isAdvancedMode} onCheckedChange={setIsAdvancedMode} />
-                <Label htmlFor="advanced-mode">Kích hoạt tùy chọn nâng cao (chuyển cảnh, thời lượng)</Label>
-            </div>
-            {isAdvancedMode && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            {operationMode === 'merge' && (
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex items-center space-x-2">
+                    <Switch id="advanced-mode" checked={isAdvancedMode} onCheckedChange={setIsAdvancedMode} />
+                    <Label htmlFor="advanced-mode">Kích hoạt tùy chọn nâng cao (chuyển cảnh, thời lượng)</Label>
+                </div>
+                {isAdvancedMode && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="clip-duration">Thời lượng mỗi clip (s)</Label>
+                            <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="transition-duration">Thời lượng chuyển cảnh (s)</Label>
+                            <Input id="transition-duration" type="number" value={transitionDuration} onChange={e => setTransitionDuration(Number(e.target.value))} min="0.1" step="0.1" />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="transition-effect">Hiệu ứng chuyển cảnh</Label>
+                            <Select value={transition} onValueChange={setTransition}>
+                                <SelectTrigger id="transition-effect"><SelectValue placeholder="Chọn hiệu ứng" /></SelectTrigger>
+                                <SelectContent>
+                                    {transitions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                )}
+              </div>
+            )}
+
+            {operationMode === 'overlay' && (
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="text-sm font-semibold text-gray-700">Tùy chọn chèn ảnh</h3>
+                <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                        <Label htmlFor="clip-duration">Thời lượng mỗi clip (s)</Label>
-                        <Input id="clip-duration" type="number" value={clipDuration} onChange={e => setClipDuration(Number(e.target.value))} min="1" />
+                        <Label htmlFor="overlay-x">Vị trí X (px)</Label>
+                        <Input id="overlay-x" type="number" value={overlayX} onChange={e => setOverlayX(Number(e.target.value))} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="transition-duration">Thời lượng chuyển cảnh (s)</Label>
-                        <Input id="transition-duration" type="number" value={transitionDuration} onChange={e => setTransitionDuration(Number(e.target.value))} min="0.1" step="0.1" />
+                        <Label htmlFor="overlay-y">Vị trí Y (px)</Label>
+                        <Input id="overlay-y" type="number" value={overlayY} onChange={e => setOverlayY(Number(e.target.value))} />
                     </div>
                     <div className="space-y-2">
-                        <Label htmlFor="transition-effect">Hiệu ứng chuyển cảnh</Label>
-                        <Select value={transition} onValueChange={setTransition}>
-                            <SelectTrigger id="transition-effect"><SelectValue placeholder="Chọn hiệu ứng" /></SelectTrigger>
-                            <SelectContent>
-                                {transitions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <Label htmlFor="overlay-start">Bắt đầu sau (giây)</Label>
+                        <Input id="overlay-start" type="number" value={overlayStartTime} onChange={e => setOverlayStartTime(Number(e.target.value))} min="0" />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="overlay-duration">Thời lượng hiển thị (giây)</Label>
+                        <Input id="overlay-duration" type="number" value={overlayDuration} onChange={e => setOverlayDuration(Number(e.target.value))} min="1" />
                     </div>
                 </div>
+              </div>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
             <CardTitle>2. Xử lý và Kết quả</CardTitle>
-            <CardDescription>Bắt đầu quá trình ghép nối và xem kết quả tại đây.</CardDescription>
+            <CardDescription>Bắt đầu quá trình và xem kết quả tại đây.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button onClick={handleMerge} disabled={isProcessing || mediaFiles.length === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white">
+            <Button onClick={handleProcess} disabled={isProcessing || mediaFiles.length === 0} className="w-full bg-orange-500 hover:bg-orange-600 text-white">
               {isProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand className="mr-2 h-4 w-4" />}
-              {isAdvancedMode ? 'Ghép & Áp dụng hiệu ứng' : 'Ghép Nối Đơn Giản'}
+              {operationMode === 'merge' ? (isAdvancedMode ? 'Ghép & Áp dụng hiệu ứng' : 'Ghép Nối Đơn Giản') : 'Chèn ảnh vào Video'}
             </Button>
             {task && (
               <div className="space-y-3 pt-4 border-t">
