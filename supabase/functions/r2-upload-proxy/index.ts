@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = { 
   "Access-Control-Allow-Origin": "*", 
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-file-name, x-file-type"
 };
 
 // --- R2 Signature Helpers ---
@@ -22,22 +22,18 @@ async function getSignatureKey(key, dateStamp, regionName, serviceName) {
 }
 
 serve(async (req) => {
-  console.log(`[r2-generate-presigned-url] INFO: Function invoked with method ${req.method}.`);
-
   if (req.method === "OPTIONS") {
-    console.log("[r2-generate-presigned-url] INFO: Handling OPTIONS preflight request.");
     return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    console.log("[r2-generate-presigned-url] INFO: Parsing request body...");
-    const { fileName, fileType } = await req.json();
+    // 1. Get file info from headers and auth user
+    const fileName = req.headers.get('x-file-name');
+    const fileType = req.headers.get('x-file-type');
     if (!fileName || !fileType) {
-      throw new Error("fileName and fileType are required.");
+      throw new Error("x-file-name and x-file-type headers are required.");
     }
-    console.log(`[r2-generate-presigned-url] INFO: Payload parsed. fileName: ${fileName}, fileType: ${fileType}`);
 
-    console.log("[r2-generate-presigned-url] INFO: Authenticating user...");
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -45,9 +41,8 @@ serve(async (req) => {
     );
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error(`User not authenticated: ${userError?.message}`);
-    console.log(`[r2-generate-presigned-url] INFO: User authenticated. User ID: ${user.id}`);
 
-    console.log("[r2-generate-presigned-url] INFO: Retrieving R2 settings from database...");
+    // 2. Get R2 settings
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -58,7 +53,6 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
     if (settingsError || !settings) throw new Error(`Could not retrieve R2 settings for user: ${settingsError?.message}`);
-    console.log("[r2-generate-presigned-url] INFO: R2 settings retrieved successfully.");
     
     const {
       cloudflare_account_id: accountId,
@@ -70,9 +64,8 @@ serve(async (req) => {
     if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
       throw new Error("Cloudflare R2 credentials are not set completely for this user.");
     }
-    console.log(`[r2-generate-presigned-url] INFO: R2 credentials validated. Bucket: ${bucketName}`);
 
-    console.log("[r2-generate-presigned-url] INFO: Generating presigned URL...");
+    // 3. Generate presigned URL
     const host = `${bucketName}.${accountId}.r2.cloudflarestorage.com`;
     const region = "auto";
     const service = "s3";
@@ -93,13 +86,25 @@ serve(async (req) => {
     const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
     const signature = toHex(await hmacSha256(signingKey, stringToSign));
     const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
-    console.log("[r2-generate-presigned-url] INFO: Presigned URL generated successfully.");
 
+    // 4. Stream the request body to the presigned URL
+    const uploadResponse = await fetch(presignedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': fileType },
+      body: req.body,
+    });
+
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      throw new Error(`Lỗi tải tệp lên R2: ${errorText}`);
+    }
+
+    // 5. Return the public URL
     const finalUrl = `${publicUrl}/${fileName}`;
-    return new Response(JSON.stringify({ presignedUrl, finalUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ finalUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("[r2-generate-presigned-url] CATCH BLOCK ERROR:", error.message, error.stack);
+    console.error("[r2-upload-proxy] CATCH BLOCK ERROR:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
   }
 });
