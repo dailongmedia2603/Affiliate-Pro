@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Wand2, Loader2, Upload, Info, X, Plus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const SUPPORTED_ASPECT_RATIOS = [
   "1:1", "4:3", "16:9", "21:9", "5:4", "3:2",
@@ -31,18 +32,6 @@ const findClosestAspectRatio = (width: number, height: number): string => {
   });
 
   return closestRatio;
-};
-
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
-    };
-    reader.onerror = error => reject(error);
-  });
 };
 
 const ImageGenerationForm = ({ model, onTaskCreated }) => {
@@ -111,31 +100,6 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     }
   };
 
-  const uploadToStorage = async (file: File): Promise<string> => {
-    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-    const fileData = await fileToBase64(file);
-
-    const { data, error } = await supabase.functions.invoke('upload-image-to-r2', {
-      body: {
-        fileName,
-        fileType: file.type,
-        fileData,
-      },
-    });
-
-    if (error) {
-      throw new Error(`Lỗi gọi function upload-image-to-r2: ${error.message}`);
-    }
-    if (data.error) {
-      throw new Error(`Lỗi từ function upload-image-to-r2: ${data.error}`);
-    }
-    if (!data.url) {
-      throw new Error('Function upload-image-to-r2 không trả về URL.');
-    }
-
-    return data.url;
-  };
-
   const handleSubmit = async () => {
     if (!prompt) {
       showError('Vui lòng nhập prompt.');
@@ -143,7 +107,7 @@ const ImageGenerationForm = ({ model, onTaskCreated }) => {
     }
     setIsGenerating(true);
     try {
-      const uploadPromises = imageFiles.map(file => uploadToStorage(file));
+      const uploadPromises = imageFiles.map(file => uploadToR2(file));
       const imageUrls = await Promise.all(uploadPromises);
 
       const { error } = await supabase.functions.invoke('generate-image', {

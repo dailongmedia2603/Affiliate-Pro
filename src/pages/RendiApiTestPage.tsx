@@ -10,6 +10,7 @@ import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import { uploadToR2 } from '@/utils/r2-upload';
 
 type MediaFile = {
   file: File;
@@ -178,22 +179,6 @@ const RendiApiTestPage = () => {
     setMediaFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const uploadFile = async (file: File): Promise<string> => {
-    const fileData = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-      reader.onerror = error => reject(error);
-    });
-
-    const { data, error } = await supabase.functions.invoke('upload-image-to-r2', {
-      body: { fileName: `${Date.now()}_${file.name}`, fileType: file.type, fileData },
-    });
-
-    if (error || data.error) throw new Error(error?.message || data.error);
-    return data.url;
-  };
-
   const handleProcess = async () => {
     setIsProcessing(true);
     setTask(null);
@@ -223,7 +208,7 @@ const RendiApiTestPage = () => {
 
         dismissToast(loadingToast);
         loadingToast = showLoading('Đang tải file lên...');
-        const [videoUrl, imageUrl] = await Promise.all([uploadFile(videoFile.file), uploadFile(imageFile.file)]);
+        const [videoUrl, imageUrl] = await Promise.all([uploadToR2(videoFile.file), uploadToR2(imageFile.file)]);
         
         input_files = { 'in_video': videoUrl, 'in_image': imageUrl };
         const endTime = overlayStartTime + overlayDuration;
@@ -239,7 +224,7 @@ const RendiApiTestPage = () => {
 
         dismissToast(loadingToast);
         loadingToast = showLoading('Đang tải file lên...');
-        const urls = await Promise.all(mediaFiles.map(mf => uploadFile(mf.file)));
+        const urls = await Promise.all(mediaFiles.map(mf => uploadToR2(mf.file)));
         mediaFiles.forEach((mf, i) => {
             input_files[`in_${i}`] = urls[i];
         });

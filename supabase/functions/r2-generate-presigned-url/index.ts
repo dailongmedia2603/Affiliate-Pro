@@ -27,9 +27,9 @@ serve(async (req) => {
   }
   try {
     // 1. Auth user and get payload
-    const { fileName, fileType, fileData } = await req.json();
-    if (!fileName || !fileType || !fileData) {
-      throw new Error("fileName, fileType, and fileData are required.");
+    const { fileName, fileType } = await req.json();
+    if (!fileName || !fileType) {
+      throw new Error("fileName and fileType are required.");
     }
 
     const supabaseClient = createClient(
@@ -40,7 +40,7 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error(`User not authenticated: ${userError?.message}`);
 
-    // 2. Get R2 settings
+    // 2. Get R2 settings from user_settings table
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -63,7 +63,7 @@ serve(async (req) => {
       throw new Error("Cloudflare R2 credentials are not set completely for this user.");
     }
 
-    // 3. Generate presigned URL (server-side)
+    // 3. Generate presigned URL
     const host = `${bucketName}.${accountId}.r2.cloudflarestorage.com`;
     const region = "auto";
     const service = "s3";
@@ -85,25 +85,12 @@ serve(async (req) => {
     const signature = toHex(await hmacSha256(signingKey, stringToSign));
     const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
 
-    // 4. Decode base64 and upload
-    const fileBuffer = Uint8Array.from(atob(fileData), c => c.charCodeAt(0));
-    const uploadResponse = await fetch(presignedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': fileType },
-      body: fileBuffer,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Lỗi tải tệp lên R2: ${errorText}`);
-    }
-
-    // 5. Return public URL
+    // 4. Return presigned URL and public URL
     const finalUrl = `${publicUrl}/${fileName}`;
-    return new Response(JSON.stringify({ url: finalUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ presignedUrl, finalUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("[upload-image-to-r2] CATCH BLOCK ERROR:", error.message);
+    console.error("[r2-generate-presigned-url] CATCH BLOCK ERROR:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
   }
 });
