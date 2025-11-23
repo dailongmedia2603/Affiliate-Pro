@@ -34,7 +34,6 @@ serve(async (req) => {
       throw new Error("Thiếu stepId hoặc userId.");
     }
 
-    // --- 1. Fetch all necessary data in parallel ---
     const { data: step, error: stepError } = await supabaseAdmin
       .from('automation_run_steps')
       .select('input_data, run_id')
@@ -69,7 +68,6 @@ serve(async (req) => {
       throw new Error("Không có video nào để ghép.");
     }
 
-    // --- 2. Build the FFMPEG command ---
     const input_files = {};
     video_urls.forEach((url, i) => {
       input_files[`in_${i}`] = url;
@@ -79,24 +77,21 @@ serve(async (req) => {
     let ffmpeg_command = '';
 
     if (video_urls.length === 1) {
-      // If only one video, just copy it without re-encoding
       ffmpeg_command = `-i {{in_0}} -c copy {{out_final}}`;
       await logToDb(supabaseAdmin, runId, 'Chỉ có 1 video, sao chép trực tiếp.', 'INFO', stepId);
     } else {
-      const videoDuration = config.videoDuration || 5; // Default to 5s if not set
-      const transitionDuration = 1; // As requested
+      const videoDuration = config.videoDuration || 5;
+      const transitionDuration = 1;
 
       if (videoDuration <= transitionDuration) {
         throw new Error(`Thời lượng video (${videoDuration}s) phải lớn hơn thời lượng chuyển cảnh (${transitionDuration}s).`);
       }
 
       const filterComplexParts = [];
-      // Standardize all video inputs to 1080p, black padding
       video_urls.forEach((_, i) => {
         filterComplexParts.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
       });
 
-      // Chain the xfade filters
       let lastStream = '[v0]';
       for (let i = 1; i < video_urls.length; i++) {
         const offset = i * (videoDuration - transitionDuration);
@@ -110,17 +105,23 @@ serve(async (req) => {
       await logToDb(supabaseAdmin, runId, `Đã xây dựng lệnh FFMPEG để ghép ${video_urls.length} video.`, 'INFO', stepId);
     }
 
-    // --- 3. Call Rendi API ---
     const payload = { input_files, output_files, ffmpeg_command };
     const { data: rendiData, error: rendiError } = await supabaseAdmin.functions.invoke('proxy-rendi-api', {
-      body: { action: 'run_command', payload }
+      body: {
+        action: 'run_command',
+        payload,
+        rendi_api_key: rendiApiKey // Pass the key directly
+      }
     });
 
-    if (rendiError) throw rendiError;
+    if (rendiError) {
+      const errorBody = await rendiError.context.json();
+      const errorMessage = errorBody.error || JSON.stringify(errorBody);
+      throw new Error(`Lỗi từ proxy-rendi-api: ${errorMessage}`);
+    }
     if (rendiData.error) throw new Error(rendiData.error);
     if (!rendiData.command_id) throw new Error("Rendi API không trả về command_id.");
 
-    // --- 4. Update Step Status ---
     await supabaseAdmin
       .from('automation_run_steps')
       .update({ api_task_id: rendiData.command_id })
@@ -133,13 +134,14 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('!!! [LỖI] Đã xảy ra lỗi trong automation-worker-rendi:', error.message);
+    const detailedErrorMessage = error.message;
+    console.error('!!! [LỖI] Đã xảy ra lỗi trong automation-worker-rendi:', detailedErrorMessage);
     if (stepId && runId) {
-      await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: `Lỗi: ${error.message}` }).eq('id', stepId);
+      await supabaseAdmin.from('automation_run_steps').update({ status: 'failed', error_message: detailedErrorMessage }).eq('id', stepId);
       await supabaseAdmin.from('automation_runs').update({ status: 'failed', finished_at: new Date().toISOString() }).eq('id', runId);
-      await logToDb(supabaseAdmin, runId, `Bước ghép video thất bại: ${error.message}`, 'ERROR', stepId);
+      await logToDb(supabaseAdmin, runId, `Bước ghép video thất bại: ${detailedErrorMessage}`, 'ERROR', stepId);
     }
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: detailedErrorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
