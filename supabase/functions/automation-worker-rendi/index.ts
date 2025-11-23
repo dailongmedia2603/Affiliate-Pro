@@ -87,6 +87,9 @@ serve(async (req) => {
         throw new Error(`Thời lượng video (${videoDuration}s) phải lớn hơn thời lượng chuyển cảnh (${transitionDuration}s).`);
       }
 
+      // **FIX:** Add input flags for each video
+      const inputFlags = video_urls.map((_, i) => `-i {{in_${i}}}`).join(' ');
+
       const filterComplexParts = [];
       video_urls.forEach((_, i) => {
         filterComplexParts.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
@@ -101,7 +104,8 @@ serve(async (req) => {
       }
 
       const filterComplex = `"${filterComplexParts.join(';')}"`;
-      ffmpeg_command = `-filter_complex ${filterComplex} -map "[vout]" -c:v libx264 -pix_fmt yuv420p {{out_final}}`;
+      // **FIX:** Combine input flags with the rest of the command
+      ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} -map "[vout]" -c:v libx264 -pix_fmt yuv420p {{out_final}}`;
       await logToDb(supabaseAdmin, runId, `Đã xây dựng lệnh FFMPEG để ghép ${video_urls.length} video.`, 'INFO', stepId);
     }
 
