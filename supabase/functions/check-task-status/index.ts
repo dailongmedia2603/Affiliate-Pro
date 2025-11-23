@@ -84,16 +84,27 @@ serve(async (req) => {
     if (runningSteps) {
       for (const step of runningSteps) {
         try {
+          // Common logic to get user settings and token
+          let cachedUser = userCache.get(step.run.user_id);
+          if (!cachedUser) {
+            const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('*').eq('id', step.run.user_id).single();
+            if (settingsError || !settings) {
+              userCache.set(step.run.user_id, { token: null, settings: null });
+              throw new Error(`Không tìm thấy cài đặt cho người dùng ${step.run.user_id}`);
+            }
+            cachedUser = { settings };
+            userCache.set(step.run.user_id, cachedUser);
+          } else if (!cachedUser.settings) {
+            throw new Error(`Không tìm thấy cài đặt đã cache cho người dùng ${step.run.user_id}`);
+          }
+
           // Handle Higgsfield (Image/Video) tasks
           if (['generate_image', 'generate_video'].includes(step.step_type)) {
-            let cachedUser = userCache.get(step.run.user_id);
-            if (!cachedUser) {
-              const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('*').eq('id', step.run.user_id).single();
-              if (settingsError || !settings) { userCache.set(step.run.user_id, { token: null, settings: null }); continue; }
-              const token = await getHiggsfieldToken(settings.higgsfield_cookie, settings.higgsfield_clerk_context);
-              cachedUser = { token, settings };
+            if (!cachedUser.token) {
+              const token = await getHiggsfieldToken(cachedUser.settings.higgsfield_cookie, cachedUser.settings.higgsfield_clerk_context);
+              cachedUser.token = token;
               userCache.set(step.run.user_id, cachedUser);
-            } else if (!cachedUser.token || !cachedUser.settings) continue;
+            }
 
             const statusData = await getTaskStatus(cachedUser.token, step.api_task_id);
             const job = statusData?.jobs?.[0];
@@ -109,12 +120,10 @@ serve(async (req) => {
                   continue;
               }
 
-              // If completed
               await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { url: resultUrl }, error_message: null }).eq('id', step.id);
               await logToDb(supabaseAdmin, step.run.id, `Bước ${step.step_type} đã hoàn thành.`, 'SUCCESS', step.id);
 
               if (step.step_type === 'generate_image') {
-                // Queue video step
                 const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
                 if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
                 
@@ -134,7 +143,6 @@ serve(async (req) => {
                 await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo video.`, 'INFO');
               } 
               else if (step.step_type === 'generate_video') {
-                // NEW LOGIC: Check if all videos for this sub-product are done
                 const { count: totalImageSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_image');
                 const { count: completedVideoSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_video').eq('status', 'completed');
 
@@ -172,8 +180,15 @@ serve(async (req) => {
           }
           // Handle Rendi (Merge Video) tasks
           else if (step.step_type === 'merge_videos') {
+            const rendiApiKey = cachedUser.settings.rendi_api_key;
+            if (!rendiApiKey) throw new Error(`Không tìm thấy Rendi API key cho người dùng ${step.run.user_id}`);
+
             const { data: rendiStatus, error: rendiError } = await supabaseAdmin.functions.invoke('proxy-rendi-api', {
-              body: { action: 'check_status', payload: { command_id: step.api_task_id } }
+              body: { 
+                action: 'check_status', 
+                payload: { command_id: step.api_task_id },
+                rendi_api_key: rendiApiKey // Pass the key directly
+              }
             });
 
             if (rendiError) throw rendiError;
@@ -199,7 +214,6 @@ serve(async (req) => {
               await supabaseAdmin.from('automation_run_steps').update({ status: 'completed', output_data: { final_video_url: finalVideoUrl }, error_message: null }).eq('id', step.id);
               await logToDb(supabaseAdmin, step.run.id, `Bước ghép video đã hoàn thành.`, 'SUCCESS', step.id);
 
-              // Check if all steps for the entire run are complete
               const { count: remainingSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).in('status', ['pending', 'running']);
               if (remainingSteps === 0) {
                 await logToDb(supabaseAdmin, step.run.id, 'Tất cả các bước đã hoàn thành. Kết thúc phiên chạy.', 'SUCCESS');
@@ -254,7 +268,6 @@ serve(async (req) => {
 
         for (const step of pendingMergeSteps) {
             await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
-            // We need a new worker for this. Let's call it 'automation-worker-rendi'
             supabaseAdmin.functions.invoke('automation-worker-rendi', { body: { stepId: step.id, userId: step.run.user_id } }).catch(err => console.error(`Error invoking automation-worker-rendi for step ${step.id}:`, err));
         }
     }
