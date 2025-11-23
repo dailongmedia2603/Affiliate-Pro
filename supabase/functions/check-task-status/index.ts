@@ -137,8 +137,21 @@ serve(async (req) => {
                 const finalVideoPrompt = geminiResponse.answer;
                 if (!finalVideoPrompt) throw new Error("AI không trả về prompt video.");
 
-                const videoInputData = { prompt: finalVideoPrompt, imageUrl: resultUrl, source_image_step_id: step.id, gemini_prompt_for_video: geminiVideoPrompt };
-                const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData });
+                const sequence_number = step.input_data?.sequence_number;
+                const videoInputData = { 
+                    prompt: finalVideoPrompt, 
+                    imageUrl: resultUrl, 
+                    source_image_step_id: step.id, 
+                    gemini_prompt_for_video: geminiVideoPrompt,
+                    sequence_number: sequence_number
+                };
+                const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ 
+                    run_id: step.run.id, 
+                    sub_product_id: step.sub_product_id, 
+                    step_type: 'generate_video', 
+                    status: 'pending', 
+                    input_data: videoInputData 
+                });
                 if (videoStepError) throw videoStepError;
                 await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo video.`, 'INFO');
               } 
@@ -149,18 +162,23 @@ serve(async (req) => {
                 if (totalImageSteps > 0 && totalImageSteps === completedVideoSteps) {
                     await logToDb(supabaseAdmin, step.run.id, `Tất cả ${completedVideoSteps} video cho sản phẩm con đã hoàn thành. Chuẩn bị ghép video.`, 'SUCCESS', step.sub_product_id);
                     
-                    const { data: videosToMerge, error: videosError } = await supabaseAdmin
+                    const { data: videosToMergeRaw, error: videosError } = await supabaseAdmin
                         .from('automation_run_steps')
-                        .select('output_data, created_at')
+                        .select('output_data, input_data')
                         .eq('run_id', step.run.id)
                         .eq('sub_product_id', step.sub_product_id)
                         .eq('step_type', 'generate_video')
-                        .eq('status', 'completed')
-                        .order('created_at', { ascending: true });
+                        .eq('status', 'completed');
 
-                    if (videosError || !videosToMerge || videosToMerge.length === 0) {
+                    if (videosError || !videosToMergeRaw || videosToMergeRaw.length === 0) {
                         throw new Error(`Không thể truy xuất URL video để ghép: ${videosError?.message || 'Không tìm thấy video'}`);
                     }
+
+                    const videosToMerge = videosToMergeRaw.sort((a, b) => {
+                        const seqA = a.input_data?.sequence_number ?? Infinity;
+                        const seqB = b.input_data?.sequence_number ?? Infinity;
+                        return seqA - seqB;
+                    });
 
                     const videoUrls = videosToMerge.map(v => v.output_data.url);
                     const mergeInputData = { video_urls: videoUrls };

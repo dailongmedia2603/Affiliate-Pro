@@ -139,13 +139,19 @@ serve(async (req) => {
       const imageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
       const stepsToInsert = [];
 
-      for (const imagePrompt of imagePrompts) {
-        const inputData = { prompt: imagePrompt, model: 'banana', aspect_ratio: '1:1', image_urls: imageUrls };
+      for (const [index, imagePrompt] of imagePrompts.entries()) {
+        const inputData = { 
+          prompt: imagePrompt, 
+          model: 'banana', 
+          aspect_ratio: '1:1', 
+          image_urls: imageUrls,
+          sequence_number: index // Add sequence number
+        };
         stepsToInsert.push({
             run_id: run.id,
             sub_product_id: subProduct.id,
             step_type: 'generate_image',
-            status: 'pending', // All steps are queued as pending
+            status: 'pending',
             input_data: inputData
         });
       }
