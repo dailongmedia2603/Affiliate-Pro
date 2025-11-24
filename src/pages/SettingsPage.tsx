@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info } from "lucide-react";
+import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info, Cpu } from "lucide-react";
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -21,6 +21,8 @@ const SettingsPage = () => {
   const [cloudflareR2BucketName, setCloudflareR2BucketName] = useState('');
   const [cloudflareR2PublicUrl, setCloudflareR2PublicUrl] = useState('');
   const [rendiApiKey, setRendiApiKey] = useState('');
+  const [veo3Cookie, setVeo3Cookie] = useState('');
+  const [veo3ApiUrl, setVeo3ApiUrl] = useState('http://127.0.0.1:8466');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -38,6 +40,8 @@ const SettingsPage = () => {
   const [r2ConnectionStatus, setR2ConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTestingRendi, setIsTestingRendi] = useState(false);
   const [rendiConnectionStatus, setRendiConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTestingVeo3, setIsTestingVeo3] = useState(false);
+  const [veo3ConnectionStatus, setVeo3ConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const fetchVoiceCredits = async (apiKey: string) => {
     if (!apiKey) return;
@@ -68,7 +72,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key, veo3_cookie, veo3_api_url')
           .eq('id', user.id)
           .single();
 
@@ -88,6 +92,8 @@ const SettingsPage = () => {
           setCloudflareR2BucketName(data.cloudflare_r2_bucket_name || '');
           setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
           setRendiApiKey(data.rendi_api_key || '');
+          setVeo3Cookie(data.veo3_cookie || '');
+          setVeo3ApiUrl(data.veo3_api_url || 'http://127.0.0.1:8466');
           if (data.voice_api_key) {
             fetchVoiceCredits(data.voice_api_key);
           }
@@ -97,7 +103,7 @@ const SettingsPage = () => {
     fetchSettings();
   }, []);
 
-  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2' | 'rendi') => {
+  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2' | 'rendi' | 'veo3') => {
     setIsSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -119,7 +125,6 @@ const SettingsPage = () => {
         break;
       case 'vertex_ai':
         try {
-          // Allow saving an empty string to clear the setting if user wants to rely solely on the secret
           const parsedServiceAccount = vertexAiServiceAccount ? JSON.parse(vertexAiServiceAccount) : null;
           updateData = { vertex_ai_service_account: parsedServiceAccount };
         } catch (e) {
@@ -139,6 +144,9 @@ const SettingsPage = () => {
         break;
       case 'rendi':
         updateData = { rendi_api_key: rendiApiKey };
+        break;
+      case 'veo3':
+        updateData = { veo3_cookie: veo3Cookie, veo3_api_url: veo3ApiUrl };
         break;
     }
 
@@ -313,6 +321,35 @@ const SettingsPage = () => {
     }
   };
 
+  const handleTestVeo3Connection = async () => {
+    if (!veo3Cookie || !veo3ApiUrl) {
+      setVeo3ConnectionStatus('error');
+      showError('Vui lòng nhập đầy đủ API URL và Cookie.');
+      return;
+    }
+    setIsTestingVeo3(true);
+    setVeo3ConnectionStatus('idle');
+    try {
+      const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
+        body: { action: 'test_connection' },
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      if (data.success) {
+        setVeo3ConnectionStatus('success');
+        showSuccess('Kết nối API Veo3 thành công!');
+      } else {
+        throw new Error('Kiểm tra kết nối thất bại.');
+      }
+    } catch (error) {
+      setVeo3ConnectionStatus('error');
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi kết nối Veo3: ${errorMessage}`);
+    } finally {
+      setIsTestingVeo3(false);
+    }
+  };
+
   return (
     <div className="w-full p-6 bg-gray-50/50">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Cài Đặt</h1>
@@ -324,6 +361,7 @@ const SettingsPage = () => {
           <TabsTrigger value="higgsfield" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Film className="w-4 h-4 mr-2" /> API Higgsfield</TabsTrigger>
           <TabsTrigger value="voice" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Mic className="w-4 h-4 mr-2" /> API Voice</TabsTrigger>
           <TabsTrigger value="rendi" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Video className="w-4 h-4 mr-2" /> API Rendi</TabsTrigger>
+          <TabsTrigger value="veo3" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Cpu className="w-4 h-4 mr-2" /> API Veo3</TabsTrigger>
         </TabsList>
         <TabsContent value="gemini" className="mt-6">
           <div className="p-6 border rounded-lg bg-white space-y-6">
@@ -477,6 +515,30 @@ const SettingsPage = () => {
                 <AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API key.</AlertDescription>
               </Alert>
             )}
+          </div>
+        </TabsContent>
+        <TabsContent value="veo3" className="mt-6">
+          <div className="p-6 border rounded-lg bg-white space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Veo3</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin xác thực để kết nối với dịch vụ Veo3.</p>
+              <div className="space-y-4 max-w-lg">
+                <div className="space-y-2">
+                  <label htmlFor="veo3-api-url" className="text-sm font-medium text-gray-700">Veo3 API URL</label>
+                  <Input id="veo3-api-url" type="text" placeholder="http://127.0.0.1:8466" value={veo3ApiUrl} onChange={(e) => { setVeo3ApiUrl(e.target.value); setVeo3ConnectionStatus('idle'); }} />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="veo3-cookie" className="text-sm font-medium text-gray-700">Veo3 Cookie</label>
+                  <Textarea id="veo3-cookie" placeholder="Nhập Cookie của bạn..." value={veo3Cookie} onChange={(e) => { setVeo3Cookie(e.target.value); setVeo3ConnectionStatus('idle'); }} className="min-h-[150px] font-mono text-xs" />
+                </div>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <Button onClick={handleTestVeo3Connection} disabled={isTestingVeo3} variant="outline">{isTestingVeo3 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
+                <Button onClick={() => handleSaveSettings('veo3')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+              </div>
+            </div>
+            {veo3ConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Veo3 thành công.</AlertDescription></Alert>)}
+            {veo3ConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API URL và Cookie.</AlertDescription></Alert>)}
           </div>
         </TabsContent>
       </Tabs>
