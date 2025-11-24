@@ -44,6 +44,34 @@ const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading
   );
 };
 
+const getErrorMessage = (error: any): string => {
+  if (!error) return 'Đã xảy ra lỗi không xác định.';
+  
+  // Handle Supabase Function Error object
+  if (error.context && typeof error.context.body === 'string') {
+      try {
+          const body = JSON.parse(error.context.body);
+          if (body.error) {
+              if (typeof body.error === 'object' && body.error !== null) {
+                  return body.error.message || JSON.stringify(body.error);
+              }
+              return body.error;
+          }
+      } catch (e) {
+          return error.context.body; // Fallback to raw body text if not JSON
+      }
+  }
+
+  // Handle standard Error object
+  if (error.message) {
+      return error.message;
+  }
+
+  // Fallback for other types
+  return String(error);
+};
+
+
 const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [projectId, setProjectId] = useState('50c7f7bf-4799-4cd3-83ff-742090513f21');
   const [prompt, setPrompt] = useState('a beautiful girl in a beautiful dress');
@@ -57,22 +85,6 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [isUploadingStart, setIsUploadingStart] = useState(false);
   const [isUploadingEnd, setIsUploadingEnd] = useState(false);
 
-  const getErrorMessage = (error: any): string => {
-    if (!error) return 'Đã xảy ra lỗi không xác định.';
-    if (typeof error.message === 'string' && error.message.includes('Failed to fetch')) {
-        return 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng và cấu hình API.';
-    }
-    if (error.context && typeof error.context.body === 'string') {
-        try {
-            const body = JSON.parse(error.context.body);
-            if (body.error) return body.error;
-        } catch (e) {
-            return error.context.body; // Fallback to raw body text if not JSON
-        }
-    }
-    return error.message || 'Đã xảy ra lỗi không xác định.';
-  };
-
   const handleBeautifyPrompt = async () => {
     if (!prompt) {
       showError('Vui lòng nhập prompt trước.');
@@ -84,7 +96,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         body: { path: 'veo3/re_promt', payload: { prompt } },
       });
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
       if (data.prompt) {
         setPrompt(data.prompt);
         showSuccess('Đã làm đẹp prompt!');
@@ -116,7 +128,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
       
       const mediaId = data.mediaGenerationId;
 
@@ -158,7 +170,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
 
       if (data.operations) {
         await supabase.from('veo3_tasks').insert({
