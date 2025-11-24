@@ -18,6 +18,7 @@ import { Loader2, HelpCircle } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Switch } from '@/components/ui/switch';
 
 type Config = {
   imagePromptGenerationTemplate: string;
@@ -26,6 +27,7 @@ type Config = {
   voiceScriptTemplate: string;
   voiceId: string | null;
   videoDuration: number;
+  isVoiceEnabled: boolean;
 };
 
 const defaultConfig: Config = {
@@ -35,6 +37,7 @@ const defaultConfig: Config = {
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
   voiceId: null,
   videoDuration: 5,
+  isVoiceEnabled: true,
 };
 
 const PlaceholderTooltip = ({ content }: { content: React.ReactNode }) => (
@@ -212,34 +215,46 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                 </div>
               </TabsContent>
               <TabsContent value="voice" className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center">
-                    <Label htmlFor="voiceScriptTemplate">Mẫu Prompt Kịch Bản Voice</Label>
-                    <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra kịch bản voice cho video." />
-                  </div>
-                  <Textarea id="voiceScriptTemplate" value={config.voiceScriptTemplate} onChange={(e) => handleConfigChange('voiceScriptTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
-                  <VariablesList variables={['product_name', 'product_description']} />
+                <div className="flex items-center space-x-2 p-2 bg-gray-100 rounded-md">
+                  <Switch
+                    id="voice-enabled-switch"
+                    checked={config.isVoiceEnabled}
+                    onCheckedChange={(checked) => handleConfigChange('isVoiceEnabled', checked)}
+                  />
+                  <Label htmlFor="voice-enabled-switch" className="cursor-pointer font-semibold">
+                    Kích hoạt tạo Voice cho Automation
+                  </Label>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="voiceId">Giọng nói mặc định cho kênh</Label>
-                  <Select value={config.voiceId || undefined} onValueChange={(value) => handleConfigChange('voiceId', value)} disabled={loadingVoices}>
-                    <SelectTrigger id="voiceId">
-                      <SelectValue placeholder={loadingVoices ? "Đang tải giọng nói..." : "Chọn một giọng nói..."} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {loadingVoices ? (
-                        <div className="flex items-center justify-center p-4">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                      ) : clonedVoices.length > 0 ? (
-                        clonedVoices.map((voice: any) => (
-                          <SelectItem key={voice.voice_id} value={voice.voice_id}>{voice.voice_name}</SelectItem>
-                        ))
-                      ) : (
-                        <div className="p-4 text-center text-sm text-gray-500">Không có giọng nói clone nào.</div>
-                      )}
-                    </SelectContent>
-                  </Select>
+                <div className={`space-y-4 transition-opacity ${!config.isVoiceEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <div className="space-y-2">
+                    <div className="flex items-center">
+                      <Label htmlFor="voiceScriptTemplate">Mẫu Prompt Kịch Bản Voice</Label>
+                      <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra kịch bản voice cho video." />
+                    </div>
+                    <Textarea id="voiceScriptTemplate" value={config.voiceScriptTemplate} onChange={(e) => handleConfigChange('voiceScriptTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
+                    <VariablesList variables={['product_name', 'product_description']} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="voiceId">Giọng nói mặc định cho kênh</Label>
+                    <Select value={config.voiceId || undefined} onValueChange={(value) => handleConfigChange('voiceId', value)} disabled={loadingVoices}>
+                      <SelectTrigger id="voiceId">
+                        <SelectValue placeholder={loadingVoices ? "Đang tải giọng nói..." : "Chọn một giọng nói..."} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {loadingVoices ? (
+                          <div className="flex items-center justify-center p-4">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          </div>
+                        ) : clonedVoices.length > 0 ? (
+                          clonedVoices.map((voice: any) => (
+                            <SelectItem key={voice.voice_id} value={voice.voice_id}>{voice.voice_name}</SelectItem>
+                          ))
+                        ) : (
+                          <div className="p-4 text-center text-sm text-gray-500">Không có giọng nói clone nào.</div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </TabsContent>
             </div>

@@ -221,10 +221,32 @@ serve(async (req) => {
                 const { count: completedVideoSteps } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('run_id', step.run.id).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_video').eq('status', 'completed');
 
                 if (totalImageSteps > 0 && totalImageSteps === completedVideoSteps) {
-                    await logToDb(supabaseAdmin, step.run.id, `Tất cả ${completedVideoSteps} video cho sản phẩm con đã hoàn thành. Chuẩn bị tạo voice.`, 'SUCCESS', step.sub_product_id);
-                    const { error: voiceStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_voice', status: 'pending' });
-                    if (voiceStepError) throw voiceStepError;
-                    await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo voice.`, 'INFO');
+                    await logToDb(supabaseAdmin, step.run.id, `Tất cả ${completedVideoSteps} video cho sản phẩm con đã hoàn thành.`, 'SUCCESS', step.sub_product_id);
+                    
+                    const { data: configData, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+                    if (configError) throw new Error(`Không thể tải cấu hình cho kênh ${step.run.channel_id}: ${configError.message}`);
+                    
+                    const isVoiceEnabled = configData?.config_data?.isVoiceEnabled ?? true;
+
+                    if (isVoiceEnabled) {
+                        await logToDb(supabaseAdmin, step.run.id, `Tạo voice được kích hoạt. Chuẩn bị tạo voice.`, 'INFO', step.sub_product_id);
+                        const { error: voiceStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_voice', status: 'pending' });
+                        if (voiceStepError) throw voiceStepError;
+                        await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo voice.`, 'INFO');
+                    } else {
+                        await logToDb(supabaseAdmin, step.run.id, `Tạo voice đã bị tắt. Bỏ qua bước tạo voice và chuyển đến bước ghép video.`, 'WARN', step.sub_product_id);
+                        
+                        const { data: videosToMergeRaw, error: videosError } = await supabaseAdmin.from('automation_run_steps').select('output_data, input_data').eq('run_id', step.run.id).eq('sub_product_id', step.sub_product_id).eq('step_type', 'generate_video').eq('status', 'completed');
+                        if (videosError || !videosToMergeRaw || videosToMergeRaw.length === 0) throw new Error(`Không thể truy xuất URL video để ghép: ${videosError?.message || 'Không tìm thấy video'}`);
+                        
+                        const videosToMerge = videosToMergeRaw.sort((a, b) => (a.input_data?.sequence_number ?? Infinity) - (b.input_data?.sequence_number ?? Infinity));
+                        const videoUrls = videosToMerge.map(v => v.output_data.url);
+                        
+                        const mergeInputData = { video_urls: videoUrls, audio_url: null };
+                        const { error: mergeStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'merge_videos', status: 'pending', input_data: mergeInputData });
+                        if (mergeStepError) throw mergeStepError;
+                        await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước ghép video (không có audio).`, 'INFO');
+                    }
                 }
               }
             }
