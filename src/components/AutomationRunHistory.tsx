@@ -39,6 +39,7 @@ type AutomationRunStep = {
     video_urls?: string[];
     script_generation_prompt?: string;
     generated_script?: string;
+    sequence_number?: number;
   } | null; 
   error_message: string | null; 
   created_at: string;
@@ -255,11 +256,11 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                 <div className="space-y-4">
                   <Accordion type="multiple" defaultValue={Object.values(stepsBySubProduct).map(g => g.id)} className="space-y-3">
                     {Object.values(stepsBySubProduct).map((group) => {
-                      const sortedSteps = group.steps.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                      const sortedSteps = group.steps.sort((a, b) => (a.input_data?.sequence_number ?? Infinity) - (b.input_data?.sequence_number ?? Infinity));
                       const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
                       const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
-                      const voiceStep = sortedSteps.find(step => step.step_type === 'generate_voice');
-                      const mergeStep = sortedSteps.find(step => step.step_type === 'merge_videos');
+                      const voiceStep = group.steps.find(step => step.step_type === 'generate_voice');
+                      const mergeStep = group.steps.find(step => step.step_type === 'merge_videos');
                       const contentPairs = imageSteps.map((imageStep, pairIndex) => ({
                         pairNumber: pairIndex + 1,
                         imageStep,

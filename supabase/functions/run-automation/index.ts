@@ -138,16 +138,23 @@ serve(async (req) => {
         continue;
       }
       
-      const promptRegex = /<prompt>(.*?)<\/prompt>/gs;
-      let imagePrompts = [...answerString.matchAll(promptRegex)].map(match => match[1].trim());
-
-      if (imagePrompts.length === 0) {
-        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${subProduct.name}". Thử phân tích bằng cách xuống dòng.`, 'WARN');
-        // Fallback: split by newline, filter out empty lines and lines that are not prompts (e.g. numbering)
-        imagePrompts = answerString.split('\n').map(line => {
-            // Remove potential numbering like "1. ", "Prompt 1: ", etc.
-            return line.replace(/^\d+\.\s*/, '').replace(/^Prompt\s*\d*:\s*/i, '').trim();
-        }).filter(line => line.length > 10); // Filter out very short/empty lines
+      let imagePrompts = [];
+      try {
+        const jsonMatch = answerString.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("Không tìm thấy đối tượng JSON trong phản hồi của AI.");
+        
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (Array.isArray(parsed.prompts)) {
+            imagePrompts = parsed.prompts;
+            await logToDb(supabaseAdmin, runId, `Đã phân tích thành công ${imagePrompts.length} prompt từ JSON.`, 'SUCCESS');
+        } else {
+            throw new Error("Phản hồi JSON không chứa một mảng (array) 'prompts'.");
+        }
+      } catch (e) {
+          await logToDb(supabaseAdmin, runId, `Phân tích JSON thất bại: ${e.message}. Thử phương pháp dự phòng (phân tích theo dòng).`, 'WARN');
+          imagePrompts = answerString.split('\n').map(line => {
+              return line.replace(/^\d+\.\s*/, '').replace(/^Prompt\s*\d*:\s*/i, '').replace(/^Ảnh\s*\d*:\s*/i, '').trim();
+          }).filter(line => line.length > 10);
       }
 
       if (imagePrompts.length === 0) {
@@ -164,7 +171,7 @@ serve(async (req) => {
         const inputData = { 
           prompt: imagePrompt, 
           model: 'banana', 
-          aspect_ratio: '1:1', 
+          aspect_ratio: '9:16', 
           image_urls: imageUrls,
           sequence_number: index // Add sequence number
         };
