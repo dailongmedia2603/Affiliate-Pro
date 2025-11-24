@@ -22,32 +22,14 @@ async function getUserSettings(supabaseAdmin, userId) {
   return settings;
 }
 
-// Helper to get Veo3 token
-async function getVeo3Token(apiUrl, cookie) {
-  const response = await fetch(`${apiUrl}/veo3/get_token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookie }),
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to get Veo3 token: ${errorText}`);
-  }
-  const data = await response.json();
-  if (!data.access_token) {
-    throw new Error("Veo3 get_token response did not include access_token.");
-  }
-  return data.access_token;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const { action, payload } = await req.json();
-    if (!action) throw new Error("Action is required.");
+    const { path, payload, method = 'POST' } = await req.json();
+    if (!path) throw new Error("Path is required.");
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -64,20 +46,29 @@ serve(async (req) => {
 
     const { veo3_cookie, veo3_api_url } = await getUserSettings(supabaseAdmin, user.id);
 
-    let responseData;
+    // Construct the target URL safely
+    const targetUrl = new URL(path, veo3_api_url).toString();
+    console.log(`[proxy-veo3-api] INFO: Proxying request to ${targetUrl}`);
 
-    switch (action) {
-      case 'test_connection': {
-        const token = await getVeo3Token(veo3_api_url, veo3_cookie);
-        responseData = { success: true, message: 'Connection successful.', token_preview: token.substring(0, 10) + '...' };
-        break;
-      }
-      
-      // Other actions can be added here as needed
+    // The API seems to require the cookie in the payload for some requests
+    const finalPayload = {
+      cookie: veo3_cookie,
+      ...payload
+    };
 
-      default:
-        throw new Error(`Invalid action: ${action}`);
+    const response = await fetch(targetUrl, {
+      method: method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalPayload),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[proxy-veo3-api] ERROR: External API returned non-OK status. Status: ${response.status}, Body: ${errorText}`);
+      throw new Error(`Lỗi từ API Veo3 (${response.status}): ${errorText}`);
     }
+
+    const responseData = await response.json();
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -331,15 +331,18 @@ const SettingsPage = () => {
     setVeo3ConnectionStatus('idle');
     try {
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-        body: { action: 'test_connection' },
+        body: {
+          path: 'veo3/get_token',
+          payload: {}
+        },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.success) {
+      if (data.access_token) {
         setVeo3ConnectionStatus('success');
         showSuccess('Kết nối API Veo3 thành công!');
       } else {
-        throw new Error('Kiểm tra kết nối thất bại.');
+        throw new Error('Kiểm tra kết nối thất bại: Phản hồi không chứa access_token.');
       }
     } catch (error) {
       setVeo3ConnectionStatus('error');
