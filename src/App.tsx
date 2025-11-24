@@ -1,52 +1,62 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Sidebar from './components/Sidebar';
-import PromptLibrary from './pages/PromptLibrary';
-import Index from './pages/Index';
-import { supabase } from './integrations/supabase/client';
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Index from "./pages/Index";
+import NotFound from "./pages/NotFound";
 import Login from './pages/Login';
+import { supabase } from './integrations/supabase/client';
+import { Session } from '@supabase/supabase-js';
 
-function App() {
-  const [session, setSession] = useState(null);
+const queryClient = new QueryClient();
+
+const App = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-    })
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      setLoading(false);
+    };
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
 
-    return () => subscription.unsubscribe()
-  }, [])
+    getSession();
 
-  if (!session) {
-    return <Login />
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Đang tải...</p>
+      </div>
+    );
   }
 
   return (
-    <Router>
-      <div className="flex h-screen bg-gray-50">
-        <Sidebar />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/prompt-library" element={<PromptLibrary />} />
-            {/* Placeholder routes for other icons */}
-            <Route path="/inbox" element={<Index />} />
-            <Route path="/contacts" element={<Index />} />
-            <Route path="/reports" element={<Index />} />
-            <Route path="/files" element={<Index />} />
-            <Route path="/help" element={<Index />} />
-            <Route path="/settings" element={<Index />} />
+            <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
+            <Route path="/" element={session ? <Index /> : <Navigate to="/login" />} />
+            <Route path="*" element={session ? <NotFound /> : <Navigate to="/login" />} />
           </Routes>
-        </main>
-      </div>
-    </Router>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
   );
-}
+};
 
 export default App;
