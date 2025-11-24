@@ -122,7 +122,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
           path: 'veo3/image_uploadv2',
-          payload: { img_url: [imageUrl] }
+          payload: { img_url: imageUrl }
         },
       });
 
