@@ -19,15 +19,12 @@ const Login = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 via-purple-100 to-orange-100 p-4">
-      <div className="absolute top-8 flex items-center gap-3.5">
+      <div className="absolute top-8 flex items-center">
         <img
-          src={"https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/2zk5n7fp_expires_30_days.png"}
-          className="w-9 h-9 object-fill"
+          src={"/logo.png"}
+          className="w-44 h-9 object-contain"
           alt="Torse.ai logo"
         />
-        <span className="text-black text-xl font-bold">
-          {"Torse.ai"}
-        </span>
       </div>
 
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-2xl shadow-xl">
