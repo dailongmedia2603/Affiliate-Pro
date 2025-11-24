@@ -31,15 +31,12 @@ const Header = ({ activeItem, setActiveItem }) => {
 
   return (
     <header className="flex items-center self-stretch bg-white py-[13px] px-4">
-      <div className="flex items-center w-[105px] mr-[18px] gap-3.5">
+      <div className="flex items-center mr-[18px]">
         <img
           src={"https://storage.googleapis.com/tagjs-prod.appspot.com/v1/wjyXx6yIud/2zk5n7fp_expires_30_days.png"}
           className="w-9 h-9 object-fill"
           alt="Torse.ai logo"
         />
-        <span className="text-black text-base font-bold">
-          {"Torse.ai"}
-        </span>
       </div>
       <nav className="flex items-start">
         {navItems.map((item, index) => (
