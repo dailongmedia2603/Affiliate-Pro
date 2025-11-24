@@ -20,11 +20,28 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 
+const VariablesList = ({ variables }: { variables: string[] }) => (
+    <div className="mt-2 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-gray-500">Biến có sẵn:</span>
+        {variables.map(variable => (
+            <code key={variable} className="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded-md">{`{{${variable}}}`}</code>
+        ))}
+    </div>
+);
+
 const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category }) => {
   const [name, setName] = useState('');
   const [content, setContent] = useState('');
   const [productId, setProductId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  const categoryVariables = {
+    image: ['product_name', 'product_description', 'image_count'],
+    video: ['image_prompt', 'product_name', 'product_description'],
+    voice: ['product_name', 'product_description'],
+  };
+
+  const availableVariables = categoryVariables[category] || [];
 
   useEffect(() => {
     if (isOpen) {
@@ -91,6 +108,7 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
             <div className="space-y-2">
               <Label htmlFor="content">Nội dung Prompt</Label>
               <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} required className="min-h-[150px]" />
+              <VariablesList variables={availableVariables} />
             </div>
           </div>
           <DialogFooter>
