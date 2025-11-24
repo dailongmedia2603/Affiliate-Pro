@@ -20,24 +20,47 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 
+type Prompt = {
+  id: string;
+  name: string;
+  content: string;
+  category: 'video' | 'image' | 'voice';
+};
+
 type Config = {
   imagePromptGenerationTemplate: string;
   imageCount: number;
+  useLibraryPromptForImage: boolean;
+  imagePromptId: string | null;
+
   videoPromptGenerationTemplate: string;
+  useLibraryPromptForVideo: boolean;
+  videoPromptId: string | null;
+
   voiceScriptTemplate: string;
   voiceId: string | null;
   videoDuration: number;
   isVoiceEnabled: boolean;
+  useLibraryPromptForVoice: boolean;
+  voicePromptId: string | null;
 };
 
 const defaultConfig: Config = {
   imagePromptGenerationTemplate: 'MỤC ĐÍCH SỬ DỤNG: Các ảnh này sẽ được sử dụng cho mục đích review sản phẩm {{product_name}}, các ảnh này sẽ được chuyển thành video để ghép lại với nhau vì vậy các ảnh sẽ cần phải có liên quan đến nhau, mỗi ảnh được hiểu là 1 phân cảnh để tạo ra 1 video review sản chất lượng và hiệu quả. Vì vậy prompot tạo ảnh của mỗi ảnh phải có sự liên quan với nhau và phù hợp để chuyển sang từng ảnh.\n\nVui lòng tạo chính xác {{image_count}} prompt khác nhau để tạo ảnh quảng cáo cho sản phẩm "{{product_name}}".\n\nMô tả sản phẩm: {{product_description}}.\n\nBối cảnh chung cho các ảnh là: studio background, high quality, professional lighting.\n\nKịch bản tạo ảnh: {{image_count}} ảnh này kết hợp thành 1 kịch bản review hoàn chỉnh, hình ảnh cần được thiết kế để có câu chuyện liên quan đến sản phẩm, kết hợp yếu tố và tình huống đời thường sẽ gồm các phân cảnh: \n- Ảnh 1: Hình ảnh phù hợp để bắt đầu câu chuyện (yêu cầu: người + sản phẩm + background + bối cảnh)\n- Ảnh 2: Phân cảnh tiếp theo tiếp nối với ảnh 1. Là ảnh focus vào sản phẩm, cận cảnh. (yêu cầu: Chỉ sản phẩm + background + bối cảnh)\n- Ảnh 3: Phân cảnh tiếp theo mục đích là sử dụng sản phẩm, vd như người cầm sản phẩm lên hoặc hành động sử dụng,... (yêu cầu: người + sản phẩm + background + bối cảnh)\n- Ảnh 4: Phân cảnh cuối cùng là ảnh thể hiện ứng dụng của sản phẩm vào cuộc sống đời thường, vd như sử dụng {{product_name}} trong những trường hợp thực tế trong đời thường theo các tình huống thực tế phù hợp với sản phẩm. (yêu cầu: người + sản phẩm + background + bối cảnh)\n\nNếu yêu cầu là {{image_count}} ảnh thì hãy đưa ra prompt cho {{image_count}} ảnh. Có sự hệ thống và mạch lạc giữa ảnh đầu tiên và cuối cùng từ ảnh với nội dung bắt đầu câu chuyện -> chi tiết sản phẩm -> hành động sử dụng -> sử dụng sản phẩm trong tình huống đời thường cuộc sống. Mỗi phần có thể 1 hoặc nhiều ảnh tuỳ theo số lượng ảnh tạo chứ không bắt buộc là mỗi phần là 1 ảnh, miễn sao là hợp lý\n\nYÊU CẦU CỰC KỲ QUAN TRỌNG: Mỗi prompt phải được đặt trong một cặp thẻ <prompt> và </prompt>. Ví dụ: <prompt>Một prompt mẫu.</prompt><prompt>Một prompt mẫu khác.</prompt>, đồng thời trong mỗi cặp thẻ luôn luôn phải kèm 1 câu là: "QUAN TRỌNG: Đảm bảo tuyệt đối khuôn mặt của người mẫu trong ảnh và hình sản phẩm phải luôn được chính xác không được thay đổi sang sản phẩm, người mẫu khác nhé, đặc biệt là các chi tiết nhỏ của sản phẩm". . KHÔNG thêm bất kỳ văn bản nào khác ngoài các thẻ prompt.',
   imageCount: 4,
+  useLibraryPromptForImage: false,
+  imagePromptId: null,
+
   videoPromptGenerationTemplate: 'MỤC ĐÍCH: Tạo một prompt mô tả chuyển động (motion prompt) ngắn gọn và tinh tế để biến ảnh tĩnh thành một video ngắn. Chuyển động phải phù hợp với nội dung và cảm xúc của ảnh gốc, liên quan đến sản phẩm "{{product_name}}".\n\nBỐI CẢNH:\n- Sản phẩm: {{product_name}}\n- Mô tả sản phẩm: {{product_description}}\n- Prompt đã dùng để tạo ảnh gốc: "{{image_prompt}}"\n\nYÊU CẦU: Dựa vào các thông tin trên, hãy đề xuất một chuyển động phù hợp bằng tiếng Anh. Các chuyển động nên đơn giản và chuyên nghiệp. Ví dụ: "a slow zoom in", "a gentle pan from left to right", "subtle camera rotation clockwise", "a slight tilt up".\n\nQUAN TRỌNG: KHÔNG thêm bất kỳ lời giải thích, lời chào, hay văn bản nào khác. Chỉ trả về duy nhất một dòng prompt chuyển động.',
+  useLibraryPromptForVideo: false,
+  videoPromptId: null,
+
   voiceScriptTemplate: 'Viết một kịch bản quảng cáo ngắn gọn, hấp dẫn cho sản phẩm "{{product_name}}".\nMô tả sản phẩm: {{product_description}}.\nHãy tập trung vào lợi ích và kêu gọi hành động.',
   voiceId: null,
   videoDuration: 5,
   isVoiceEnabled: true,
+  useLibraryPromptForVoice: false,
+  voicePromptId: null,
 };
 
 const PlaceholderTooltip = ({ content }: { content: React.ReactNode }) => (
@@ -65,51 +88,70 @@ const VariablesList = ({ variables }: { variables: string[] }) => (
 const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => {
   const [config, setConfig] = useState<Config>(defaultConfig);
   const [clonedVoices, setClonedVoices] = useState([]);
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingVoices, setLoadingVoices] = useState(false);
+  const [loadingExtra, setLoadingExtra] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const imagePrompts = prompts.filter(p => p.category === 'image');
+  const videoPrompts = prompts.filter(p => p.category === 'video');
+  const voicePrompts = prompts.filter(p => p.category === 'voice');
 
   const handleConfigChange = (field: keyof Config, value: any) => {
     setConfig(prev => ({ ...prev, [field]: value }));
   };
 
-  const fetchClonedVoices = useCallback(async (apiKey: string) => {
-    setLoadingVoices(true);
-    try {
-      const { data: voiceData, error: voiceError } = await supabase.functions.invoke('proxy-voice-api', {
-        body: { path: 'v1m/voice/clone', token: apiKey, method: 'GET' }
-      });
-      if (voiceError) throw voiceError;
-      if (voiceData.success) {
-        setClonedVoices(voiceData.data || []);
-      } else {
-        throw new Error(voiceData.error || 'Failed to fetch cloned voices');
+  const handleUseLibraryToggle = (
+    useField: keyof Config,
+    idField: keyof Config,
+    templateField: keyof Config,
+    checked: boolean
+  ) => {
+    setConfig(prev => {
+      const newConfig = { ...prev, [useField]: checked };
+      if (!checked) {
+        newConfig[idField] = null;
+        // When turning off, keep the text but make it editable
       }
-    } catch (error) {
-      showError(`Không thể tải danh sách giọng nói: ${error.message}`);
-      setClonedVoices([]);
-    } finally {
-      setLoadingVoices(false);
+      return newConfig;
+    });
+  };
+
+  const handlePromptSelect = (
+    idField: keyof Config,
+    templateField: keyof Config,
+    promptId: string,
+    promptList: Prompt[]
+  ) => {
+    const selectedPrompt = promptList.find(p => p.id === promptId);
+    if (selectedPrompt) {
+      setConfig(prev => ({
+        ...prev,
+        [idField]: promptId,
+        [templateField]: selectedPrompt.content,
+      }));
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (!isOpen || !channelId) return;
 
     const fetchInitialData = async () => {
       setLoading(true);
-      setClonedVoices([]);
+      setLoadingExtra(true);
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         showError("Không thể xác thực người dùng.");
         setLoading(false);
+        setLoadingExtra(false);
         return;
       }
 
-      const [configRes, settingsRes] = await Promise.all([
+      const [configRes, settingsRes, promptsRes] = await Promise.all([
         supabase.from('automation_configs').select('config_data').eq('channel_id', channelId).single(),
-        supabase.from('user_settings').select('voice_api_key').eq('id', user.id).single()
+        supabase.from('user_settings').select('voice_api_key').eq('id', user.id).single(),
+        supabase.from('prompts').select('id, name, content, category').in('category', ['image', 'video', 'voice'])
       ]);
 
       if (configRes.data?.config_data) {
@@ -117,17 +159,31 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
       } else {
         setConfig(defaultConfig);
       }
-      
       setLoading(false);
+
+      if (promptsRes.data) {
+        setPrompts(promptsRes.data);
+      }
 
       const voiceApiKey = settingsRes.data?.voice_api_key;
       if (voiceApiKey) {
-        fetchClonedVoices(voiceApiKey);
+        try {
+          const { data: voiceData, error: voiceError } = await supabase.functions.invoke('proxy-voice-api', {
+            body: { path: 'v1m/voice/clone', token: voiceApiKey, method: 'GET' }
+          });
+          if (voiceError) throw voiceError;
+          if (voiceData.success) setClonedVoices(voiceData.data || []);
+          else throw new Error(voiceData.error || 'Failed to fetch cloned voices');
+        } catch (error) {
+          showError(`Không thể tải danh sách giọng nói: ${error.message}`);
+          setClonedVoices([]);
+        }
       }
+      setLoadingExtra(false);
     };
 
     fetchInitialData();
-  }, [isOpen, channelId, fetchClonedVoices]);
+  }, [isOpen, channelId]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -152,6 +208,60 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
     setSaving(false);
   };
 
+  const renderPromptSection = (
+    title: string,
+    useLibraryField: keyof Config,
+    idField: keyof Config,
+    templateField: keyof Config,
+    promptList: Prompt[],
+    variables: string[]
+  ) => (
+    <>
+      <div className="flex items-center justify-between p-2 bg-gray-100 rounded-md">
+        <Label htmlFor={`switch-${useLibraryField}`} className="font-semibold cursor-pointer">Sử dụng Prompt từ thư viện</Label>
+        <Switch
+          id={`switch-${useLibraryField}`}
+          checked={!!config[useLibraryField]}
+          onCheckedChange={(checked) => handleUseLibraryToggle(useLibraryField, idField, templateField, checked)}
+        />
+      </div>
+      {config[useLibraryField] && (
+        <div className="space-y-2">
+          <Label>Chọn Prompt từ thư viện</Label>
+          <Select
+            value={config[idField] || undefined}
+            onValueChange={(value) => handlePromptSelect(idField, templateField, value, promptList)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn một mẫu prompt..." />
+            </SelectTrigger>
+            <SelectContent>
+              {promptList.length > 0 ? (
+                promptList.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)
+              ) : (
+                <div className="p-4 text-center text-sm text-gray-500">Không có prompt nào.</div>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="space-y-2">
+        <div className="flex items-center">
+          <Label htmlFor={templateField}>{title}</Label>
+          <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra nội dung." />
+        </div>
+        <Textarea
+          id={templateField}
+          value={config[templateField] as string}
+          onChange={(e) => handleConfigChange(templateField, e.target.value)}
+          className="min-h-[150px] font-mono text-sm"
+          readOnly={!!config[useLibraryField]}
+        />
+        <VariablesList variables={variables} />
+      </div>
+    </>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-2xl">
@@ -174,28 +284,28 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
             </TabsList>
             <div className="mt-4 max-h-[60vh] overflow-y-auto p-1">
               <TabsContent value="image" className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center">
-                    <Label htmlFor="imagePromptGenerationTemplate">Mẫu Prompt cho AI (Tạo Prompt Ảnh)</Label>
-                    <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra các prompt tạo ảnh." />
-                  </div>
-                  <Textarea id="imagePromptGenerationTemplate" value={config.imagePromptGenerationTemplate} onChange={(e) => handleConfigChange('imagePromptGenerationTemplate', e.target.value)} className="min-h-[150px] font-mono text-sm" />
-                  <VariablesList variables={['product_name', 'product_description', 'image_count']} />
-                </div>
+                {renderPromptSection(
+                  'Mẫu Prompt cho AI (Tạo Prompt Ảnh)',
+                  'useLibraryPromptForImage',
+                  'imagePromptId',
+                  'imagePromptGenerationTemplate',
+                  imagePrompts,
+                  ['product_name', 'product_description', 'image_count']
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="imageCount">Số lượng ảnh / sản phẩm con</Label>
                   <Input id="imageCount" type="number" min="1" max="10" value={config.imageCount} onChange={(e) => handleConfigChange('imageCount', parseInt(e.target.value, 10) || 1)} />
                 </div>
               </TabsContent>
               <TabsContent value="video" className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex items-center">
-                    <Label htmlFor="videoPromptGenerationTemplate">Mẫu Prompt cho AI (Tạo Prompt Video)</Label>
-                    <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra prompt mô tả chuyển động cho video." />
-                  </div>
-                  <Textarea id="videoPromptGenerationTemplate" value={config.videoPromptGenerationTemplate} onChange={(e) => handleConfigChange('videoPromptGenerationTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
-                  <VariablesList variables={['image_prompt', 'product_name', 'product_description']} />
-                </div>
+                {renderPromptSection(
+                  'Mẫu Prompt cho AI (Tạo Prompt Video)',
+                  'useLibraryPromptForVideo',
+                  'videoPromptId',
+                  'videoPromptGenerationTemplate',
+                  videoPrompts,
+                  ['image_prompt', 'product_name', 'product_description']
+                )}
                 <div className="space-y-2">
                   <Label>Thời lượng video (giây)</Label>
                   <RadioGroup
@@ -226,22 +336,22 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                   </Label>
                 </div>
                 <div className={`space-y-4 transition-opacity ${!config.isVoiceEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <div className="space-y-2">
-                    <div className="flex items-center">
-                      <Label htmlFor="voiceScriptTemplate">Mẫu Prompt Kịch Bản Voice</Label>
-                      <PlaceholderTooltip content="Câu lệnh để yêu cầu AI tạo ra kịch bản voice cho video." />
-                    </div>
-                    <Textarea id="voiceScriptTemplate" value={config.voiceScriptTemplate} onChange={(e) => handleConfigChange('voiceScriptTemplate', e.target.value)} className="min-h-[120px] font-mono text-sm" />
-                    <VariablesList variables={['product_name', 'product_description']} />
-                  </div>
+                  {renderPromptSection(
+                    'Mẫu Prompt Kịch Bản Voice',
+                    'useLibraryPromptForVoice',
+                    'voicePromptId',
+                    'voiceScriptTemplate',
+                    voicePrompts,
+                    ['product_name', 'product_description']
+                  )}
                   <div className="space-y-2">
                     <Label htmlFor="voiceId">Giọng nói mặc định cho kênh</Label>
-                    <Select value={config.voiceId || undefined} onValueChange={(value) => handleConfigChange('voiceId', value)} disabled={loadingVoices}>
+                    <Select value={config.voiceId || undefined} onValueChange={(value) => handleConfigChange('voiceId', value)} disabled={loadingExtra}>
                       <SelectTrigger id="voiceId">
-                        <SelectValue placeholder={loadingVoices ? "Đang tải giọng nói..." : "Chọn một giọng nói..."} />
+                        <SelectValue placeholder={loadingExtra ? "Đang tải giọng nói..." : "Chọn một giọng nói..."} />
                       </SelectTrigger>
                       <SelectContent>
-                        {loadingVoices ? (
+                        {loadingExtra ? (
                           <div className="flex items-center justify-center p-4">
                             <Loader2 className="w-4 h-4 animate-spin" />
                           </div>

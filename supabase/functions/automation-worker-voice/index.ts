@@ -61,7 +61,20 @@ serve(async (req) => {
     if (!config.voiceScriptTemplate) throw new Error("Chưa có mẫu kịch bản voice trong Cấu hình Automation.");
 
     await logToDb(supabaseAdmin, runId, "Đang tạo kịch bản voice...", 'INFO', stepId);
-    const scriptPrompt = replacePlaceholders(config.voiceScriptTemplate, { product_name: subProduct.name, product_description: subProduct.description });
+
+    // --- Get Voice Script Template ---
+    let voiceScriptTemplate = config.voiceScriptTemplate;
+    if (config.useLibraryPromptForVoice && config.voicePromptId) {
+        await logToDb(supabaseAdmin, runId, `Sử dụng prompt kịch bản voice từ thư viện (ID: ${config.voicePromptId}).`, 'INFO', stepId);
+        const { data: promptData, error: promptError } = await supabaseAdmin.from('prompts').select('content').eq('id', config.voicePromptId).single();
+        if (promptError || !promptData) {
+            throw new Error(`Không thể tải prompt kịch bản voice từ thư viện (ID: ${config.voicePromptId}): ${promptError?.message}`);
+        }
+        voiceScriptTemplate = promptData.content;
+    }
+    // --- End Get Voice Script Template ---
+
+    const scriptPrompt = replacePlaceholders(voiceScriptTemplate, { product_name: subProduct.name, product_description: subProduct.description });
     
     const { data: scriptData, error: scriptError } = await supabaseAdmin.functions.invoke('proxy-vertex-ai', {
         body: { prompt: scriptPrompt, userId: userId }

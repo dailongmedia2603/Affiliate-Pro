@@ -203,7 +203,20 @@ serve(async (req) => {
                 const { data: subProduct, error: subProductError } = await supabaseAdmin.from('sub_products').select('name, description').eq('id', step.sub_product_id).single();
                 if (subProductError) throw subProductError;
 
-                const geminiVideoPrompt = replacePlaceholders(config.config_data.videoPromptGenerationTemplate, { image_prompt: step.input_data.prompt, product_name: subProduct.name, product_description: subProduct.description });
+                // --- Get Video Prompt Template ---
+                let videoPromptTemplate = config.config_data.videoPromptGenerationTemplate;
+                if (config.config_data.useLibraryPromptForVideo && config.config_data.videoPromptId) {
+                    await logToDb(supabaseAdmin, step.run.id, `Sử dụng prompt tạo video từ thư viện (ID: ${config.config_data.videoPromptId}).`, 'INFO', step.id);
+                    const { data: promptData, error: promptError } = await supabaseAdmin.from('prompts').select('content').eq('id', config.config_data.videoPromptId).single();
+                    if (promptError || !promptData) {
+                        await logToDb(supabaseAdmin, step.run.id, `Lỗi tải prompt video từ thư viện (ID: ${config.config_data.videoPromptId}), sử dụng prompt mặc định. Lỗi: ${promptError?.message}`, 'WARN', step.id);
+                    } else {
+                        videoPromptTemplate = promptData.content;
+                    }
+                }
+                // --- End Get Video Prompt Template ---
+
+                const geminiVideoPrompt = replacePlaceholders(videoPromptTemplate, { image_prompt: step.input_data.prompt, product_name: subProduct.name, product_description: subProduct.description });
                 const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-vertex-ai', { body: { userId: step.run.user_id, prompt: geminiVideoPrompt } });
                 if (geminiError || !geminiResponse.success) throw new Error(`Lỗi tạo prompt video từ AI: ${geminiError?.message || geminiResponse?.error}`);
                 

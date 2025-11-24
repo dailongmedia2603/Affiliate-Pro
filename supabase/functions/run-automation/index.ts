@@ -99,6 +99,18 @@ serve(async (req) => {
     
     await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con. Bắt đầu tạo prompt và xếp hàng các bước tạo ảnh.`);
 
+    // --- Get Image Prompt Template ---
+    let imagePromptTemplate = config.imagePromptGenerationTemplate;
+    if (config.useLibraryPromptForImage && config.imagePromptId) {
+        await logToDb(supabaseAdmin, runId, `Sử dụng prompt tạo ảnh từ thư viện (ID: ${config.imagePromptId}).`);
+        const { data: promptData, error: promptError } = await supabaseAdmin.from('prompts').select('content').eq('id', config.imagePromptId).single();
+        if (promptError || !promptData) {
+            throw new Error(`Không thể tải prompt từ thư viện (ID: ${config.imagePromptId}): ${promptError?.message}`);
+        }
+        imagePromptTemplate = promptData.content;
+    }
+    // --- End Get Image Prompt Template ---
+
     let totalStepsCreated = 0;
     for (const subProduct of subProducts) {
       await logToDb(supabaseAdmin, runId, `Đang xử lý sản phẩm con: "${subProduct.name}".`);
@@ -108,7 +120,7 @@ serve(async (req) => {
         product_description: subProduct.description,
         image_count: config.imageCount
       };
-      const geminiPrompt = replacePlaceholders(config.imagePromptGenerationTemplate, geminiPromptData);
+      const geminiPrompt = replacePlaceholders(imagePromptTemplate, geminiPromptData);
       
       const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
         body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
