@@ -10,6 +10,7 @@ import VideoPage from '@/pages/VideoPage';
 import ImagePage from '@/pages/ImagePage';
 import AutomationPage from '@/pages/AutomationPage';
 import RendiApiTestPage from '@/pages/RendiApiTestPage';
+import PromptLibraryPage from '@/pages/PromptLibraryPage';
 
 const Index = () => {
   const [activePage, setActivePage] = useState({ page: 'Quản lý kênh', payload: null });
@@ -33,6 +34,8 @@ const Index = () => {
         return <ImagePage />;
       case 'Tạo Voice':
         return <VoicePage />;
+      case 'Thư Viện Prompt':
+        return <PromptLibraryPage />;
       case 'Ffmpeg Rendi':
         return <RendiApiTestPage />;
       case 'Cài Đặt':
