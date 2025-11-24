@@ -8,7 +8,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Upload, Sparkles, X, ImagePlus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
-import { uploadToR2 } from '@/utils/r2-upload';
+
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = error => reject(error);
+  });
+};
 
 const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,16 +94,11 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     
     setIsUploading(true);
     try {
-      const imageUrl = await uploadToR2(file);
-      if (!imageUrl) {
-        throw new Error('Tải ảnh lên R2 thất bại, không nhận được URL.');
-      }
-      showSuccess('Đã tải ảnh lên R2, đang đăng ký với VEO 3...');
-
+      const base64 = await fileToBase64(file);
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
-          path: 'veo3/image_uploadv2',
-          payload: { img_url: imageUrl }
+          path: 'veo3/image_upload',
+          payload: { base64 }
         },
       });
 
