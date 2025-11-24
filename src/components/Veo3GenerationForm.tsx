@@ -8,15 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Upload, Sparkles, X, ImagePlus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
-
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = error => reject(error);
-  });
-};
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,17 +86,33 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     
     setIsUploading(true);
     try {
-      const base64 = await fileToBase64(file);
+      // Step 1: Upload image to R2 to get a public URL
+      const imageUrl = await uploadToR2(file);
+      if (!imageUrl) {
+        throw new Error('Tải ảnh lên R2 thất bại, không nhận được URL.');
+      }
+      showSuccess('Đã tải ảnh lên R2, đang đăng ký với VEO 3...');
+
+      // Step 2: Register the URL with VEO 3 API
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-        body: { path: 'veo3/image_upload', payload: { base64 } },
+        body: { 
+          path: 'veo3/image_uploadv2', // Use the correct endpoint from the Python script
+          payload: { img_url: imageUrl } // Pass the URL
+        },
       });
+
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.mediaGenerationId?.mediaGenerationId) {
-        setImage({ id: data.mediaGenerationId.mediaGenerationId, url: URL.createObjectURL(file) });
-        showSuccess(`Đã tải lên ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'}.`);
+      
+      const mediaId = data.mediaGenerationId;
+
+      if (mediaId) {
+        // The python code has a weird double .get(). Let's try to be safe.
+        const finalId = typeof mediaId === 'object' && mediaId.mediaGenerationId ? mediaId.mediaGenerationId : mediaId;
+        setImage({ id: finalId, url: URL.createObjectURL(file) });
+        showSuccess(`Đã đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'} với VEO 3.`);
       } else {
-        throw new Error('API không trả về ID ảnh.');
+        throw new Error('API không trả về ID ảnh (mediaGenerationId).');
       }
     } catch (err) {
       showError(`Lỗi tải ảnh: ${err.message}`);
