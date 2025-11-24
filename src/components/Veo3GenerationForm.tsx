@@ -86,28 +86,35 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     
     setIsUploading(true);
     try {
-      // Step 1: Upload image to R2 to get a public URL
       const imageUrl = await uploadToR2(file);
       if (!imageUrl) {
         throw new Error('Tải ảnh lên R2 thất bại, không nhận được URL.');
       }
       showSuccess('Đã tải ảnh lên R2, đang đăng ký với VEO 3...');
 
-      // Step 2: Register the URL with VEO 3 API
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
-          path: 'veo3/image_uploadv2', // Use the correct endpoint from the Python script
-          payload: { img_url: imageUrl } // Pass the URL
+          path: 'veo3/image_uploadv2',
+          payload: { img_url: imageUrl }
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        let errorMessage = error.message;
+        if (error.context && typeof error.context.body === 'string') {
+            try {
+                const body = JSON.parse(error.context.body);
+                if (body.error) errorMessage = body.error;
+            } catch(e) { /* ignore */ }
+        }
+        throw new Error(errorMessage);
+      }
+
       if (data.error) throw new Error(data.error);
       
       const mediaId = data.mediaGenerationId;
 
       if (mediaId) {
-        // The python code has a weird double .get(). Let's try to be safe.
         const finalId = typeof mediaId === 'object' && mediaId.mediaGenerationId ? mediaId.mediaGenerationId : mediaId;
         setImage({ id: finalId, url: URL.createObjectURL(file) });
         showSuccess(`Đã đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'} với VEO 3.`);
@@ -144,7 +151,16 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         body: { path: 'veo3/genarate', payload },
       });
 
-      if (error) throw error;
+      if (error) {
+        let errorMessage = error.message;
+        if (error.context && typeof error.context.body === 'string') {
+            try {
+                const body = JSON.parse(error.context.body);
+                if (body.error) errorMessage = body.error;
+            } catch(e) { /* ignore */ }
+        }
+        throw new Error(errorMessage);
+      }
       if (data.error) throw new Error(data.error);
 
       if (data.operations) {
