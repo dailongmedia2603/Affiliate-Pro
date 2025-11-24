@@ -22,7 +22,6 @@ const SettingsPage = () => {
   const [cloudflareR2PublicUrl, setCloudflareR2PublicUrl] = useState('');
   const [rendiApiKey, setRendiApiKey] = useState('');
   const [veo3Cookie, setVeo3Cookie] = useState('');
-  const [veo3ApiUrl, setVeo3ApiUrl] = useState('http://127.0.0.1:8466');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -72,7 +71,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key, veo3_cookie, veo3_api_url')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key, veo3_cookie')
           .eq('id', user.id)
           .single();
 
@@ -93,7 +92,6 @@ const SettingsPage = () => {
           setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
           setRendiApiKey(data.rendi_api_key || '');
           setVeo3Cookie(data.veo3_cookie || '');
-          setVeo3ApiUrl(data.veo3_api_url || 'http://127.0.0.1:8466');
           if (data.voice_api_key) {
             fetchVoiceCredits(data.voice_api_key);
           }
@@ -146,7 +144,7 @@ const SettingsPage = () => {
         updateData = { rendi_api_key: rendiApiKey };
         break;
       case 'veo3':
-        updateData = { veo3_cookie: veo3Cookie, veo3_api_url: veo3ApiUrl };
+        updateData = { veo3_cookie: veo3Cookie };
         break;
     }
 
@@ -322,9 +320,9 @@ const SettingsPage = () => {
   };
 
   const handleTestVeo3Connection = async () => {
-    if (!veo3Cookie || !veo3ApiUrl) {
+    if (!veo3Cookie) {
       setVeo3ConnectionStatus('error');
-      showError('Vui lòng nhập đầy đủ API URL và Cookie.');
+      showError('Vui lòng nhập Cookie.');
       return;
     }
     setIsTestingVeo3(true);
@@ -338,11 +336,11 @@ const SettingsPage = () => {
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.access_token) {
+      if (data.success) {
         setVeo3ConnectionStatus('success');
         showSuccess('Kết nối API Veo3 thành công!');
       } else {
-        throw new Error('Kiểm tra kết nối thất bại: Phản hồi không chứa access_token.');
+        throw new Error('Kiểm tra kết nối thất bại: ' + (data.message || 'Không rõ lỗi.'));
       }
     } catch (error) {
       setVeo3ConnectionStatus('error');
@@ -524,12 +522,8 @@ const SettingsPage = () => {
           <div className="p-6 border rounded-lg bg-white space-y-6">
             <div>
               <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Veo3</h2>
-              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin xác thực để kết nối với dịch vụ Veo3.</p>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin xác thực để kết nối với dịch vụ Veo3. URL API được đặt cố định là <strong>https://api.beautyapp.work</strong>.</p>
               <div className="space-y-4 max-w-lg">
-                <div className="space-y-2">
-                  <label htmlFor="veo3-api-url" className="text-sm font-medium text-gray-700">Veo3 API URL</label>
-                  <Input id="veo3-api-url" type="text" placeholder="http://127.0.0.1:8466" value={veo3ApiUrl} onChange={(e) => { setVeo3ApiUrl(e.target.value); setVeo3ConnectionStatus('idle'); }} />
-                </div>
                 <div className="space-y-2">
                   <label htmlFor="veo3-cookie" className="text-sm font-medium text-gray-700">Veo3 Cookie</label>
                   <Textarea id="veo3-cookie" placeholder="Nhập Cookie của bạn..." value={veo3Cookie} onChange={(e) => { setVeo3Cookie(e.target.value); setVeo3ConnectionStatus('idle'); }} className="min-h-[150px] font-mono text-xs" />
@@ -541,7 +535,7 @@ const SettingsPage = () => {
               </div>
             </div>
             {veo3ConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Veo3 thành công.</AlertDescription></Alert>)}
-            {veo3ConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại API URL và Cookie.</AlertDescription></Alert>)}
+            {veo3ConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Cookie và đảm bảo API server đang chạy.</AlertDescription></Alert>)}
           </div>
         </TabsContent>
       </Tabs>

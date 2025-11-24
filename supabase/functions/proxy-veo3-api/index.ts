@@ -7,17 +7,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const API_BASE_URL = 'https://api.beautyapp.work';
+
 // Helper to get user settings
 async function getUserSettings(supabaseAdmin, userId) {
   const { data: settings, error } = await supabaseAdmin
     .from('user_settings')
-    .select('veo3_cookie, veo3_api_url')
+    .select('veo3_cookie')
     .eq('id', userId)
     .single();
   
   if (error) throw new Error(`Could not retrieve Veo3 settings for user: ${error.message}`);
-  if (!settings?.veo3_cookie || !settings?.veo3_api_url) {
-    throw new Error("Veo3 Cookie or API URL is not set in settings.");
+  if (!settings?.veo3_cookie) {
+    throw new Error("Veo3 Cookie is not set in settings.");
   }
   return settings;
 }
@@ -44,10 +46,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { veo3_cookie, veo3_api_url } = await getUserSettings(supabaseAdmin, user.id);
+    const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
 
-    // Construct the target URL safely
-    const targetUrl = new URL(path, veo3_api_url).toString();
+    // Construct the target URL safely using the hardcoded base URL
+    const targetUrl = new URL(path, API_BASE_URL).toString();
     console.log(`[proxy-veo3-api] INFO: Proxying request to ${targetUrl}`);
 
     // The API seems to require the cookie in the payload for some requests
