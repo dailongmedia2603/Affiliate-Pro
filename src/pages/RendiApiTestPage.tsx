@@ -325,7 +325,7 @@ const RendiApiTestPage = () => {
           }
 
           videosAndImages.forEach((mf, i) => {
-              filterComplexParts.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
+              filterComplexParts.push(`[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=black,setsar=1[v${i}]`);
           });
 
           if (audioFile) {
@@ -362,12 +362,17 @@ const RendiApiTestPage = () => {
 
         } else { // Simple Merge Mode
             const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
-            const videoInputStreams = videosAndImages.map((mf) => {
+            
+            const filterComplexParts = [];
+            videosAndImages.forEach((mf, i) => {
                 const inputIndex = mediaFiles.indexOf(mf);
-                return `[${inputIndex}:v:0]`;
-            }).join('');
+                filterComplexParts.push(`[${inputIndex}:v:0]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=black,setsar=1[v${i}]`);
+            });
 
-            let filter_complex = `"${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]"`;
+            const videoInputStreams = videosAndImages.map((_, i) => `[v${i}]`).join('');
+            filterComplexParts.push(`${videoInputStreams}concat=n=${videosAndImages.length}:v=1:a=0[v]`);
+
+            let filter_complex = `"${filterComplexParts.join(';')}"`;
             let map_args = `-map "[v]"`;
 
             if (audioFile) {

@@ -99,7 +99,7 @@ serve(async (req) => {
 
       const filterComplexParts = [];
       video_urls.forEach((_, i) => {
-        filterComplexParts.push(`[${i}:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:-1:-1:color=black,setsar=1[v${i}]`);
+        filterComplexParts.push(`[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:-1:-1:color=black,setsar=1[v${i}]`);
       });
 
       let lastStream = '[v0]';
