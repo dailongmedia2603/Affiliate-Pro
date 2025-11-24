@@ -364,7 +364,7 @@ serve(async (req) => {
         }
     }
 
-    // Process Manual Video Tasks
+    // Process Manual Higgsfield Video Tasks
     const { data: manualVideoTasks } = await supabaseAdmin.from('video_tasks').select('id, user_id, higgsfield_task_id').in('status', ['pending', 'processing', 'in_progress']);
     if (manualVideoTasks) for (const task of manualVideoTasks) {
         try {
@@ -389,6 +389,31 @@ serve(async (req) => {
           }
         } catch (e) {
           await supabaseAdmin.from('video_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
+        }
+    }
+
+    // Process Manual VEO3 Tasks
+    const { data: manualVeo3Tasks } = await supabaseAdmin.from('veo3_tasks').select('id, user_id, api_operations').eq('status', 'processing');
+    if (manualVeo3Tasks) for (const task of manualVeo3Tasks) {
+        try {
+            const { data: settings } = await supabaseAdmin.from('user_settings').select('veo3_cookie').eq('id', task.user_id).single();
+            if (!settings?.veo3_cookie) {
+                throw new Error(`Không tìm thấy cookie VEO3 cho người dùng ${task.user_id}`);
+            }
+            const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-veo3-api', {
+                body: { path: 'veo3/check_status', payload: { operations: task.api_operations } }
+            });
+            if (statusError) throw statusError;
+            if (statusData.error) throw new Error(statusData.error);
+
+            const firstResult = statusData.results?.[0];
+            if (firstResult?.status === 'SUCCESS') {
+                await supabaseAdmin.from('veo3_tasks').update({ status: 'completed', result_url: firstResult.url }).eq('id', task.id);
+            } else if (firstResult?.status === 'FAILED') {
+                await supabaseAdmin.from('veo3_tasks').update({ status: 'failed', error_message: firstResult.error || 'Lỗi không xác định từ VEO3' }).eq('id', task.id);
+            }
+        } catch (e) {
+            await supabaseAdmin.from('veo3_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
         }
     }
 
