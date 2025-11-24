@@ -6,6 +6,16 @@ import { showError, showSuccess } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AddChannelDialog from './AddChannelDialog';
 import ChannelDetailPage from '@/pages/ChannelDetailPage';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 type Product = {
   id: string;
@@ -35,6 +45,9 @@ const ChannelManagement = ({ onNavigate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [channelToEdit, setChannelToEdit] = useState<Channel | null>(null);
+  const [channelToDelete, setChannelToDelete] = useState<Channel | null>(null);
+  const [isAlertOpen, setIsAlertOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -69,36 +82,85 @@ const ChannelManagement = ({ onNavigate }) => {
     fetchData();
   }, [fetchData]);
 
-  const handleSaveChannel = async (channelData: { name: string; product_id: string | null; link: string }) => {
+  const handleAddChannel = () => {
+    setChannelToEdit(null);
+    setIsAddDialogOpen(true);
+  };
+
+  const handleEditChannel = (channel: Channel) => {
+    setChannelToEdit(channel);
+    setIsAddDialogOpen(true);
+  };
+
+  const handleDeleteRequest = (channel: Channel) => {
+    setChannelToDelete(channel);
+    setIsAlertOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!channelToDelete) return;
+    const { error } = await supabase.from('channels').delete().eq('id', channelToDelete.id);
+    if (error) {
+      showError('Xóa kênh thất bại: ' + error.message);
+    } else {
+      showSuccess('Kênh đã được xóa.');
+      fetchData();
+    }
+    setIsAlertOpen(false);
+    setChannelToDelete(null);
+  };
+
+  const handleSaveChannel = async (channelData: { name: string; product_id: string | null; link: string; id?: string }) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       showError('Bạn cần đăng nhập để thực hiện.');
       return;
     }
 
-    const dataToSave = {
-      name: channelData.name,
-      product_id: channelData.product_id,
-      link: channelData.link,
-      user_id: user.id,
-      type: 'social',
-      avatar: `https://avatar.vercel.sh/${encodeURIComponent(channelData.name)}.png`,
-      category: 'Chưa phân loại',
-      attachments: 0,
-      status: 'pending',
-      company_size: 1,
-      revenue: 0,
-      open_projects: 0,
-    };
+    if (channelData.id) {
+      // Update logic
+      const { error } = await supabase
+        .from('channels')
+        .update({
+          name: channelData.name,
+          product_id: channelData.product_id,
+          link: channelData.link,
+        })
+        .eq('id', channelData.id);
 
-    const { error } = await supabase.from('channels').insert(dataToSave);
-
-    if (error) {
-      showError('Thêm kênh thất bại: ' + error.message);
+      if (error) {
+        showError('Cập nhật kênh thất bại: ' + error.message);
+      } else {
+        showSuccess('Kênh đã được cập nhật.');
+        await fetchData();
+        setIsAddDialogOpen(false);
+      }
     } else {
-      showSuccess('Kênh đã được thêm thành công.');
-      await fetchData();
-      setIsAddDialogOpen(false);
+      // Insert logic
+      const dataToSave = {
+        name: channelData.name,
+        product_id: channelData.product_id,
+        link: channelData.link,
+        user_id: user.id,
+        type: 'social',
+        avatar: `https://avatar.vercel.sh/${encodeURIComponent(channelData.name)}.png`,
+        category: 'Chưa phân loại',
+        attachments: 0,
+        status: 'pending',
+        company_size: 1,
+        revenue: 0,
+        open_projects: 0,
+      };
+
+      const { error } = await supabase.from('channels').insert(dataToSave);
+
+      if (error) {
+        showError('Thêm kênh thất bại: ' + error.message);
+      } else {
+        showSuccess('Kênh đã được thêm thành công.');
+        await fetchData();
+        setIsAddDialogOpen(false);
+      }
     }
   };
 
@@ -127,7 +189,7 @@ const ChannelManagement = ({ onNavigate }) => {
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-gray-800">Quản lý kênh</h1>
-            <Button onClick={() => setIsAddDialogOpen(true)} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white">
+            <Button onClick={handleAddChannel} size="sm" className="bg-orange-500 hover:bg-orange-600 text-white">
               <PlusCircle className="w-4 h-4 mr-2" />
               Thêm kênh
             </Button>
@@ -177,6 +239,8 @@ const ChannelManagement = ({ onNavigate }) => {
                   channel={channel}
                   productName={channel.product_id ? productMap.get(channel.product_id) : undefined}
                   onClick={() => setSelectedChannelId(channel.id)}
+                  onEdit={() => handleEditChannel(channel)}
+                  onDelete={() => handleDeleteRequest(channel)}
                 />
               ))
             ) : (
@@ -190,7 +254,22 @@ const ChannelManagement = ({ onNavigate }) => {
         onClose={() => setIsAddDialogOpen(false)}
         onSave={handleSaveChannel}
         products={products}
+        channel={channelToEdit}
       />
+      <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Hành động này không thể được hoàn tác. Kênh "{channelToDelete?.name}" sẽ bị xóa vĩnh viễn.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Hủy</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-600 hover:bg-red-700">Xóa</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 };

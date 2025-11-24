@@ -19,26 +19,31 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 
-const AddChannelDialog = ({ isOpen, onClose, onSave, products }) => {
+const AddChannelDialog = ({ isOpen, onClose, onSave, products, channel }) => {
   const [name, setName] = useState('');
   const [productId, setProductId] = useState<string | null>(null);
   const [link, setLink] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) {
-      // Reset form when dialog closes
-      setName('');
-      setProductId(null);
-      setLink('');
+    if (isOpen) {
+      if (channel) {
+        setName(channel.name || '');
+        setProductId(channel.product_id || null);
+        setLink(channel.link || '');
+      } else {
+        setName('');
+        setProductId(null);
+        setLink('');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, channel]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) return;
     setIsSaving(true);
-    await onSave({ name, product_id: productId, link });
+    await onSave({ id: channel?.id, name, product_id: productId, link });
     setIsSaving(false);
   };
 
@@ -47,9 +52,9 @@ const AddChannelDialog = ({ isOpen, onClose, onSave, products }) => {
       <DialogContent className="sm:max-w-[425px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Thêm kênh mới</DialogTitle>
+            <DialogTitle>{channel ? 'Chỉnh sửa kênh' : 'Thêm kênh mới'}</DialogTitle>
             <DialogDescription>
-              Điền thông tin để tạo một kênh mới và liên kết với sản phẩm.
+              {channel ? 'Cập nhật thông tin cho kênh của bạn.' : 'Điền thông tin để tạo một kênh mới và liên kết với sản phẩm.'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -89,7 +94,7 @@ const AddChannelDialog = ({ isOpen, onClose, onSave, products }) => {
             </Button>
             <Button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white" disabled={isSaving}>
               {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Thêm kênh
+              {channel ? 'Lưu thay đổi' : 'Thêm kênh'}
             </Button>
           </DialogFooter>
         </form>

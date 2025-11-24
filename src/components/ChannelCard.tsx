@@ -3,21 +3,34 @@ import {
   Users,
   ThumbsUp,
   Video,
+  Edit,
+  Trash2
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-const ChannelCard = ({ channel, productName, onClick }) => {
+const ChannelCard = ({ channel, productName, onClick, onEdit, onDelete }) => {
   const handleButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onClick();
   };
 
+  const handleEditClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit();
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onDelete();
+  };
+
   return (
     <div 
       onClick={onClick}
-      className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
+      className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col gap-4 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer group"
     >
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <img
           src={channel.avatar}
           alt={channel.name}
@@ -26,6 +39,14 @@ const ChannelCard = ({ channel, productName, onClick }) => {
         <div className="flex-1">
           <h3 className="font-bold text-gray-800">{channel.name}</h3>
           <p className="text-sm text-gray-500">{channel.category}</p>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={handleEditClick}>
+                <Edit className="w-4 h-4 text-gray-600" />
+            </Button>
+            <Button variant="ghost" size="icon" className="w-8 h-8" onClick={handleDeleteClick}>
+                <Trash2 className="w-4 h-4 text-red-500" />
+            </Button>
         </div>
       </div>
 
