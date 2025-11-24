@@ -24,6 +24,26 @@ async function getUserSettings(supabaseAdmin, userId) {
   return settings;
 }
 
+// Helper to get Veo3 token
+async function getVeo3Token(cookie) {
+  const url = new URL('veo3/get_token', API_BASE_URL).toString();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cookie }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to get Veo3 token: ${errorText}`);
+  }
+  const data = await response.json();
+  if (!data.access_token) {
+    throw new Error("Veo3 get_token response did not include access_token.");
+  }
+  return data.access_token;
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -52,11 +72,22 @@ serve(async (req) => {
     const targetUrl = new URL(path, API_BASE_URL).toString();
     console.log(`[proxy-veo3-api] INFO: Proxying request to ${targetUrl}`);
 
-    // The API seems to require the cookie in the payload for some requests
-    const finalPayload = {
-      cookie: veo3_cookie,
-      ...payload
-    };
+    let finalPayload;
+
+    // For most endpoints, we need to get a token first and include it.
+    // The get_token endpoint is an exception.
+    if (path === 'veo3/get_token') {
+        finalPayload = {
+            cookie: veo3_cookie,
+            ...payload
+        };
+    } else {
+        const token = await getVeo3Token(veo3_cookie);
+        finalPayload = {
+            token: token,
+            ...payload
+        };
+    }
 
     const response = await fetch(targetUrl, {
       method: method,
