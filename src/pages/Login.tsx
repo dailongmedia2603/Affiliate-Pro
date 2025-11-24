@@ -22,7 +22,7 @@ const Login = () => {
       <div className="absolute top-8 flex items-center">
         <img
           src={"/logo.png"}
-          className="w-44 h-9 object-contain"
+          className="w-80 h-16 object-contain"
           alt="Torse.ai logo"
         />
       </div>
