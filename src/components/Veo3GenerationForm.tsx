@@ -122,14 +122,13 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
           path: 'veo3/image_uploadv2',
-          payload: { url: [imageUrl] }
+          payload: { img_url: [imageUrl] }
         },
       });
 
       if (error) throw error;
       if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
       
-      // Try to get mediaId from different possible response structures
       const mediaId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId || data.data?.mediaGenerationId;
 
       if (mediaId) {
