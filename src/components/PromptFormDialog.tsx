@@ -53,6 +53,10 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
     setIsSaving(false);
   };
 
+  const handleProductChange = (value: string) => {
+    setProductId(value === 'none' ? '' : value);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[600px]">
@@ -70,12 +74,12 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
             </div>
             <div className="space-y-2">
               <Label htmlFor="product">Sản phẩm (Tùy chọn)</Label>
-              <Select onValueChange={setProductId} value={productId}>
+              <Select onValueChange={handleProductChange} value={productId || 'none'}>
                 <SelectTrigger>
                   <SelectValue placeholder="Chọn một sản phẩm để liên kết" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Không có sản phẩm</SelectItem>
+                  <SelectItem value="none">Không có sản phẩm</SelectItem>
                   {products.map((product) => (
                     <SelectItem key={product.id} value={product.id}>
                       {product.name}
