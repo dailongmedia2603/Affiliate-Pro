@@ -139,10 +139,19 @@ serve(async (req) => {
       }
       
       const promptRegex = /<prompt>(.*?)<\/prompt>/gs;
-      const imagePrompts = [...answerString.matchAll(promptRegex)].map(match => match[1].trim());
+      let imagePrompts = [...answerString.matchAll(promptRegex)].map(match => match[1].trim());
 
       if (imagePrompts.length === 0) {
-        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${subProduct.name}". Bỏ qua.`, 'WARN');
+        await logToDb(supabaseAdmin, runId, `AI không trả về prompt nào có cấu trúc <prompt>...</prompt> cho sản phẩm "${subProduct.name}". Thử phân tích bằng cách xuống dòng.`, 'WARN');
+        // Fallback: split by newline, filter out empty lines and lines that are not prompts (e.g. numbering)
+        imagePrompts = answerString.split('\n').map(line => {
+            // Remove potential numbering like "1. ", "Prompt 1: ", etc.
+            return line.replace(/^\d+\.\s*/, '').replace(/^Prompt\s*\d*:\s*/i, '').trim();
+        }).filter(line => line.length > 10); // Filter out very short/empty lines
+      }
+
+      if (imagePrompts.length === 0) {
+        await logToDb(supabaseAdmin, runId, `Không thể trích xuất bất kỳ prompt nào từ phản hồi của AI cho sản phẩm "${subProduct.name}". Bỏ qua.`, 'WARN');
         continue;
       }
       
