@@ -358,7 +358,7 @@ const RendiApiTestPage = () => {
               mapArgs += ` -map ${audioInputIndex}:a:0`;
           }
 
-          ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} ${mapArgs} -c:v libx264 -c:a aac -shortest {{out_final}}`;
+          ffmpeg_command = `${inputFlags} -filter_complex ${filterComplex} ${mapArgs} -c:v libx264 -c:a aac {{out_final}}`;
 
         } else { // Simple Merge Mode
             const inputFlags = Object.keys(input_files).map(key => `-i {{${key}}}`).join(' ');
@@ -375,7 +375,7 @@ const RendiApiTestPage = () => {
                 map_args += ` -map ${audioInputIndex}:a:0`;
             }
 
-            ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac -shortest {{out_final}}`;
+            ffmpeg_command = `${inputFlags} -filter_complex ${filter_complex} ${map_args} -c:v libx264 -c:a aac {{out_final}}`;
         }
       }
       
