@@ -8,15 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Upload, Sparkles, X, ImagePlus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
-
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve((reader.result as string).split(',')[1]);
-    reader.onerror = error => reject(error);
-  });
-};
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,6 +57,22 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [isUploadingStart, setIsUploadingStart] = useState(false);
   const [isUploadingEnd, setIsUploadingEnd] = useState(false);
 
+  const getErrorMessage = (error: any): string => {
+    if (!error) return 'Đã xảy ra lỗi không xác định.';
+    if (typeof error.message === 'string' && error.message.includes('Failed to fetch')) {
+        return 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng và cấu hình API.';
+    }
+    if (error.context && typeof error.context.body === 'string') {
+        try {
+            const body = JSON.parse(error.context.body);
+            if (body.error) return body.error;
+        } catch (e) {
+            return error.context.body; // Fallback to raw body text if not JSON
+        }
+    }
+    return error.message || 'Đã xảy ra lỗi không xác định.';
+  };
+
   const handleBeautifyPrompt = async () => {
     if (!prompt) {
       showError('Vui lòng nhập prompt trước.');
@@ -82,7 +90,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         showSuccess('Đã làm đẹp prompt!');
       }
     } catch (err) {
-      showError(`Lỗi làm đẹp prompt: ${err.message}`);
+      showError(`Lỗi làm đẹp prompt: ${getErrorMessage(err)}`);
     } finally {
       setIsBeautifying(false);
     }
@@ -94,25 +102,20 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     
     setIsUploading(true);
     try {
-      const base64 = await fileToBase64(file);
+      const imageUrl = await uploadToR2(file);
+      if (!imageUrl) {
+        throw new Error('Tải ảnh lên R2 thất bại, không nhận được URL.');
+      }
+      showSuccess('Đã tải ảnh lên R2, đang đăng ký với VEO 3...');
+
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
-          path: 'veo3/image_upload',
-          payload: { base64 }
+          path: 'veo3/image_uploadv2',
+          payload: { img_url: imageUrl }
         },
       });
 
-      if (error) {
-        let errorMessage = error.message;
-        if (error.context && typeof error.context.body === 'string') {
-            try {
-                const body = JSON.parse(error.context.body);
-                if (body.error) errorMessage = body.error;
-            } catch(e) { /* ignore */ }
-        }
-        throw new Error(errorMessage);
-      }
-
+      if (error) throw error;
       if (data.error) throw new Error(data.error);
       
       const mediaId = data.mediaGenerationId;
@@ -125,7 +128,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         throw new Error('API không trả về ID ảnh (mediaGenerationId).');
       }
     } catch (err) {
-      showError(`Lỗi tải ảnh: ${err.message}`);
+      showError(`Lỗi tải ảnh: ${getErrorMessage(err)}`);
     } finally {
       setIsUploading(false);
     }
@@ -154,16 +157,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         body: { path: 'veo3/genarate', payload },
       });
 
-      if (error) {
-        let errorMessage = error.message;
-        if (error.context && typeof error.context.body === 'string') {
-            try {
-                const body = JSON.parse(error.context.body);
-                if (body.error) errorMessage = body.error;
-            } catch(e) { /* ignore */ }
-        }
-        throw new Error(errorMessage);
-      }
+      if (error) throw error;
       if (data.error) throw new Error(data.error);
 
       if (data.operations) {
@@ -180,7 +174,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         throw new Error('API không trả về thông tin tác vụ (operations).');
       }
     } catch (err) {
-      showError(`Lỗi tạo video: ${err.message}`);
+      showError(`Lỗi tạo video: ${getErrorMessage(err)}`);
     } finally {
       setIsGenerating(false);
     }
