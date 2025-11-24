@@ -325,42 +325,92 @@ serve(async (req) => {
     const { count: activeImageTasks } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('step_type', 'generate_image').eq('status', 'running');
     const imageSlotsAvailable = IMAGE_CONCURRENCY - (activeImageTasks || 0);
     if (imageSlotsAvailable > 0) {
-      const { data: pendingImageSteps } = await supabaseAdmin.from('automation_run_steps').select('id, input_data, run:automation_runs(user_id)').eq('step_type', 'generate_image').eq('status', 'pending').order('created_at', { ascending: true }).limit(imageSlotsAvailable);
+      const { data: pendingImageSteps } = await supabaseAdmin
+        .from('automation_run_steps')
+        .select('*, run:automation_runs(id, user_id)')
+        .eq('step_type', 'generate_image')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(imageSlotsAvailable);
+      
       if (pendingImageSteps) for (const step of pendingImageSteps) {
-        await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
-        supabaseAdmin.functions.invoke('generate-image', { body: { action: 'generate_image', stepId: step.id, userId: step.run.user_id, ...step.input_data } }).catch(err => console.error(`Error invoking generate-image for step ${step.id}:`, err));
+        try {
+          await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
+          const { error } = await supabaseAdmin.functions.invoke('generate-image', { body: { action: 'generate_image', stepId: step.id, userId: step.run.user_id, ...step.input_data } });
+          if (error) throw error;
+        } catch (err) {
+          console.error(`Caught error during invocation of generate-image for step ${step.id}:`, err.message);
+          await handleStepFailure(supabaseAdmin, step, err.message);
+        }
       }
     }
 
     const { count: activeVideoTasks } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('step_type', 'generate_video').eq('status', 'running');
     const videoSlotsAvailable = VIDEO_CONCURRENCY - (activeVideoTasks || 0);
     if (videoSlotsAvailable > 0) {
-      const { data: pendingVideoSteps } = await supabaseAdmin.from('automation_run_steps').select('id, input_data, run:automation_runs(user_id, channel_id)').eq('step_type', 'generate_video').eq('status', 'pending').order('created_at', { ascending: true }).limit(videoSlotsAvailable);
+      const { data: pendingVideoSteps } = await supabaseAdmin
+        .from('automation_run_steps')
+        .select('*, run:automation_runs(id, user_id, channel_id)')
+        .eq('step_type', 'generate_video')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true })
+        .limit(videoSlotsAvailable);
+      
       if (pendingVideoSteps) for (const step of pendingVideoSteps) {
-        const { data: configData } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
-        const duration = configData?.config_data?.videoDuration || 5;
-        await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
-        supabaseAdmin.functions.invoke('automation-worker-video', { body: { stepId: step.id, userId: step.run.user_id, model: 'kling', prompt: step.input_data.prompt, imageUrl: step.input_data.imageUrl, options: { duration, width: 576, height: 1024, resolution: "1080p" } } }).catch(err => console.error(`Error invoking automation-worker-video for step ${step.id}:`, err));
+        try {
+            const { data: configData } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
+            const duration = configData?.config_data?.videoDuration || 5;
+            await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
+            const { error } = await supabaseAdmin.functions.invoke('automation-worker-video', { body: { stepId: step.id, userId: step.run.user_id, model: 'kling', prompt: step.input_data.prompt, imageUrl: step.input_data.imageUrl, options: { duration, width: 576, height: 1024, resolution: "1080p" } } });
+            if (error) throw error;
+        } catch (err) {
+            console.error(`Caught error during invocation of automation-worker-video for step ${step.id}:`, err.message);
+            await handleStepFailure(supabaseAdmin, step, err.message);
+        }
       }
     }
 
     const { count: activeVoiceTasks } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('step_type', 'generate_voice').eq('status', 'running');
     const voiceSlotsAvailable = VOICE_CONCURRENCY - (activeVoiceTasks || 0);
     if (voiceSlotsAvailable > 0) {
-        const { data: pendingVoiceSteps } = await supabaseAdmin.from('automation_run_steps').select('id, run:automation_runs(user_id)').eq('step_type', 'generate_voice').eq('status', 'pending').order('created_at', { ascending: true }).limit(voiceSlotsAvailable);
+        const { data: pendingVoiceSteps } = await supabaseAdmin
+            .from('automation_run_steps')
+            .select('*, run:automation_runs(id, user_id)')
+            .eq('step_type', 'generate_voice')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true })
+            .limit(voiceSlotsAvailable);
         if (pendingVoiceSteps) for (const step of pendingVoiceSteps) {
-            await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
-            supabaseAdmin.functions.invoke('automation-worker-voice', { body: { stepId: step.id, userId: step.run.user_id } }).catch(err => console.error(`Error invoking automation-worker-voice for step ${step.id}:`, err));
+            try {
+                await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
+                const { error } = await supabaseAdmin.functions.invoke('automation-worker-voice', { body: { stepId: step.id, userId: step.run.user_id } });
+                if (error) throw error;
+            } catch (err) {
+                console.error(`Caught error during invocation of automation-worker-voice for step ${step.id}:`, err.message);
+                await handleStepFailure(supabaseAdmin, step, err.message);
+            }
         }
     }
 
     const { count: activeMergeTasks } = await supabaseAdmin.from('automation_run_steps').select('*', { count: 'exact', head: true }).eq('step_type', 'merge_videos').eq('status', 'running');
     const mergeSlotsAvailable = MERGE_CONCURRENCY - (activeMergeTasks || 0);
     if (mergeSlotsAvailable > 0) {
-        const { data: pendingMergeSteps } = await supabaseAdmin.from('automation_run_steps').select('id, run:automation_runs(user_id)').eq('step_type', 'merge_videos').eq('status', 'pending').order('created_at', { ascending: true }).limit(mergeSlotsAvailable);
+        const { data: pendingMergeSteps } = await supabaseAdmin
+            .from('automation_run_steps')
+            .select('*, run:automation_runs(id, user_id)')
+            .eq('step_type', 'merge_videos')
+            .eq('status', 'pending')
+            .order('created_at', { ascending: true })
+            .limit(mergeSlotsAvailable);
         if (pendingMergeSteps) for (const step of pendingMergeSteps) {
-            await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
-            supabaseAdmin.functions.invoke('automation-worker-rendi', { body: { stepId: step.id, userId: step.run.user_id } }).catch(err => console.error(`Error invoking automation-worker-rendi for step ${step.id}:`, err));
+            try {
+                await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
+                const { error } = await supabaseAdmin.functions.invoke('automation-worker-rendi', { body: { stepId: step.id, userId: step.run.user_id } });
+                if (error) throw error;
+            } catch (err) {
+                console.error(`Caught error during invocation of automation-worker-rendi for step ${step.id}:`, err.message);
+                await handleStepFailure(supabaseAdmin, step, err.message);
+            }
         }
     }
 
