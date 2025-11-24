@@ -122,21 +122,21 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
           path: 'veo3/image_uploadv2',
-          payload: { img_url: imageUrl }
+          payload: { url: [imageUrl] }
         },
       });
 
       if (error) throw error;
       if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
       
-      const mediaId = data.mediaGenerationId;
+      // Try to get mediaId from different possible response structures
+      const mediaId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId || data.data?.mediaGenerationId;
 
       if (mediaId) {
-        const finalId = typeof mediaId === 'object' && mediaId.mediaGenerationId ? mediaId.mediaGenerationId : mediaId;
-        setImage({ id: finalId, url: URL.createObjectURL(file) });
+        setImage({ id: mediaId, url: URL.createObjectURL(file) });
         showSuccess(`Đã đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'} với VEO 3.`);
       } else {
-        throw new Error('API không trả về ID ảnh (mediaGenerationId).');
+        throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
       }
     } catch (err) {
       showError(`Lỗi tải ảnh: ${getErrorMessage(err)}`);
