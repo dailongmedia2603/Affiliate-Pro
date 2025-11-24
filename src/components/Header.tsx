@@ -34,7 +34,7 @@ const Header = ({ activeItem, setActiveItem }) => {
       <div className="flex items-center mr-[18px]">
         <img
           src={"/logo.png"}
-          className="w-28 h-28 object-contain"
+          className="w-28 h-9 object-contain"
           alt="Torse.ai logo"
         />
       </div>
