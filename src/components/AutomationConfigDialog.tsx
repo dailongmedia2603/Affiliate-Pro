@@ -110,8 +110,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
     setConfig(prev => {
       const newConfig = { ...prev, [useField]: checked };
       if (!checked) {
-        newConfig[idField] = null;
-        // When turning off, keep the text but make it editable
+        (newConfig as Record<string, any>)[idField] = null;
       }
       return newConfig;
     });
@@ -229,7 +228,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
         <div className="space-y-2">
           <Label>Chọn Prompt từ thư viện</Label>
           <Select
-            value={config[idField] || undefined}
+            value={config[idField] as string || undefined}
             onValueChange={(value) => handlePromptSelect(idField, templateField, value, promptList)}
           >
             <SelectTrigger>
