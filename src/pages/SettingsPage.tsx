@@ -336,11 +336,11 @@ const SettingsPage = () => {
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.success) {
+      if (data.access_token) {
         setVeo3ConnectionStatus('success');
         showSuccess('Kết nối API Veo3 thành công!');
       } else {
-        throw new Error('Kiểm tra kết nối thất bại: ' + (data.message || 'Không rõ lỗi.'));
+        throw new Error('Kiểm tra kết nối thất bại: ' + (data.message || 'Phản hồi không chứa access_token.'));
       }
     } catch (error) {
       setVeo3ConnectionStatus('error');
