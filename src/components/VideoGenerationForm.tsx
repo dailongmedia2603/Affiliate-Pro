@@ -109,7 +109,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
 
       const options = {
         sora: { duration, width: 1024, height: 576, resolution: "1080p", aspect_ratio: "16:9" },
-        kling: { duration, width: 1024, height: 576, resolution: "1080p", aspect_ratio: "16:9" },
+        kling: { duration, width: 576, height: 1024, resolution: "1080p", aspect_ratio: "9:16" },
         higg_life: { width: 1024, height: 576, steps: 30, frames: 81 },
         wan2: { type: wan2Type },
       };

@@ -340,7 +340,7 @@ serve(async (req) => {
         const { data: configData } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
         const duration = configData?.config_data?.videoDuration || 5;
         await supabaseAdmin.from('automation_run_steps').update({ status: 'running' }).eq('id', step.id);
-        supabaseAdmin.functions.invoke('automation-worker-video', { body: { stepId: step.id, userId: step.run.user_id, model: 'kling', prompt: step.input_data.prompt, imageUrl: step.input_data.imageUrl, options: { duration, width: 1024, height: 576, resolution: "1080p" } } }).catch(err => console.error(`Error invoking automation-worker-video for step ${step.id}:`, err));
+        supabaseAdmin.functions.invoke('automation-worker-video', { body: { stepId: step.id, userId: step.run.user_id, model: 'kling', prompt: step.input_data.prompt, imageUrl: step.input_data.imageUrl, options: { duration, width: 576, height: 1024, resolution: "1080p" } } }).catch(err => console.error(`Error invoking automation-worker-video for step ${step.id}:`, err));
       }
     }
 
