@@ -33,7 +33,7 @@ const Header = ({ activeItem, setActiveItem }) => {
     <header className="flex items-center self-stretch bg-white py-[13px] px-4">
       <div className="flex items-center mr-[18px]">
         <img
-          src={"/logo.svg"}
+          src={"/logo.png"}
           className="w-9 h-9 object-fill"
           alt="Torse.ai logo"
         />
