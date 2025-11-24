@@ -102,23 +102,25 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
   };
 
   const handleUseLibraryToggle = (
-    useField: keyof Config,
-    idField: keyof Config,
+    useField: 'useLibraryPromptForImage' | 'useLibraryPromptForVideo' | 'useLibraryPromptForVoice',
+    idField: 'imagePromptId' | 'videoPromptId' | 'voicePromptId',
     templateField: keyof Config,
     checked: boolean
   ) => {
     setConfig(prev => {
-      const newConfig = { ...prev, [useField]: checked };
+      const updatedFields: Partial<Config> = {
+        [useField]: checked,
+      };
       if (!checked) {
-        (newConfig as Record<string, any>)[idField] = null;
+        updatedFields[idField] = null;
       }
-      return newConfig;
+      return { ...prev, ...updatedFields };
     });
   };
 
   const handlePromptSelect = (
-    idField: keyof Config,
-    templateField: keyof Config,
+    idField: 'imagePromptId' | 'videoPromptId' | 'voicePromptId',
+    templateField: 'imagePromptGenerationTemplate' | 'videoPromptGenerationTemplate' | 'voiceScriptTemplate',
     promptId: string,
     promptList: Prompt[]
   ) => {
@@ -209,9 +211,9 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
 
   const renderPromptSection = (
     title: string,
-    useLibraryField: keyof Config,
-    idField: keyof Config,
-    templateField: keyof Config,
+    useLibraryField: 'useLibraryPromptForImage' | 'useLibraryPromptForVideo' | 'useLibraryPromptForVoice',
+    idField: 'imagePromptId' | 'videoPromptId' | 'voicePromptId',
+    templateField: 'imagePromptGenerationTemplate' | 'videoPromptGenerationTemplate' | 'voiceScriptTemplate',
     promptList: Prompt[],
     variables: string[]
   ) => (
@@ -228,7 +230,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
         <div className="space-y-2">
           <Label>Chọn Prompt từ thư viện</Label>
           <Select
-            value={config[idField] as string || undefined}
+            value={config[idField] || undefined}
             onValueChange={(value) => handlePromptSelect(idField, templateField, value, promptList)}
           >
             <SelectTrigger>
@@ -251,7 +253,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
         </div>
         <Textarea
           id={templateField}
-          value={config[templateField] as string}
+          value={config[templateField]}
           onChange={(e) => handleConfigChange(templateField, e.target.value)}
           className="min-h-[150px] font-mono text-sm"
           readOnly={!!config[useLibraryField]}
