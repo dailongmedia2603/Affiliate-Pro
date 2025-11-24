@@ -87,7 +87,7 @@ serve(async (req) => {
         audioInput = '-i {{in_audio}}';
         mapCommand += ' -map 1:a:0';
       }
-      ffmpeg_command = `${inputFlags} ${audioInput} ${mapCommand} -c:v copy -c:a aac -shortest {{out_final}}`;
+      ffmpeg_command = `${inputFlags} ${audioInput} ${mapCommand} -c:v copy -c:a aac {{out_final}}`;
       await logToDb(supabaseAdmin, runId, 'Chỉ có 1 video, sao chép video và chèn audio (nếu có).', 'INFO', stepId);
     } else {
       const videoDuration = config.videoDuration || 5;
@@ -120,7 +120,7 @@ serve(async (req) => {
         mapCommand += ` -map ${video_urls.length}:a:0`;
       }
 
-      ffmpeg_command = `${inputFlags} ${audioInput} -filter_complex ${filterComplex} ${mapCommand} -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest {{out_final}}`;
+      ffmpeg_command = `${inputFlags} ${audioInput} -filter_complex ${filterComplex} ${mapCommand} -c:v libx264 -pix_fmt yuv420p -c:a aac {{out_final}}`;
       await logToDb(supabaseAdmin, runId, `Đã xây dựng lệnh FFMPEG để ghép ${video_urls.length} video và chèn audio (nếu có).`, 'INFO', stepId);
     }
 
