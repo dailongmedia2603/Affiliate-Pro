@@ -47,7 +47,6 @@ const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading
 const getErrorMessage = (error: any): string => {
   if (!error) return 'Đã xảy ra lỗi không xác định.';
   
-  // Handle Supabase Function Error object
   if (error.context && typeof error.context.body === 'string') {
       try {
           const body = JSON.parse(error.context.body);
@@ -58,17 +57,17 @@ const getErrorMessage = (error: any): string => {
               return body.error;
           }
       } catch (e) {
-          return error.context.body; // Fallback to raw body text if not JSON
+          return error.context.body;
       }
   }
 
-  // Handle standard Error object
   if (error.message) {
-      return error.message;
+    return typeof error.message === 'string' ? error.message : JSON.stringify(error.message);
   }
 
-  // Fallback for other types
-  return String(error);
+  if (typeof error === 'string') return error;
+
+  return JSON.stringify(error);
 };
 
 
