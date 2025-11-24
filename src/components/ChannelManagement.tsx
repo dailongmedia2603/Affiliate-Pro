@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Search, Loader2, PlusCircle } from 'lucide-react';
 import ChannelCard from './ChannelCard';
 import { supabase } from '@/integrations/supabase/client';
-import { showError, showSuccess } from '@/utils/toast';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AddChannelDialog from './AddChannelDialog';
 import ChannelDetailPage from '@/pages/ChannelDetailPage';
@@ -99,15 +99,26 @@ const ChannelManagement = ({ onNavigate }) => {
 
   const handleDeleteConfirm = async () => {
     if (!channelToDelete) return;
-    const { error } = await supabase.from('channels').delete().eq('id', channelToDelete.id);
-    if (error) {
-      showError('Xóa kênh thất bại: ' + error.message);
-    } else {
-      showSuccess('Kênh đã được xóa.');
-      fetchData();
+    const loadingToast = showLoading('Đang xoá kênh và tất cả dữ liệu liên quan...');
+    
+    try {
+      const { error } = await supabase.functions.invoke('delete-channel', {
+        body: { channelId: channelToDelete.id },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      showSuccess('Đã xoá kênh thành công.');
+      fetchData(); // Refresh the list
+    } catch (error) {
+      showError(`Xoá thất bại: ${error.message}`);
+    } finally {
+      dismissToast(loadingToast);
+      setIsAlertOpen(false);
+      setChannelToDelete(null);
     }
-    setIsAlertOpen(false);
-    setChannelToDelete(null);
   };
 
   const handleSaveChannel = async (channelData: { name: string; product_id: string | null; link: string; id?: string }) => {
@@ -261,7 +272,7 @@ const ChannelManagement = ({ onNavigate }) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
             <AlertDialogDescription>
-              Hành động này không thể được hoàn tác. Kênh "{channelToDelete?.name}" sẽ bị xóa vĩnh viễn.
+              Hành động này không thể được hoàn tác. Kênh "{channelToDelete?.name}" và tất cả dữ liệu liên quan (automation, video, ảnh...) sẽ bị xóa vĩnh viễn.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
