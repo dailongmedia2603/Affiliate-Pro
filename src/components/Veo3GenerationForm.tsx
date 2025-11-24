@@ -158,14 +158,14 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       const payload = {
         prompt,
         project_id: projectId,
-        bath: batchSize,
+        batch: batchSize,
         aspect_ratio: aspectRatio,
-        startImage: startImage?.id || null,
-        endImage: endImage?.id || null,
+        start_image: startImage?.id || null,
+        end_image: endImage?.id || null,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-        body: { path: 'veo3/genarate', payload },
+        body: { path: 'veo3/generate', payload },
       });
 
       if (error) throw error;
@@ -233,7 +233,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <Label htmlFor="batch-size">Số lượng video (Bath)</Label>
+            <Label htmlFor="batch-size">Số lượng video (Batch)</Label>
             <Input id="batch-size" type="number" min="1" value={batchSize} onChange={(e) => setBatchSize(Number(e.target.value))} />
           </div>
           <div className="space-y-2">
