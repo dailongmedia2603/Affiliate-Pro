@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Wand2, Loader2, Upload, Info, X, Plus } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -17,31 +18,6 @@ const fileToBase64 = (file: File): Promise<string> => {
     reader.onload = () => resolve((reader.result as string).split(',')[1]);
     reader.onerror = error => reject(error);
   });
-};
-
-const uploadToStorage = async (file: File): Promise<string> => {
-    const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-    const fileData = await fileToBase64(file);
-
-    const { data, error } = await supabase.functions.invoke('upload-image-to-r2', {
-      body: {
-        fileName,
-        fileType: file.type,
-        fileData,
-      },
-    });
-
-    if (error) {
-      throw new Error(`Lỗi gọi function upload-image-to-r2: ${error.message}`);
-    }
-    if (data.error) {
-      throw new Error(`Lỗi từ function upload-image-to-r2: ${data.error}`);
-    }
-    if (!data.url) {
-      throw new Error('Function upload-image-to-r2 không trả về URL.');
-    }
-
-    return data.url;
 };
 
 const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
@@ -126,7 +102,7 @@ const VideoGenerationForm = ({ model, onTaskCreated, channelId }) => {
           options: options.sora,
         };
       } else {
-        const imageUrls = await Promise.all(imageFiles.map(file => uploadToStorage(file)));
+        const imageUrls = await Promise.all(imageFiles.map(file => uploadToR2(file)));
         functionName = 'higgsfield-python-proxy';
         functionPayload = {
           action: 'generate_video',
