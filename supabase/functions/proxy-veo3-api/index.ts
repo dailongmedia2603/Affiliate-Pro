@@ -114,6 +114,13 @@ serve(async (req) => {
         const token = await getVeo3Token(veo3_cookie);
         const finalPayload = { token, ...payload };
 
+        // Handle parameter name mismatch for image upload
+        if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
+            console.log('[proxy-veo3-api] INFO: Renaming "img_url" to "url" for compatibility.');
+            finalPayload.url = finalPayload.img_url;
+            delete finalPayload.img_url;
+        }
+
         const response = await fetch(targetUrl, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
