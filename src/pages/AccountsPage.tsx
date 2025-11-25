@@ -2,9 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, PlusCircle, Users, Trash2 } from 'lucide-react';
+import { Loader2, PlusCircle, Users, Trash2, Edit } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import AddAccountDialog from '@/components/AddAccountDialog';
+import EditAccountDialog from '@/components/EditAccountDialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,7 +31,9 @@ const AccountsPage = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [userToEdit, setUserToEdit] = useState<AppUser | null>(null);
   const [userToDelete, setUserToDelete] = useState<AppUser | null>(null);
 
   const fetchUsers = useCallback(async () => {
@@ -65,10 +68,30 @@ const AccountsPage = () => {
       if (data.error) throw new Error(data.error);
       showSuccess('Đã tạo tài khoản thành công!');
       fetchUsers();
-      setIsDialogOpen(false);
+      setIsAddDialogOpen(false);
     } catch (err) {
       showError(`Tạo tài khoản thất bại: ${err.message}`);
     }
+  };
+
+  const handleUpdate = async (userData: { userId: string; name: string }) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('update-user', {
+        body: userData,
+      });
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+      showSuccess('Đã cập nhật tài khoản thành công!');
+      fetchUsers();
+      setIsEditDialogOpen(false);
+    } catch (err) {
+      showError(`Cập nhật tài khoản thất bại: ${err.message}`);
+    }
+  };
+
+  const handleEditRequest = (user: AppUser) => {
+    setUserToEdit(user);
+    setIsEditDialogOpen(true);
   };
 
   const handleDeleteRequest = (user: AppUser) => {
@@ -100,7 +123,7 @@ const AccountsPage = () => {
             <Users className="w-7 h-7 text-orange-500" />
             <h1 className="text-2xl font-bold text-gray-800">Quản lý Tài khoản</h1>
           </div>
-          <Button onClick={() => setIsDialogOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white">
+          <Button onClick={() => setIsAddDialogOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white">
             <PlusCircle className="w-4 h-4 mr-2" />
             Thêm tài khoản
           </Button>
@@ -129,6 +152,9 @@ const AccountsPage = () => {
                     <TableCell>{user.email}</TableCell>
                     <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditRequest(user)}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
                       <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(user)} disabled={user.id === currentUser?.id}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -147,11 +173,17 @@ const AccountsPage = () => {
         </div>
       </div>
       <AddAccountDialog
-        isOpen={isDialogOpen}
-        onClose={() => setIsDialogOpen(false)}
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
         onSave={handleSave}
       />
-      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+      <EditAccountDialog
+        isOpen={isEditDialogOpen}
+        onClose={() => setIsEditDialogOpen(false)}
+        onSave={handleUpdate}
+        user={userToEdit}
+      />
+      <AlertDialog open={!!userToDelete} onOpenChange={(isOpen) => { if (!isOpen) setUserToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Bạn có chắc chắn muốn xóa?</AlertDialogTitle>
