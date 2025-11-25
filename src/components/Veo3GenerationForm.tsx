@@ -133,8 +133,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        start_image: startImageId,
-        end_image: endImageId,
+        startImage: startImageId,
+        endImage: endImageId,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
