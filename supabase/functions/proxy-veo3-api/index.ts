@@ -105,35 +105,42 @@ serve(async (req) => {
 
     const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
     
-    let responseData;
+    let finalPayload;
+    const cookieEndpoints = ['veo3/re_promt'];
 
-    if (path === 'veo3/get_token') {
-        const token = await getVeo3Token(veo3_cookie);
-        responseData = { access_token: token, success: true };
+    if (cookieEndpoints.includes(path)) {
+        console.log(`[proxy-veo3-api] INFO: Path '${path}' uses cookie directly.`);
+        finalPayload = {
+            cookie: veo3_cookie,
+            ...payload
+        };
     } else {
+        console.log(`[proxy-veo3-api] INFO: Path '${path}' requires a token. Fetching token...`);
         const token = await getVeo3Token(veo3_cookie);
-        // The payload for other endpoints should ONLY contain the token and other params, NOT the cookie.
-        const finalPayload = { token, ...payload };
-
-        // Handle parameter name mismatch for image upload
-        if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
-            console.log('[proxy-veo3-api] INFO: Renaming "img_url" to "url" for compatibility.');
-            finalPayload.url = finalPayload.img_url;
-            delete finalPayload.img_url;
-        }
-
-        const response = await fetch(targetUrl, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(finalPayload),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Lỗi từ API Veo3 (${response.status}): ${errorText}`);
-        }
-        responseData = await response.json();
+        finalPayload = {
+            token: token,
+            ...payload
+        };
     }
+
+    // Handle parameter name mismatch for image upload
+    if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
+        console.log('[proxy-veo3-api] INFO: Renaming "img_url" to "url" for compatibility.');
+        finalPayload.url = finalPayload.img_url;
+        delete finalPayload.img_url;
+    }
+
+    const response = await fetch(targetUrl, {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalPayload),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Lỗi từ API Veo3 (${response.status}): ${errorText}`);
+    }
+    const responseData = await response.json();
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
