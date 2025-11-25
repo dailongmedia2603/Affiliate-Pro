@@ -36,18 +36,18 @@ const AddAccountDialog = ({ isOpen, onClose, onSave }) => {
               Điền thông tin để tạo một tài khoản người dùng mới.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">Tên</Label>
-              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} className="col-span-3" required />
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Tên</Label>
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="email" className="text-right">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="col-span-3" required />
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="password" className="text-right">Mật khẩu</Label>
-              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="col-span-3" required />
+            <div className="space-y-2">
+              <Label htmlFor="password">Mật khẩu</Label>
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
           </div>
           <DialogFooter>
