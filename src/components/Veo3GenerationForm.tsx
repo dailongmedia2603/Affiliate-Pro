@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Upload, Sparkles, X, ImagePlus } from 'lucide-react';
-import { showError, showSuccess } from '@/utils/toast';
+import { showError, showSuccess, showLoading, updateLoading } from '@/utils/toast';
 import { uploadToR2 } from '@/utils/r2-upload';
 
 const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading }) => {
@@ -112,13 +112,18 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     const setImage = type === 'start' ? setStartImage : setEndImage;
     
     setIsUploading(true);
+    const toastId = showLoading(`Bắt đầu tải lên ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'}...`);
+    
     try {
+      updateLoading(toastId, 'Bước 1/3: Đang tải ảnh lên R2...');
       const imageUrl = await uploadToR2(file);
       if (!imageUrl) {
         throw new Error('Tải ảnh lên R2 thất bại, không nhận được URL.');
       }
-      showSuccess('Đã tải ảnh lên R2, đang đăng ký với VEO 3...');
-
+      
+      console.log(`[VEO3 Upload] R2 URL: ${imageUrl}`);
+      updateLoading(toastId, `Bước 2/3: Đang đăng ký với VEO 3...`);
+      
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
         body: { 
           path: 'veo3/image_uploadv2',
@@ -133,12 +138,12 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
 
       if (mediaId) {
         setImage({ id: mediaId, url: URL.createObjectURL(file) });
-        showSuccess(`Đã đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'} với VEO 3.`);
+        showSuccess(`Bước 3/3: Đăng ký ảnh thành công!`, toastId);
       } else {
         throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
       }
     } catch (err) {
-      showError(`Lỗi tải ảnh: ${getErrorMessage(err)}`);
+      showError(`Lỗi tải ảnh: ${getErrorMessage(err)}`, toastId);
     } finally {
       setIsUploading(false);
     }
