@@ -24,23 +24,48 @@ async function getUserSettings(supabaseAdmin, userId) {
   return settings;
 }
 
-// Helper to get Veo3 token
+// Helper to get Veo3 token, with refresh logic
 async function getVeo3Token(cookie) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
-  const response = await fetch(url, {
+  
+  // First attempt
+  let response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cookie }),
   });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to get Veo3 token: ${errorText}`);
+
+  let responseText = await response.text();
+  let responseData;
+  try { responseData = JSON.parse(responseText); } catch (e) { /* ignore */ }
+
+  // Check if refresh is needed and retry
+  if (!response.ok && responseData && responseData.error === 'ACCESS_TOKEN_REFRESH_NEEDED') {
+    console.log('[proxy-veo3-api] INFO: Access token refresh needed. Retrying get_token with refresh flag.');
+    
+    response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cookie, refresh: true }),
+    });
+    responseText = await response.text();
   }
-  const data = await response.json();
-  if (!data.access_token) {
+
+  if (!response.ok) {
+    throw new Error(`Failed to get Veo3 token: ${responseText}`);
+  }
+
+  try {
+    responseData = JSON.parse(responseText);
+  } catch (e) {
+    throw new Error(`Invalid JSON response from Veo3 get_token: ${responseText}`);
+  }
+
+  if (!responseData.access_token) {
     throw new Error("Veo3 get_token response did not include access_token.");
   }
-  return data.access_token;
+  
+  return responseData.access_token;
 }
 
 
@@ -69,48 +94,36 @@ serve(async (req) => {
     const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
 
     // --- Path Correction ---
-    // The client might send an old/incorrect path. We correct it here.
     let correctedPath = path;
     if (path === 'veo3/generate') {
       correctedPath = 'video/veo3';
       console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
     }
-    // --- End Path Correction ---
-
-    // Construct the target URL safely using the hardcoded base URL
     const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
-    console.log(`[proxy-veo3-api] INFO: Proxying request to ${targetUrl}`);
 
-    let finalPayload;
+    let responseData;
 
-    // For most endpoints, we need to get a token first and include it.
-    // The get_token endpoint is an exception.
     if (path === 'veo3/get_token') {
-        finalPayload = {
-            cookie: veo3_cookie,
-            ...payload
-        };
-    } else {
+        // For connection test, we just need to successfully get a token.
         const token = await getVeo3Token(veo3_cookie);
-        finalPayload = {
-            token: token,
-            ...payload
-        };
+        responseData = { access_token: token, success: true };
+    } else {
+        // For other endpoints, get token and then call the endpoint
+        const token = await getVeo3Token(veo3_cookie);
+        const finalPayload = { token, ...payload };
+
+        const response = await fetch(targetUrl, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finalPayload),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Lỗi từ API Veo3 (${response.status}): ${errorText}`);
+        }
+        responseData = await response.json();
     }
-
-    const response = await fetch(targetUrl, {
-      method: method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(finalPayload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[proxy-veo3-api] ERROR: External API returned non-OK status. Status: ${response.status}, Body: ${errorText}`);
-      throw new Error(`Lỗi từ API Veo3 (${response.status}): ${errorText}`);
-    }
-
-    const responseData = await response.json();
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
