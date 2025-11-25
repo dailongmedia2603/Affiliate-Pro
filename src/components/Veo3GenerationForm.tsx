@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Wand2, Loader2, Upload, Sparkles, X, ImagePlus } from 'lucide-react';
+import { Wand2, Loader2, Upload, Sparkles, X, ImagePlus, FileText } from 'lucide-react';
 import { showError, showSuccess, showLoading, updateLoading } from '@/utils/toast';
 import { uploadToR2 } from '@/utils/r2-upload';
 
@@ -14,6 +14,13 @@ const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) onImageChange(file);
+  };
+
+  const handleLogUrl = () => {
+    if (image?.r2Url) {
+      console.log(`[VEO3 Image URL] ${label}: ${image.r2Url}`);
+      showSuccess('Đã ghi URL ảnh ra console (F12).');
+    }
   };
 
   return (
@@ -25,12 +32,21 @@ const ImageUploader = ({ label, image, onImageChange, onImageRemove, isUploading
         ) : image ? (
           <div className="relative group w-full h-full">
             <img src={image.url} alt="Preview" className="w-full h-full object-contain rounded-md" />
-            <Button
-              variant="destructive" size="icon" onClick={onImageRemove}
-              className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="absolute top-1 right-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                variant="secondary" size="icon" onClick={handleLogUrl}
+                className="w-6 h-6 bg-black/50 hover:bg-black/70 text-white"
+                title="Log R2 URL"
+              >
+                <FileText className="w-3 h-3" />
+              </Button>
+              <Button
+                variant="destructive" size="icon" onClick={onImageRemove}
+                className="w-6 h-6"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         ) : (
           <label htmlFor={`upload-${label}`} className="text-center text-gray-500 cursor-pointer">
@@ -74,8 +90,8 @@ const getErrorMessage = (error: any): string => {
 const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [projectId, setProjectId] = useState('50c7f7bf-4799-4cd3-83ff-742090513f21');
   const [prompt, setPrompt] = useState('a beautiful girl in a beautiful dress');
-  const [startImage, setStartImage] = useState<{ id: string, url: string } | null>(null);
-  const [endImage, setEndImage] = useState<{ id: string, url: string } | null>(null);
+  const [startImage, setStartImage] = useState<{ id: string, url: string, r2Url: string } | null>(null);
+  const [endImage, setEndImage] = useState<{ id: string, url: string, r2Url: string } | null>(null);
   const [batchSize, setBatchSize] = useState(1);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   
@@ -137,7 +153,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       const mediaId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId || data.data?.mediaGenerationId;
 
       if (mediaId) {
-        setImage({ id: mediaId, url: URL.createObjectURL(file) });
+        setImage({ id: mediaId, url: URL.createObjectURL(file), r2Url: imageUrl });
         showSuccess(`Bước 3/3: Đăng ký ảnh thành công!`, toastId);
       } else {
         throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
