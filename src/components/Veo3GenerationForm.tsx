@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Sparkles, X, ImagePlus } from 'lucide-react';
-import { showError, showSuccess } from '@/utils/toast';
+import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 
 const getErrorMessage = (error: any): string => {
   if (!error) return 'Đã xảy ra lỗi không xác định.';
@@ -41,11 +41,15 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [prompt, setPrompt] = useState('a beautiful girl in a beautiful dress');
   const [startImageUrl, setStartImageUrl] = useState('');
   const [endImageUrl, setEndImageUrl] = useState('');
+  const [startImageId, setStartImageId] = useState<string | null>(null);
+  const [endImageId, setEndImageId] = useState<string | null>(null);
   const [batchSize, setBatchSize] = useState(1);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBeautifying, setIsBeautifying] = useState(false);
+  const [isRegisteringStart, setIsRegisteringStart] = useState(false);
+  const [isRegisteringEnd, setIsRegisteringEnd] = useState(false);
 
   const handleBeautifyPrompt = async () => {
     if (!prompt) {
@@ -70,9 +74,53 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     }
   };
 
+  const handleUrlChange = async (url: string, type: 'start' | 'end') => {
+    const setImageUrl = type === 'start' ? setStartImageUrl : setEndImageUrl;
+    const setImageId = type === 'start' ? setStartImageId : setEndImageId;
+    const setIsRegistering = type === 'start' ? setIsRegisteringStart : setIsRegisteringEnd;
+
+    setImageUrl(url);
+    if (!url) {
+      setImageId(null);
+      return;
+    }
+
+    setIsRegistering(true);
+    const toastId = showLoading(`Đang đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'}...`);
+    try {
+      const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
+        body: { 
+          path: 'veo3/image_uploadv2',
+          payload: { img_url: [url] }
+        },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
+      
+      const mediaId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId || data.data?.mediaGenerationId;
+
+      if (mediaId) {
+        setImageId(mediaId);
+        showSuccess('Đăng ký ảnh thành công!', toastId);
+      } else {
+        throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
+      }
+    } catch (err) {
+      showError(`Lỗi đăng ký ảnh: ${getErrorMessage(err)}`, toastId);
+      setImageId(null);
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!projectId || !prompt) {
       showError('Vui lòng nhập Project ID và Prompt.');
+      return;
+    }
+    if ((startImageUrl && !startImageId) || (endImageUrl && !endImageId)) {
+      showError('Vui lòng chờ đăng ký ảnh hoàn tất (hoặc xóa URL ảnh) trước khi tạo video.');
       return;
     }
     setIsGenerating(true);
@@ -85,8 +133,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        start_image_url: startImageUrl || null,
-        end_image_url: endImageUrl || null,
+        start_image: startImageId,
+        end_image: endImageId,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
@@ -147,14 +195,14 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
               type="url" 
               placeholder="Dán URL ảnh vào đây..." 
               value={startImageUrl} 
-              onChange={(e) => setStartImageUrl(e.target.value)}
+              onChange={(e) => handleUrlChange(e.target.value, 'start')}
             />
             <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center">
-              {startImageUrl ? (
+              {isRegisteringStart ? <Loader2 className="w-8 h-8 animate-spin text-orange-500" /> : startImageUrl ? (
                 <div className="relative group w-full h-full">
                   <img src={startImageUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
                   <Button
-                    variant="destructive" size="icon" onClick={() => setStartImageUrl('')}
+                    variant="destructive" size="icon" onClick={() => handleUrlChange('', 'start')}
                     className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-4 h-4" />
@@ -174,14 +222,14 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
               type="url" 
               placeholder="Dán URL ảnh vào đây..." 
               value={endImageUrl} 
-              onChange={(e) => setEndImageUrl(e.target.value)}
+              onChange={(e) => handleUrlChange(e.target.value, 'end')}
             />
             <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center">
-              {endImageUrl ? (
+              {isRegisteringEnd ? <Loader2 className="w-8 h-8 animate-spin text-orange-500" /> : endImageUrl ? (
                 <div className="relative group w-full h-full">
                   <img src={endImageUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
                   <Button
-                    variant="destructive" size="icon" onClick={() => setEndImageUrl('')}
+                    variant="destructive" size="icon" onClick={() => handleUrlChange('', 'end')}
                     className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-4 h-4" />
@@ -214,7 +262,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
             </Select>
           </div>
         </div>
-        <Button onClick={handleSubmit} disabled={isGenerating} size="lg" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
+        <Button onClick={handleSubmit} disabled={isGenerating || isRegisteringStart || isRegisteringEnd} size="lg" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
           {isGenerating ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Wand2 className="mr-2 h-5 w-5" />}
           Tạo Video
         </Button>

@@ -97,18 +97,20 @@ serve(async (req) => {
     let correctedPath = path;
     if (path === 'veo3/generate') {
       correctedPath = 'video/veo3';
-      console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
+    } else if (path === 'veo3/image_uploadv2') {
+      correctedPath = 'img/uploadmediav2';
     }
-    const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
+    console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
+    // --- End Path Correction ---
 
+    const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
+    
     let responseData;
 
     if (path === 'veo3/get_token') {
-        // For connection test, we just need to successfully get a token.
         const token = await getVeo3Token(veo3_cookie);
         responseData = { access_token: token, success: true };
     } else {
-        // For other endpoints, get token and then call the endpoint
         const token = await getVeo3Token(veo3_cookie);
         const finalPayload = { token, ...payload };
 
