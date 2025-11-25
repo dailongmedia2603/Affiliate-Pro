@@ -3,17 +3,37 @@ import { supabase } from '@/integrations/supabase/client';
 export const uploadToR2 = async (file: File): Promise<string> => {
   const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
 
-  const { data, error } = await supabase.functions.invoke('r2-upload-proxy', {
+  // 1. Get presigned URL from our backend (Supabase Function)
+  const { data: presignData, error: presignError } = await supabase.functions.invoke('r2-generate-presigned-url', {
+    body: {
+      fileName,
+      fileType: file.type,
+    },
+  });
+
+  if (presignError || presignData.error) {
+    throw new Error(presignError?.message || presignData.error);
+  }
+
+  const { presignedUrl, finalUrl } = presignData;
+
+  console.log(`[uploadToR2] Got presigned URL. Uploading to: ${presignedUrl}`);
+  console.log(`[uploadToR2] Final public URL will be: ${finalUrl}`);
+
+  // 2. Upload the file directly to R2 using the presigned URL
+  const uploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
     headers: {
-      'x-file-name': fileName,
-      'x-file-type': file.type,
+      'Content-Type': file.type,
     },
     body: file,
   });
 
-  if (error || data.error) {
-    throw new Error(error?.message || data.error);
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    throw new Error(`Lỗi tải tệp lên R2: ${errorText}`);
   }
 
-  return data.finalUrl;
+  // 3. Return the final public URL
+  return finalUrl;
 };

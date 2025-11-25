@@ -4,7 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = { 
   "Access-Control-Allow-Origin": "*", 
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-file-name, x-file-type"
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 };
 
 // --- R2 Signature Helpers ---
@@ -27,11 +27,9 @@ serve(async (req) => {
   }
 
   try {
-    // 1. Get file info from headers and auth user
-    const fileName = req.headers.get('x-file-name');
-    const fileType = req.headers.get('x-file-type');
+    const { fileName, fileType } = await req.json();
     if (!fileName || !fileType) {
-      throw new Error("x-file-name and x-file-type headers are required.");
+      throw new Error("fileName and fileType are required.");
     }
 
     const supabaseClient = createClient(
@@ -42,7 +40,6 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error(`User not authenticated: ${userError?.message}`);
 
-    // 2. Get R2 settings
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -65,7 +62,6 @@ serve(async (req) => {
       throw new Error("Cloudflare R2 credentials are not set completely for this user.");
     }
 
-    // 3. Generate presigned URL
     const host = `${bucketName}.${accountId}.r2.cloudflarestorage.com`;
     const region = "auto";
     const service = "s3";
@@ -87,24 +83,12 @@ serve(async (req) => {
     const signature = toHex(await hmacSha256(signingKey, stringToSign));
     const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
 
-    // 4. Stream the request body to the presigned URL
-    const uploadResponse = await fetch(presignedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': fileType },
-      body: req.body,
-    });
-
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Lỗi tải tệp lên R2: ${errorText}`);
-    }
-
-    // 5. Return the public URL
     const finalUrl = `${publicUrl}/${fileName}`;
-    return new Response(JSON.stringify({ finalUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    return new Response(JSON.stringify({ presignedUrl, finalUrl }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   } catch (error) {
-    console.error("[r2-upload-proxy] CATCH BLOCK ERROR:", error.message);
+    console.error("[r2-generate-presigned-url] CATCH BLOCK ERROR:", error.message);
     return new Response(JSON.stringify({ error: error.message }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 });
   }
 });
