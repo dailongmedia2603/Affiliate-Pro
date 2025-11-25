@@ -68,8 +68,17 @@ serve(async (req) => {
 
     const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
 
+    // --- Path Correction ---
+    // The client might send an old/incorrect path. We correct it here.
+    let correctedPath = path;
+    if (path === 'veo3/generate') {
+      correctedPath = 'video/veo3';
+      console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
+    }
+    // --- End Path Correction ---
+
     // Construct the target URL safely using the hardcoded base URL
-    const targetUrl = new URL(path, API_BASE_URL).toString();
+    const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
     console.log(`[proxy-veo3-api] INFO: Proxying request to ${targetUrl}`);
 
     let finalPayload;
