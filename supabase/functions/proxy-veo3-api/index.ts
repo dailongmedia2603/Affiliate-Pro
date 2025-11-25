@@ -9,26 +9,23 @@ const corsHeaders = {
 
 const API_BASE_URL = 'https://api.beautyapp.work';
 
-// Helper to get user settings
-async function getUserSettings(supabaseAdmin, userId) {
+async function getGlobalSettings(supabaseAdmin) {
   const { data: settings, error } = await supabaseAdmin
-    .from('user_settings')
+    .from('app_settings')
     .select('veo3_cookie')
-    .eq('id', userId)
+    .limit(1)
     .single();
   
-  if (error) throw new Error(`Could not retrieve Veo3 settings for user: ${error.message}`);
+  if (error) throw new Error(`Could not retrieve Veo3 settings from global settings: ${error.message}`);
   if (!settings?.veo3_cookie) {
-    throw new Error("Veo3 Cookie is not set in settings.");
+    throw new Error("Veo3 Cookie is not set in global settings.");
   }
   return settings;
 }
 
-// Helper to get Veo3 token, with refresh logic
 async function getVeo3Token(cookie) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
   
-  // First attempt
   let response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -39,7 +36,6 @@ async function getVeo3Token(cookie) {
   let responseData;
   try { responseData = JSON.parse(responseText); } catch (e) { /* ignore */ }
 
-  // Check if refresh is needed and retry
   if (!response.ok && responseData && responseData.error === 'ACCESS_TOKEN_REFRESH_NEEDED') {
     console.log('[proxy-veo3-api] INFO: Access token refresh needed. Retrying get_token with refresh flag.');
     
@@ -78,22 +74,13 @@ serve(async (req) => {
     const { path, payload, method = 'POST' } = await req.json();
     if (!path) throw new Error("Path is required.");
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
-
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
+    const { veo3_cookie } = await getGlobalSettings(supabaseAdmin);
 
-    // --- Path Correction ---
     let correctedPath = path;
     if (path === 'veo3/generate') {
       correctedPath = 'video/veo3';
@@ -101,7 +88,6 @@ serve(async (req) => {
       correctedPath = 'img/uploadmediav2';
     }
     console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
-    // --- End Path Correction ---
 
     const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
     
@@ -123,7 +109,6 @@ serve(async (req) => {
         };
     }
 
-    // Handle parameter name mismatch for image upload
     if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
         console.log('[proxy-veo3-api] INFO: Renaming "img_url" to "url" for compatibility.');
         finalPayload.url = finalPayload.img_url;

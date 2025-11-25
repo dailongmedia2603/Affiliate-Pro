@@ -32,27 +32,19 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error(userError?.message || "Không thể xác thực người dùng.");
-    
     const supabaseAdmin = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { data: settings, error: settingsError } = await supabaseAdmin
-      .from('user_settings')
+      .from('app_settings')
       .select('higgsfield_cookie, higgsfield_clerk_context')
-      .eq('id', user.id)
+      .limit(1)
       .single();
 
     if (settingsError || !settings || !settings.higgsfield_cookie || !settings.higgsfield_clerk_context) {
-      throw new Error(`Không tìm thấy thông tin xác thực Higgsfield cho người dùng. Vui lòng kiểm tra lại Cài đặt.`);
+      throw new Error(`Chưa cấu hình thông tin xác thực Higgsfield trong cài đặt toàn cục.`);
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     

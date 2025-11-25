@@ -67,34 +67,31 @@ const SettingsPage = () => {
 
   useEffect(() => {
     const fetchSettings = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key, veo3_cookie')
-          .eq('id', user.id)
-          .single();
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+        .limit(1)
+        .single();
 
-        if (error && error.code !== 'PGRST116') {
-          showError('Không thể tải cài đặt.');
-        }
-        if (data) {
-          setGeminiApiKey(data.gemini_api_key || '');
-          setGeminiApiUrl(data.gemini_api_url || 'https://aquarius.qcv.vn/api/chat');
-          setVoiceApiKey(data.voice_api_key || '');
-          setHiggsfieldCookie(data.higgsfield_cookie || '');
-          setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
-          setVertexAiServiceAccount(data.vertex_ai_service_account ? JSON.stringify(data.vertex_ai_service_account, null, 2) : '');
-          setCloudflareAccountId(data.cloudflare_account_id || '');
-          setCloudflareAccessKeyId(data.cloudflare_access_key_id || '');
-          setCloudflareSecretAccessKey(data.cloudflare_secret_access_key || '');
-          setCloudflareR2BucketName(data.cloudflare_r2_bucket_name || '');
-          setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
-          setRendiApiKey(data.rendi_api_key || '');
-          setVeo3Cookie(data.veo3_cookie || '');
-          if (data.voice_api_key) {
-            fetchVoiceCredits(data.voice_api_key);
-          }
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
+        showError('Không thể tải cài đặt toàn cục.');
+      }
+      if (data) {
+        setGeminiApiKey(data.gemini_api_key || '');
+        setGeminiApiUrl(data.gemini_api_url || 'https://aquarius.qcv.vn/api/chat');
+        setVoiceApiKey(data.voice_api_key || '');
+        setHiggsfieldCookie(data.higgsfield_cookie || '');
+        setHiggsfieldClerkContext(data.higgsfield_clerk_context || '');
+        setVertexAiServiceAccount(data.vertex_ai_service_account ? JSON.stringify(data.vertex_ai_service_account, null, 2) : '');
+        setCloudflareAccountId(data.cloudflare_account_id || '');
+        setCloudflareAccessKeyId(data.cloudflare_access_key_id || '');
+        setCloudflareSecretAccessKey(data.cloudflare_secret_access_key || '');
+        setCloudflareR2BucketName(data.cloudflare_r2_bucket_name || '');
+        setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
+        setRendiApiKey(data.rendi_api_key || '');
+        setVeo3Cookie(data.veo3_cookie || '');
+        if (data.voice_api_key) {
+          fetchVoiceCredits(data.voice_api_key);
         }
       }
     };
@@ -103,13 +100,7 @@ const SettingsPage = () => {
 
   const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2' | 'rendi' | 'veo3') => {
     setIsSaving(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      showError("Bạn cần đăng nhập để lưu cài đặt.");
-      setIsSaving(false);
-      return;
-    }
-
+    
     let updateData;
     switch (apiKeyType) {
       case 'gemini':
@@ -149,8 +140,9 @@ const SettingsPage = () => {
     }
 
     const { error } = await supabase
-      .from('user_settings')
-      .upsert({ id: user.id, ...updateData });
+      .from('app_settings')
+      .update({ ...updateData, updated_at: new Date().toISOString() })
+      .eq('id', true);
 
     if (error) {
       showError(`Lỗi khi lưu cài đặt: ${error.message}`);

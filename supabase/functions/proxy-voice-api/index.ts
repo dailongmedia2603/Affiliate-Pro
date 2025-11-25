@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,9 +40,26 @@ serve(async (req) => {
       body = payload.body;
     }
 
-    if (!path || !token) {
-      console.error('[proxy-voice-api] ERROR: Missing required parameters: path or token.');
-      return new Response(JSON.stringify({ error: 'Thiếu các tham số bắt buộc: path hoặc token' }), {
+    if (!token) {
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      const { data: settings, error: settingsError } = await supabaseAdmin
+        .from('app_settings')
+        .select('voice_api_key')
+        .limit(1)
+        .single();
+      
+      if (settingsError || !settings?.voice_api_key) {
+        throw new Error("Chưa cấu hình Voice API Key trong cài đặt toàn cục.");
+      }
+      token = settings.voice_api_key;
+    }
+
+    if (!path) {
+      console.error('[proxy-voice-api] ERROR: Missing required parameter: path.');
+      return new Response(JSON.stringify({ error: 'Thiếu tham số bắt buộc: path' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
@@ -55,7 +73,6 @@ serve(async (req) => {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
     };
 
-    // Luôn thêm Content-Type cho các yêu cầu không phải form-data, theo đúng tài liệu.
     if (!isFormData) {
         headers['Content-Type'] = 'application/json';
     }

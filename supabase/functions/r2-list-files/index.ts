@@ -29,26 +29,18 @@ serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
-
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     const { data: settings, error: settingsError } = await supabaseAdmin
-      .from('user_settings')
+      .from('app_settings')
       .select('cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url')
-      .eq('id', user.id)
+      .limit(1)
       .single();
 
-    if (settingsError || !settings) throw new Error("Could not retrieve R2 settings for user.");
+    if (settingsError || !settings) throw new Error("Could not retrieve R2 settings from global settings.");
 
     const {
       cloudflare_account_id: accountId,
@@ -59,7 +51,7 @@ serve(async (req) => {
     } = settings;
 
     if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
-      throw new Error("Cloudflare R2 credentials are not set completely for this user.");
+      throw new Error("Cloudflare R2 credentials are not set completely in global settings.");
     }
 
     const endpoint = `https://${bucketName}.${accountId}.r2.cloudflarestorage.com`;
