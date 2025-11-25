@@ -112,8 +112,8 @@ serve(async (req) => {
         responseData = { access_token: token, success: true };
     } else {
         const token = await getVeo3Token(veo3_cookie);
-        // The payload for other endpoints also needs the cookie, not just the token.
-        const finalPayload = { token, cookie: veo3_cookie, ...payload };
+        // The payload for other endpoints should ONLY contain the token and other params, NOT the cookie.
+        const finalPayload = { token, ...payload };
 
         // Handle parameter name mismatch for image upload
         if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
