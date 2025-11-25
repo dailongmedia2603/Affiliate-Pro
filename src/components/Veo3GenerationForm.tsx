@@ -121,7 +121,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         throw new Error('Tải ảnh lên R2 thất bại, không nhận được URL.');
       }
       
-      console.log(`[VEO3 Upload] R2 URL: ${imageUrl}`);
+      console.log(`[VEO3 Upload] URL ảnh đã tải lên: ${imageUrl}`);
       updateLoading(toastId, `Bước 2/3: Đang đăng ký với VEO 3...`);
       
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {

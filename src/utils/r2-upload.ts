@@ -1,39 +1,25 @@
 import { supabase } from '@/integrations/supabase/client';
 
 export const uploadToR2 = async (file: File): Promise<string> => {
-  const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+  const formData = new FormData();
+  formData.append('file', file);
 
-  // 1. Get presigned URL from our backend (Supabase Function)
-  const { data: presignData, error: presignError } = await supabase.functions.invoke('r2-generate-presigned-url', {
-    body: {
-      fileName,
-      fileType: file.type,
-    },
+  console.log(`[uploadToR2] Uploading '${file.name}' via proxy function...`);
+
+  const { data, error } = await supabase.functions.invoke('r2-upload-proxy', {
+    body: formData,
   });
 
-  if (presignError || presignData.error) {
-    throw new Error(presignError?.message || presignData.error);
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  if (!data.finalUrl) {
+    throw new Error("Proxy function did not return a final URL.");
   }
 
-  const { presignedUrl, finalUrl } = presignData;
-
-  console.log(`[uploadToR2] Got presigned URL. Uploading to: ${presignedUrl}`);
-  console.log(`[uploadToR2] Final public URL will be: ${finalUrl}`);
-
-  // 2. Upload the file directly to R2 using the presigned URL
-  const uploadResponse = await fetch(presignedUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': file.type,
-    },
-    body: file,
-  });
-
-  if (!uploadResponse.ok) {
-    const errorText = await uploadResponse.text();
-    throw new Error(`Lỗi tải tệp lên R2: ${errorText}`);
-  }
-
-  // 3. Return the final public URL
-  return finalUrl;
+  console.log(`[uploadToR2] Proxy upload successful. Final URL: ${data.finalUrl}`);
+  return data.finalUrl;
 };
