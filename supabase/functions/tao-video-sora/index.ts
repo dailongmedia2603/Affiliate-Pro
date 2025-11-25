@@ -34,27 +34,37 @@ serve(async (req) => {
   try {
     console.log("[tao-video-sora] Function invoked.");
 
-    // 1. Get global settings
+    // 1. Authenticate user
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    );
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) throw new Error(userError?.message || "Không thể xác thực người dùng.");
+    console.log("[tao-video-sora] User authenticated:", user.id);
+    
+    // 2. Get user settings
     const supabaseAdmin = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     const { data: settings, error: settingsError } = await supabaseAdmin
-      .from('app_settings')
+      .from('user_settings')
       .select('higgsfield_cookie, higgsfield_clerk_context')
-      .limit(1)
+      .eq('id', user.id)
       .single();
     if (settingsError || !settings || !settings.higgsfield_cookie || !settings.higgsfield_clerk_context) {
-      throw new Error(`Chưa cấu hình thông tin xác thực Higgsfield trong cài đặt toàn cục.`);
+      throw new Error(`Không tìm thấy thông tin xác thực Higgsfield cho người dùng. Vui lòng kiểm tra lại Cài đặt.`);
     }
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
-    console.log("[tao-video-sora] Global settings retrieved.");
+    console.log("[tao-video-sora] Settings retrieved.");
     
-    // 2. Get Higgsfield token
+    // 3. Get Higgsfield token
     const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
     console.log("[tao-video-sora] Higgsfield token retrieved.");
 
-    // 3. Process payload
+    // 4. Process payload
     const { prompt, imageBases64, options } = await req.json();
     console.log("[tao-video-sora] Payload processed. Prompt length:", prompt?.length, "Image count:", imageBases64?.length || 0);
 
@@ -91,7 +101,7 @@ serve(async (req) => {
       }
     }
 
-    // 4. Call Sora API
+    // 5. Call Sora API
     const endpoint = `${API_BASE}/video/sora`;
     const apiPayload = { token, prompt, input_image, ...options };
     console.log("[tao-video-sora] Calling Sora API with payload:", { ...apiPayload, token: 'REDACTED', input_image: input_image ? `PRESENT (${input_image.length} items)` : 'ABSENT' });
@@ -119,7 +129,7 @@ serve(async (req) => {
       throw new Error('Không nhận được ID tác vụ từ API. Phản hồi: ' + JSON.stringify(generationData));
     }
 
-    // 5. Return task ID
+    // 6. Return task ID
     console.log("[tao-video-sora] Returning success response with taskId:", taskId);
     return new Response(JSON.stringify({ success: true, taskId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

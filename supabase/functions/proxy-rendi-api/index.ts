@@ -19,15 +19,26 @@ serve(async (req) => {
     const { action, payload, rendi_api_key: directApiKey } = await req.json();
     let rendiApiKey = directApiKey;
 
+    // If API key is not passed directly, authenticate user to get it
     if (!rendiApiKey) {
+      console.log("[proxy-rendi-api] INFO: API key not provided directly, authenticating user...");
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      );
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      if (userError || !user) throw new Error("User not authenticated.");
+      console.log("[proxy-rendi-api] INFO: User authenticated successfully. User ID:", user.id);
+
       const supabaseAdmin = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
       const { data: settings, error: settingsError } = await supabaseAdmin
-        .from('app_settings')
+        .from('user_settings')
         .select('rendi_api_key')
-        .limit(1)
+        .eq('id', user.id)
         .single();
       
       rendiApiKey = settings?.rendi_api_key;
@@ -35,7 +46,7 @@ serve(async (req) => {
 
     if (!rendiApiKey) {
       console.error("[proxy-rendi-api] ERROR: Rendi API key could not be determined.");
-      return new Response(JSON.stringify({ error: 'Rendi API key is not set in global settings.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ error: 'Rendi API key is not set or could not be retrieved.' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
     console.log("[proxy-rendi-api] INFO: Rendi API key retrieved.");
 

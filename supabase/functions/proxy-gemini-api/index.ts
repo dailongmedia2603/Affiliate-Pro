@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { apiUrl, prompt, token: directToken } = await req.json()
+    const { apiUrl, prompt, token } = await req.json()
     console.log(`[INFO] Processing request for apiUrl: ${apiUrl}`);
 
     if (!apiUrl || !prompt) {
@@ -27,33 +27,16 @@ serve(async (req) => {
       })
     }
 
-    let token = directToken;
-
-    if (!token) {
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-      const { data: settings, error: settingsError } = await supabaseAdmin
-        .from('app_settings')
-        .select('gemini_api_key')
-        .limit(1)
-        .single();
-      
-      if (settingsError || !settings?.gemini_api_key) {
-        throw new Error("Chưa cấu hình Gemini API Key trong cài đặt toàn cục.");
-      }
-      token = settings.gemini_api_key;
-    }
-
     const targetUrl = token ? `${apiUrl}?token=${encodeURIComponent(token)}` : apiUrl;
 
+    // Use FormData to send as multipart/form-data, matching `curl --form`
     const formData = new FormData();
     formData.append('prompt', prompt);
 
     console.log(`[INFO] Sending POST request to Gemini API proxy at ${targetUrl} with multipart/form-data.`);
     const response = await fetch(targetUrl, {
       method: 'POST',
+      // Let fetch set the Content-Type header automatically for FormData
       body: formData,
     })
 

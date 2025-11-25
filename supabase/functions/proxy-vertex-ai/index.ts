@@ -10,6 +10,7 @@ const corsHeaders = {
 };
 
 async function getGoogleAccessToken(credentials) {
+  // Replace literal '\n' with actual newlines, in case it's been stringified incorrectly.
   const formattedPrivateKey = credentials.private_key.replace(/\\n/g, '\n');
   const privateKey = await jose.importPKCS8(formattedPrivateKey, 'RS256');
   
@@ -52,9 +53,23 @@ serve(async (req) => {
   );
 
   try {
-    const { prompt } = await req.json();
+    const { prompt, userId: payloadUserId } = await req.json();
     if (!prompt) throw new Error("Thiếu tham số bắt buộc: prompt");
     
+    let userId;
+    if (payloadUserId) {
+        userId = payloadUserId;
+    } else {
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+        );
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) throw new Error("Xác thực người dùng thất bại.");
+        userId = user.id;
+    }
+
     let vertexAiServiceAccount;
     const secret = Deno.env.get('VERTEX_AI_SERVICE_ACCOUNT_JSON');
 
@@ -62,17 +77,17 @@ serve(async (req) => {
       try {
         vertexAiServiceAccount = JSON.parse(secret);
       } catch (e) {
-        throw new Error("Lỗi phân tích VERTEX_AI_SERVICE_ACCOUNT_JSON secret. Vui lòng chuyển đổi nó thành một chuỗi JSON trên một dòng duy nhất.");
+        throw new Error("Lỗi phân tích VERTEX_AI_SERVICE_ACCOUNT_JSON secret. Điều này thường xảy ra khi bạn sao chép-dán nội dung JSON nhiều dòng. Vui lòng chuyển đổi nó thành một chuỗi JSON trên một dòng duy nhất trước khi lưu làm secret.");
       }
     } else {
       const { data: settings, error: settingsError } = await supabaseAdmin
-        .from('app_settings')
+        .from('user_settings')
         .select('vertex_ai_service_account')
-        .limit(1)
+        .eq('id', userId)
         .single();
 
       if (settingsError || !settings || !settings.vertex_ai_service_account) {
-        throw new Error('Không tìm thấy Service Account trong cài đặt toàn cục hoặc secret VERTEX_AI_SERVICE_ACCOUNT_JSON.');
+        throw new Error('Không tìm thấy Service Account. Vui lòng kiểm tra lại cài đặt hoặc cấu hình secret VERTEX_AI_SERVICE_ACCOUNT_JSON.');
       }
       vertexAiServiceAccount = settings.vertex_ai_service_account;
     }
@@ -84,7 +99,7 @@ serve(async (req) => {
 
     const accessToken = await getGoogleAccessToken(vertexAiServiceAccount);
 
-    const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-1.5-pro:generateContent`;
+    const vertexUrl = `https://us-central1-aiplatform.googleapis.com/v1/projects/${gcp_project_id}/locations/us-central1/publishers/google/models/gemini-2.5-pro:generateContent`;
     
     const vertexResponse = await fetch(vertexUrl, {
       method: 'POST',

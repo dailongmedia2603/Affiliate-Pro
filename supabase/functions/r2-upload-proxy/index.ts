@@ -38,11 +38,11 @@ serve(async (req) => {
     if (userError || !user) throw new Error("User not authenticated.");
 
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    const { data: settings, error: settingsError } = await supabaseAdmin.from('app_settings').select('cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url').limit(1).single();
-    if (settingsError || !settings) throw new Error(`Could not retrieve R2 settings: ${settingsError?.message}`);
+    const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url').eq('id', user.id).single();
+    if (settingsError || !settings) throw new Error(`Could not retrieve R2 settings for user: ${settingsError?.message}`);
     const { cloudflare_account_id: accountId, cloudflare_access_key_id: accessKeyId, cloudflare_secret_access_key: secretAccessKey, cloudflare_r2_bucket_name: bucketName, cloudflare_r2_public_url: publicUrl } = settings;
     if (!accountId || !accessKeyId || !secretAccessKey || !bucketName || !publicUrl) {
-      throw new Error("Cloudflare R2 credentials are not set completely in global settings.");
+      throw new Error("Cloudflare R2 credentials are not set completely for this user.");
     }
 
     const formData = await req.formData();
