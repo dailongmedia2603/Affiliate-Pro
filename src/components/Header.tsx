@@ -10,6 +10,7 @@ import {
   LogOut,
   Film,
   BookText,
+  Users,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ const navItems = [
   { label: "Tạo Voice", Icon: Mic },
   { label: "Thư Viện Prompt", Icon: BookText },
   { label: "Ffmpeg Rendi", Icon: Film },
+  { label: "Tài khoản", Icon: Users },
   { label: "Cài Đặt", Icon: Settings },
 ];
 
