@@ -68,13 +68,15 @@ serve(async (req) => {
       case 'upload_image':
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedUrl';
         bodyToSend = new FormData();
-        Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
+        // API expects quoted values for form-data text fields
+        Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, `"${value}"`));
         bodyToSend.append('photo', file);
         break;
       case 'upload_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedAct';
         bodyToSend = new FormData();
-        Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
+        // API expects quoted values for form-data text fields
+        Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, `"${value}"`));
         bodyToSend.append('video', file);
         break;
       case 'animate_video':
