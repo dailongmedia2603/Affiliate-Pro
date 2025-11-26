@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Search, PlusCircle, Package, Loader2, Edit, Trash2, ExternalLink } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import ProductFormDialog from '@/components/ProductFormDialog';
@@ -17,6 +17,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 type Product = {
   id: string;
@@ -35,6 +37,7 @@ type SubProduct = {
   price: number | null;
   product_id: string;
   user_id?: string;
+  is_active: boolean;
 };
 
 const ProductPage = () => {
@@ -149,7 +152,7 @@ const ProductPage = () => {
     setSubProductToDelete(null);
   };
 
-  const handleSaveSubProduct = async (subProductData: Omit<SubProduct, 'id' | 'product_id' | 'user_id'> & { id?: string }) => {
+  const handleSaveSubProduct = async (subProductData: Omit<SubProduct, 'id' | 'product_id' | 'user_id' | 'is_active'> & { id?: string }) => {
     if (!selectedProduct) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { showError('Bạn cần đăng nhập để thực hiện.'); return; }
@@ -161,6 +164,25 @@ const ProductPage = () => {
       fetchSubProducts(selectedProduct.id);
     }
     setIsSubProductFormOpen(false);
+  };
+
+  const handleToggleActive = async (subProduct: SubProduct) => {
+    const newStatus = !subProduct.is_active;
+    const { error } = await supabase
+      .from('sub_products')
+      .update({ is_active: newStatus })
+      .eq('id', subProduct.id);
+
+    if (error) {
+      showError('Cập nhật trạng thái thất bại.');
+    } else {
+      showSuccess(`Sản phẩm con đã được ${newStatus ? 'kích hoạt' : 'tắt'}.`);
+      setSubProducts(prev => 
+        prev.map(sp => 
+          sp.id === subProduct.id ? { ...sp, is_active: newStatus } : sp
+        )
+      );
+    }
   };
 
   return (
@@ -214,8 +236,10 @@ const ProductPage = () => {
                 {loadingSubProducts ? <div className="flex justify-center items-center py-10"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div> : subProducts.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {subProducts.map(sub => (
-                      <Card key={sub.id} className="overflow-hidden flex flex-col">
-                        <img src={sub.image_url || '/placeholder.svg'} alt={sub.name} className="w-full h-40 object-cover bg-gray-200" />
+                      <Card key={sub.id} className={`overflow-hidden flex flex-col transition-all ${!sub.is_active ? 'bg-gray-100' : 'bg-white'}`}>
+                        <div className={`relative ${!sub.is_active ? 'opacity-50' : ''}`}>
+                          <img src={sub.image_url || '/placeholder.svg'} alt={sub.name} className="w-full h-40 object-cover bg-gray-200" />
+                        </div>
                         <CardHeader className="flex-row items-start justify-between pb-2">
                           <CardTitle className="text-lg font-semibold leading-tight truncate flex-1">{sub.name}</CardTitle>
                           <div className="flex items-center gap-1">
@@ -230,6 +254,18 @@ const ProductPage = () => {
                             {sub.product_link && <a href={sub.product_link} target="_blank" rel="noopener noreferrer"><Button variant="outline" size="sm"><ExternalLink className="w-4 h-4 mr-2" /> Link</Button></a>}
                           </div>
                         </CardContent>
+                        <CardFooter className="p-3 bg-gray-50 border-t">
+                          <div className="flex items-center justify-between w-full">
+                              <Label htmlFor={`active-switch-${sub.id}`} className="text-sm font-medium text-gray-600 cursor-pointer">
+                                  {sub.is_active ? 'Đang hoạt động' : 'Đã tắt'}
+                              </Label>
+                              <Switch
+                                  id={`active-switch-${sub.id}`}
+                                  checked={sub.is_active}
+                                  onCheckedChange={() => handleToggleActive(sub)}
+                              />
+                          </div>
+                        </CardFooter>
                       </Card>
                     ))}
                   </div>

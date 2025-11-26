@@ -93,11 +93,12 @@ serve(async (req) => {
       .from('sub_products')
       .select('id, name, description, image_url')
       .eq('product_id', channel.product_id)
+      .eq('is_active', true)
       .order('created_at', { ascending: true });
     if (subProductsError) throw subProductsError;
-    if (!subProducts || subProducts.length === 0) throw new Error("Không tìm thấy sản phẩm con nào cho sản phẩm của kênh này.");
+    if (!subProducts || subProducts.length === 0) throw new Error("Không tìm thấy sản phẩm con nào đang hoạt động cho sản phẩm của kênh này.");
     
-    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con. Bắt đầu tạo prompt và xếp hàng các bước tạo ảnh.`);
+    await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con đang hoạt động. Bắt đầu tạo prompt và xếp hàng các bước tạo ảnh.`);
 
     // --- Get Image Prompt Template ---
     let imagePromptTemplate = config.imagePromptGenerationTemplate;
