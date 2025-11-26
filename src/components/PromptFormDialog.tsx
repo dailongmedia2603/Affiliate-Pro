@@ -168,7 +168,11 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
           <DialogHeader>
             <DialogTitle>{prompt ? 'Chỉnh sửa Prompt' : 'Thêm Prompt Mới'}</DialogTitle>
             <DialogDescription>
-              {prompt ? 'Cập nhật thông tin cho prompt của bạn.' : `Điền thông tin để tạo một prompt mới cho mục "${category}".`}
+              {prompt
+                ? 'Cập nhật thông tin cho prompt của bạn.'
+                : category === 'video'
+                ? 'Tạo một kịch bản Ảnh / Video mới bằng cách thêm các cặp prompt.'
+                : `Điền thông tin để tạo một prompt mới cho mục "${category}".`}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">

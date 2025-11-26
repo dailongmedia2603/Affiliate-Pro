@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, PlusCircle, Edit, Trash2, Video, Image as ImageIcon, Mic, BookText } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Trash2, Video, Mic, BookText } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import PromptFormDialog from '@/components/PromptFormDialog';
 import { Badge } from '@/components/ui/badge';
@@ -192,8 +192,7 @@ const PromptLibraryPage = () => {
   );
 
   const tabs = [
-    { value: 'video', label: 'Prompt Tạo Video', icon: <Video className="w-4 h-4 mr-2" /> },
-    { value: 'image', label: 'Prompt Tạo Ảnh', icon: <ImageIcon className="w-4 h-4 mr-2" /> },
+    { value: 'video', label: 'Prompt tạo Ảnh / Video', icon: <Video className="w-4 h-4 mr-2" /> },
     { value: 'voice', label: 'Prompt Tạo Voice', icon: <Mic className="w-4 h-4 mr-2" /> },
   ];
 
@@ -213,7 +212,6 @@ const PromptLibraryPage = () => {
             ))}
           </TabsList>
           <TabsContent value="video" className="mt-6">{renderContent()}</TabsContent>
-          <TabsContent value="image" className="mt-6">{renderContent()}</TabsContent>
           <TabsContent value="voice" className="mt-6">{renderContent()}</TabsContent>
         </Tabs>
       </div>

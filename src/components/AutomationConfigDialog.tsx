@@ -231,7 +231,7 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
         ) : (
           <Tabs defaultValue="video_script" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="video_script">1. Kịch bản Video</TabsTrigger>
+              <TabsTrigger value="video_script">1. Prompt tạo Ảnh / Video</TabsTrigger>
               <TabsTrigger value="voice">2. Tạo Voice</TabsTrigger>
             </TabsList>
             <div className="mt-4 max-h-[60vh] overflow-y-auto p-1">
