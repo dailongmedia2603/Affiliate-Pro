@@ -74,7 +74,7 @@ const DreamActGenerationPage = () => {
       return;
     }
     setIsGenerating(true);
-    let loadingToast = showLoading('Đang tải file lên R2...');
+    let loadingToast = showLoading('Đang tải file lên...');
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -97,11 +97,11 @@ const DreamActGenerationPage = () => {
         }
       });
 
-      if (animateError || animateData.code !== 200) {
-        throw new Error(animateError?.message || animateData.message || 'Lỗi khi gửi yêu cầu tạo video.');
-      }
+      if (animateError) throw animateError;
+      if (animateData.error) throw new Error(animateData.error);
+      if (animateData.code !== 200) throw new Error(animateData.message || 'Lỗi không xác định từ API.');
       
-      const animateId = animateData.data.animateId;
+      const animateId = animateData.data?.animateId;
       if (!animateId) {
         throw new Error('API không trả về animateId.');
       }
@@ -119,7 +119,7 @@ const DreamActGenerationPage = () => {
       if (taskError) throw taskError;
 
       dismissToast(loadingToast);
-      showSuccess('Đã gửi yêu cầu tạo video thành công! Vui lòng kiểm tra lịch sử.');
+      showSuccess('Đã gửi yêu cầu tạo video thành công! Trạng thái sẽ được cập nhật trong lịch sử.');
       
       // Reset form
       setImageFile(null);
@@ -129,7 +129,8 @@ const DreamActGenerationPage = () => {
 
     } catch (error) {
       dismissToast(loadingToast);
-      showError(`Tạo video thất bại: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Tạo video thất bại: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
     }
