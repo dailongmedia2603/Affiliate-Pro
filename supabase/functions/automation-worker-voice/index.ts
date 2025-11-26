@@ -102,7 +102,18 @@ serve(async (req) => {
       }
   });
 
-  if (voiceTaskError) throw new Error(`Lỗi gọi function proxy-voice-api: ${voiceTaskError.message}`);
+  if (voiceTaskError) {
+    let errorMessage = voiceTaskError.message;
+    try {
+      // The actual error from the invoked function is in the context
+      const errorBody = await voiceTaskError.context.json();
+      errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
+    } catch (e) {
+      // Ignore if context is not JSON, the original message is enough
+    }
+    throw new Error(`Lỗi gọi function proxy-voice-api: ${errorMessage}`);
+  }
+
   if (!voiceTaskData.success || !voiceTaskData.task_id) {
       throw new Error(`Gửi yêu cầu TTS thất bại: ${voiceTaskData.error || 'Phản hồi không hợp lệ hoặc không có task_id'}`);
   }

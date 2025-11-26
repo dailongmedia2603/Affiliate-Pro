@@ -75,19 +75,18 @@ serve(async (req) => {
     
     if (!response.ok) {
       console.error(`[proxy-voice-api] ERROR: External API returned non-OK status. Status: ${response.status}, Body: ${responseText}`);
-      let errorMessage = `Lỗi từ API Voice (${response.status})`;
+      // Forward the error response from the external API directly.
+      // This allows the calling function to receive the specific error message and status code.
+      let errorBody;
       try {
-        const errorJson = JSON.parse(responseText);
-        errorMessage = errorJson.message || errorJson.error || JSON.stringify(errorJson);
+        errorBody = JSON.parse(responseText);
       } catch (e) {
-        // Not a JSON error, use the raw text if it's not empty
-        if (responseText) {
-          errorMessage = `${errorMessage}: ${responseText}`;
-        } else if (response.status === 502) {
-          errorMessage = `${errorMessage}: Bad Gateway. Máy chủ dịch vụ Voice có thể đang gặp sự cố hoặc quá tải. Vui lòng thử lại sau.`;
-        }
+        errorBody = { error: responseText || `Lỗi không xác định từ API Voice (status ${response.status})` };
       }
-      throw new Error(errorMessage);
+      return new Response(JSON.stringify(errorBody), {
+        status: response.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Handle cases where response is OK but body is empty
