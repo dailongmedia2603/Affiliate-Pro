@@ -1,68 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, CheckCircle2, XCircle, Trash2, Download } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 
-const DreamActTaskItem = ({ initialTask, onTaskDeleted }) => {
-  const [task, setTask] = useState(initialTask);
-  const pollingInterval = useRef<number | null>(null);
-
-  const pollStatus = async (currentTask) => {
-    if (!currentTask.animate_id) return;
-
-    try {
-      const { data, error } = await supabase.functions.invoke('proxy-dream-act-api', {
-        body: { action: 'fetch_status', payload: { animateId: currentTask.animate_id } }
-      });
-      if (error) throw error;
-      if (data.code !== 200) throw new Error(data.message);
-
-      const creation = data.data.find(d => d.animateId === currentTask.animate_id);
-      if (creation && creation.status === 2) { // Status 2 seems to be 'completed'
-        const { data: downloadData, error: downloadError } = await supabase.functions.invoke('proxy-dream-act-api', {
-            body: { action: 'download_video', payload: { workId: creation.id } }
-        });
-        if (downloadError) throw downloadError;
-        if (downloadData.code !== 200) throw new Error(downloadData.message);
-
-        const finalUrl = downloadData.data.url;
-        const { data: updatedTask, error: updateError } = await supabase
-          .from('dream_act_tasks')
-          .update({ status: 'completed', result_url: finalUrl, work_id: creation.id })
-          .eq('id', currentTask.id)
-          .select()
-          .single();
-        if (updateError) throw updateError;
-        setTask(updatedTask);
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
-      } else if (creation && creation.status === 3) { // Status 3 seems to be 'failed'
-        const { data: updatedTask, error: updateError } = await supabase
-          .from('dream_act_tasks')
-          .update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT.' })
-          .eq('id', currentTask.id)
-          .select()
-          .single();
-        if (updateError) throw updateError;
-        setTask(updatedTask);
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
-      }
-    } catch (err) {
-      console.error('Polling error:', err);
-      // Stop polling on error to avoid spamming
-      if (pollingInterval.current) clearInterval(pollingInterval.current);
-    }
-  };
-
-  useEffect(() => {
-    if (task.status === 'animating' && task.animate_id) {
-      pollingInterval.current = window.setInterval(() => pollStatus(task), 10000);
-    }
-    return () => {
-      if (pollingInterval.current) clearInterval(pollingInterval.current);
-    };
-  }, [task]);
+const DreamActTaskItem = ({ task, onTaskDeleted }) => {
 
   const handleDelete = async () => {
     const { error } = await supabase.from('dream_act_tasks').delete().eq('id', task.id);

@@ -457,6 +457,37 @@ serve(async (req) => {
         }
     }
 
+    // Process Manual Dream ACT Tasks
+    const { data: manualDreamActTasks } = await supabaseAdmin.from('dream_act_tasks').select('id, user_id, animate_id').eq('status', 'animating').not('animate_id', 'is', null);
+    if (manualDreamActTasks) for (const task of manualDreamActTasks) {
+        try {
+            const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
+                body: { action: 'fetch_status', payload: { animateId: task.animate_id }, userId: task.user_id }
+            });
+            if (statusError) throw statusError;
+            if (statusData.error) throw new Error(statusData.error);
+            if (statusData.code !== 200) throw new Error(statusData.message);
+
+            const creation = statusData.data.find(d => d.animateId === task.animate_id);
+            if (creation && creation.status === 2) { // Completed
+                const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
+                    body: { action: 'download_video', payload: { workId: creation.id }, userId: task.user_id }
+                });
+                if (downloadError) throw downloadError;
+                if (downloadData.error) throw new Error(downloadData.error);
+                if (downloadData.code !== 200) throw new Error(downloadData.message);
+
+                const finalUrl = downloadData.data.url;
+                await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
+            } else if (creation && creation.status === 3) { // Failed
+                await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT.' }).eq('id', task.id);
+            }
+        } catch (e) {
+            console.error(`[check-task-status] Error processing Dream ACT task ${task.id}:`, e.message);
+            await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
+        }
+    }
+
     return new Response(JSON.stringify({ message: 'Dispatcher run complete.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
