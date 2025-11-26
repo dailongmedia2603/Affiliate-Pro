@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 
@@ -56,6 +57,7 @@ const ProductPage = () => {
   const [subProductToEdit, setSubProductToEdit] = useState<SubProduct | null>(null);
   const [isSubProductAlertOpen, setIsSubProductAlertOpen] = useState(false);
   const [subProductToDelete, setSubProductToDelete] = useState<SubProduct | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const fetchProducts = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -238,7 +240,9 @@ const ProductPage = () => {
                     {subProducts.map(sub => (
                       <Card key={sub.id} className={`overflow-hidden flex flex-col transition-all ${!sub.is_active ? 'bg-gray-100' : 'bg-white'}`}>
                         <div className={`relative ${!sub.is_active ? 'opacity-50' : ''}`}>
-                          <img src={sub.image_url || '/placeholder.svg'} alt={sub.name} className="w-full h-40 object-cover bg-gray-200" />
+                          <button onClick={() => sub.image_url && setSelectedImage(sub.image_url)} className="w-full h-40 block cursor-pointer">
+                            <img src={sub.image_url || '/placeholder.svg'} alt={sub.name} className="w-full h-full object-cover bg-gray-200" />
+                          </button>
                         </div>
                         <CardHeader className="flex-row items-start justify-between pb-2">
                           <CardTitle className="text-lg font-semibold leading-tight truncate flex-1">{sub.name}</CardTitle>
@@ -297,6 +301,11 @@ const ProductPage = () => {
           <AlertDialogFooter><AlertDialogCancel>Hủy</AlertDialogCancel><AlertDialogAction onClick={handleDeleteSubProductConfirm} className="bg-red-600 hover:bg-red-700">Xóa</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <Dialog open={!!selectedImage} onOpenChange={(isOpen) => !isOpen && setSelectedImage(null)}>
+        <DialogContent className="max-w-5xl w-auto p-0 bg-transparent border-none shadow-none">
+          <img src={selectedImage || ''} alt="Xem trước ảnh" className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+        </DialogContent>
+      </Dialog>
     </>
   );
 };
