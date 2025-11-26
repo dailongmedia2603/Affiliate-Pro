@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Film, AlertTriangle, Loader2, Sparkles, Wind, Clapperboard, Cpu } from "lucide-react";
+import { Film, AlertTriangle, Loader2, Sparkles, Wind, Clapperboard, Cpu, Camera } from "lucide-react";
 import { showError } from '@/utils/toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import VideoGenerationForm from '@/components/VideoGenerationForm';
 import VideoTaskHistory from '@/components/VideoTaskHistory';
 import Veo3GenerationForm from '@/components/Veo3GenerationForm';
 import Veo3TaskHistory from '@/components/Veo3TaskHistory';
+import DreamActGenerationPage from '@/components/DreamActGenerationPage';
 
 const VideoPage = ({ channelId = null }) => {
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
   const [veo3ApiKeySet, setVeo3ApiKeySet] = useState<boolean | null>(null);
+  const [dreamActApiKeySet, setDreamActApiKeySet] = useState<boolean | null>(null);
   const [activeModel, setActiveModel] = useState('sora');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
@@ -21,7 +23,7 @@ const VideoPage = ({ channelId = null }) => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('higgsfield_cookie, higgsfield_clerk_context, veo3_cookie')
+          .select('higgsfield_cookie, higgsfield_clerk_context, veo3_cookie, dream_act_token')
           .eq('id', user.id)
           .single();
         
@@ -30,9 +32,11 @@ const VideoPage = ({ channelId = null }) => {
         }
         setApiKeySet(!!(data?.higgsfield_cookie && data?.higgsfield_clerk_context));
         setVeo3ApiKeySet(!!data?.veo3_cookie);
+        setDreamActApiKeySet(!!data?.dream_act_token);
       } else {
         setApiKeySet(false);
         setVeo3ApiKeySet(false);
+        setDreamActApiKeySet(false);
       }
     };
     checkApiKeys();
@@ -44,6 +48,7 @@ const VideoPage = ({ channelId = null }) => {
     { id: 'higg_life', name: 'Higg Life', icon: <Wind className="w-4 h-4 mr-2" />, color: "text-green-500" },
     { id: 'wan2', name: 'Wan2', icon: <Clapperboard className="w-4 h-4 mr-2" />, color: "text-red-500" },
     { id: 'veo3', name: 'VEO 3', icon: <Cpu className="w-4 h-4 mr-2" />, color: "text-yellow-500" },
+    { id: 'dream_act', name: 'Dream ACT', icon: <Camera className="w-4 h-4 mr-2" />, color: "text-pink-500" },
   ];
 
   const handleTaskCreated = () => setRefreshTrigger(c => c + 1);
@@ -58,7 +63,7 @@ const VideoPage = ({ channelId = null }) => {
     </div>
   );
 
-  if (apiKeySet === null || veo3ApiKeySet === null) {
+  if (apiKeySet === null || veo3ApiKeySet === null || dreamActApiKeySet === null) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>;
   }
 
@@ -78,7 +83,7 @@ const VideoPage = ({ channelId = null }) => {
         </Alert>
       )}
       <Tabs value={activeModel} onValueChange={setActiveModel} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 bg-gray-100 p-1 rounded-lg h-auto">
+        <TabsList className="grid w-full grid-cols-6 bg-gray-100 p-1 rounded-lg h-auto">
           {models.map(model => (
             <TabsTrigger key={model.id} value={model.id} className="data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-orange-600 font-semibold flex items-center justify-center">
               <span className={model.color}>{model.icon}</span> {model.name}
@@ -86,7 +91,7 @@ const VideoPage = ({ channelId = null }) => {
           ))}
         </TabsList>
         
-        {models.filter(m => m.id !== 'veo3').map(model => (
+        {models.filter(m => m.id !== 'veo3' && m.id !== 'dream_act').map(model => (
           <TabsContent key={model.id} value={model.id} className="mt-6">
             {!apiKeySet ? renderApiKeyWarning('Higgsfield') : (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -111,6 +116,12 @@ const VideoPage = ({ channelId = null }) => {
                 <Veo3TaskHistory refreshTrigger={refreshTrigger} />
               </div>
             </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="dream_act" className="mt-6">
+          {!dreamActApiKeySet ? renderApiKeyWarning('Dream ACT') : (
+            <DreamActGenerationPage />
           )}
         </TabsContent>
       </Tabs>

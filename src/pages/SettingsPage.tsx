@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info, Cpu } from "lucide-react";
+import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info, Cpu, Camera } from "lucide-react";
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -22,6 +22,11 @@ const SettingsPage = () => {
   const [cloudflareR2PublicUrl, setCloudflareR2PublicUrl] = useState('');
   const [rendiApiKey, setRendiApiKey] = useState('');
   const [veo3Cookie, setVeo3Cookie] = useState('');
+  const [dreamActDomain, setDreamActDomain] = useState('');
+  const [dreamActUserId, setDreamActUserId] = useState('');
+  const [dreamActClientId, setDreamActClientId] = useState('');
+  const [dreamActAccountId, setDreamActAccountId] = useState('');
+  const [dreamActToken, setDreamActToken] = useState('');
   const [voiceCredits, setVoiceCredits] = useState<number | null>(null);
   const [testPrompt, setTestPrompt] = useState('Nguyễn Quang Hải là ai ?');
   const [testResult, setTestResult] = useState('');
@@ -41,6 +46,8 @@ const SettingsPage = () => {
   const [rendiConnectionStatus, setRendiConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [isTestingVeo3, setIsTestingVeo3] = useState(false);
   const [veo3ConnectionStatus, setVeo3ConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [isTestingDreamAct, setIsTestingDreamAct] = useState(false);
+  const [dreamActConnectionStatus, setDreamActConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const fetchVoiceCredits = async (apiKey: string) => {
     if (!apiKey) return;
@@ -71,7 +78,7 @@ const SettingsPage = () => {
       if (user) {
         const { data, error } = await supabase
           .from('user_settings')
-          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key, veo3_cookie')
+          .select('gemini_api_key, gemini_api_url, voice_api_key, higgsfield_cookie, higgsfield_clerk_context, vertex_ai_service_account, cloudflare_account_id, cloudflare_access_key_id, cloudflare_secret_access_key, cloudflare_r2_bucket_name, cloudflare_r2_public_url, rendi_api_key, veo3_cookie, dream_act_domain, dream_act_user_id, dream_act_client_id, dream_act_account_id, dream_act_token')
           .eq('id', user.id)
           .single();
 
@@ -92,6 +99,11 @@ const SettingsPage = () => {
           setCloudflareR2PublicUrl(data.cloudflare_r2_public_url || '');
           setRendiApiKey(data.rendi_api_key || '');
           setVeo3Cookie(data.veo3_cookie || '');
+          setDreamActDomain(data.dream_act_domain || '');
+          setDreamActUserId(data.dream_act_user_id || '');
+          setDreamActClientId(data.dream_act_client_id || '');
+          setDreamActAccountId(data.dream_act_account_id || '');
+          setDreamActToken(data.dream_act_token || '');
           if (data.voice_api_key) {
             fetchVoiceCredits(data.voice_api_key);
           }
@@ -101,7 +113,7 @@ const SettingsPage = () => {
     fetchSettings();
   }, []);
 
-  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2' | 'rendi' | 'veo3') => {
+  const handleSaveSettings = async (apiKeyType: 'gemini' | 'higgsfield' | 'voice' | 'vertex_ai' | 'cloudflare_r2' | 'rendi' | 'veo3' | 'dream_act') => {
     setIsSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -145,6 +157,15 @@ const SettingsPage = () => {
         break;
       case 'veo3':
         updateData = { veo3_cookie: veo3Cookie };
+        break;
+      case 'dream_act':
+        updateData = {
+          dream_act_domain: dreamActDomain,
+          dream_act_user_id: dreamActUserId,
+          dream_act_client_id: dreamActClientId,
+          dream_act_account_id: dreamActAccountId,
+          dream_act_token: dreamActToken,
+        };
         break;
     }
 
@@ -351,6 +372,34 @@ const SettingsPage = () => {
     }
   };
 
+  const handleTestDreamActConnection = async () => {
+    if (!dreamActDomain || !dreamActToken) {
+      setDreamActConnectionStatus('error');
+      showError('Vui lòng nhập đầy đủ Domain và Token.');
+      return;
+    }
+    setIsTestingDreamAct(true);
+    setDreamActConnectionStatus('idle');
+    try {
+      const { data, error } = await supabase.functions.invoke('proxy-dream-act-api', {
+        body: { action: 'test_connection' },
+      });
+      if (error) throw error;
+      if (data.code === 200) {
+        setDreamActConnectionStatus('success');
+        showSuccess('Kết nối API Dream ACT thành công!');
+      } else {
+        throw new Error(data.message || 'Kiểm tra kết nối thất bại.');
+      }
+    } catch (error) {
+      setDreamActConnectionStatus('error');
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Lỗi kết nối Dream ACT: ${errorMessage}`);
+    } finally {
+      setIsTestingDreamAct(false);
+    }
+  };
+
   return (
     <div className="w-full p-6 bg-gray-50/50">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Cài Đặt</h1>
@@ -363,6 +412,7 @@ const SettingsPage = () => {
           <TabsTrigger value="voice" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Mic className="w-4 h-4 mr-2" /> API Voice</TabsTrigger>
           <TabsTrigger value="rendi" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Video className="w-4 h-4 mr-2" /> API Rendi</TabsTrigger>
           <TabsTrigger value="veo3" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Cpu className="w-4 h-4 mr-2" /> API Veo3</TabsTrigger>
+          <TabsTrigger value="dream_act" className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors"><Camera className="w-4 h-4 mr-2" /> API Dream ACT</TabsTrigger>
         </TabsList>
         <TabsContent value="gemini" className="mt-6">
           <div className="p-6 border rounded-lg bg-white space-y-6">
@@ -536,6 +586,27 @@ const SettingsPage = () => {
             </div>
             {veo3ConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Veo3 thành công.</AlertDescription></Alert>)}
             {veo3ConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Cookie và đảm bảo API server đang chạy.</AlertDescription></Alert>)}
+          </div>
+        </TabsContent>
+        <TabsContent value="dream_act" className="mt-6">
+          <div className="p-6 border rounded-lg bg-white space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-700">Cấu hình API Dream ACT</h2>
+              <p className="text-sm text-gray-500 mt-1 mb-4">Nhập thông tin xác thực để kết nối với dịch vụ Dream ACT.</p>
+              <div className="space-y-4 max-w-lg">
+                <div className="space-y-2"><label htmlFor="dream-act-domain" className="text-sm font-medium text-gray-700">Domain</label><Input id="dream-act-domain" type="text" placeholder="https://example.com" value={dreamActDomain} onChange={(e) => { setDreamActDomain(e.target.value); setDreamActConnectionStatus('idle'); }} /></div>
+                <div className="space-y-2"><label htmlFor="dream-act-user-id" className="text-sm font-medium text-gray-700">User ID</label><Input id="dream-act-user-id" type="text" placeholder="Nhập User ID..." value={dreamActUserId} onChange={(e) => { setDreamActUserId(e.target.value); setDreamActConnectionStatus('idle'); }} /></div>
+                <div className="space-y-2"><label htmlFor="dream-act-client-id" className="text-sm font-medium text-gray-700">Client ID</label><Input id="dream-act-client-id" type="text" placeholder="Nhập Client ID..." value={dreamActClientId} onChange={(e) => { setDreamActClientId(e.target.value); setDreamActConnectionStatus('idle'); }} /></div>
+                <div className="space-y-2"><label htmlFor="dream-act-account-id" className="text-sm font-medium text-gray-700">Account ID</label><Input id="dream-act-account-id" type="text" placeholder="Nhập Account ID..." value={dreamActAccountId} onChange={(e) => { setDreamActAccountId(e.target.value); setDreamActConnectionStatus('idle'); }} /></div>
+                <div className="space-y-2"><label htmlFor="dream-act-token" className="text-sm font-medium text-gray-700">Token</label><Textarea id="dream-act-token" placeholder="Nhập Token..." value={dreamActToken} onChange={(e) => { setDreamActToken(e.target.value); setDreamActConnectionStatus('idle'); }} className="min-h-[100px] font-mono text-xs" /></div>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <Button onClick={handleTestDreamActConnection} disabled={isTestingDreamAct} variant="outline">{isTestingDreamAct ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
+                <Button onClick={() => handleSaveSettings('dream_act')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+              </div>
+            </div>
+            {dreamActConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Dream ACT thành công.</AlertDescription></Alert>)}
+            {dreamActConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại thông tin xác thực.</AlertDescription></Alert>)}
           </div>
         </TabsContent>
       </Tabs>
