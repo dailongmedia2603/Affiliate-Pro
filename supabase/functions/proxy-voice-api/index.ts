@@ -55,7 +55,6 @@ serve(async (req) => {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
     };
 
-    // Luôn thêm Content-Type cho các yêu cầu không phải form-data, theo đúng tài liệu.
     if (!isFormData) {
         headers['Content-Type'] = 'application/json';
     }
@@ -76,14 +75,29 @@ serve(async (req) => {
     
     if (!response.ok) {
       console.error(`[proxy-voice-api] ERROR: External API returned non-OK status. Status: ${response.status}, Body: ${responseText}`);
-      let errorMessage = responseText;
+      let errorMessage = `Lỗi từ API Voice (${response.status})`;
       try {
         const errorJson = JSON.parse(responseText);
         errorMessage = errorJson.message || errorJson.error || JSON.stringify(errorJson);
       } catch (e) {
-        // Not a JSON error, use the raw text
+        // Not a JSON error, use the raw text if it's not empty
+        if (responseText) {
+          errorMessage = `${errorMessage}: ${responseText}`;
+        } else if (response.status === 502) {
+          errorMessage = `${errorMessage}: Bad Gateway. Máy chủ dịch vụ Voice có thể đang gặp sự cố hoặc quá tải. Vui lòng thử lại sau.`;
+        }
       }
-      throw new Error(`Lỗi từ API Voice (${response.status}): ${errorMessage}`);
+      throw new Error(errorMessage);
+    }
+
+    // Handle cases where response is OK but body is empty
+    if (!responseText) {
+        console.warn('[proxy-voice-api] WARN: External API returned an empty response body with a 2xx status.');
+        // Depending on the API, this might be an error or an expected response.
+        // We'll treat it as a success with empty data for now.
+        return new Response(JSON.stringify({ success: true, data: [] }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
     }
 
     const responseData = JSON.parse(responseText);
