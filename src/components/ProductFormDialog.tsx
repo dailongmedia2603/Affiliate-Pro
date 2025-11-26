@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Upload } from 'lucide-react';
+import { uploadToR2 } from '@/utils/r2-upload';
+import { showError } from '@/utils/toast';
 
 const ProductFormDialog = ({ product, isOpen, onClose, onSave }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (product) {
@@ -30,6 +34,24 @@ const ProductFormDialog = ({ product, isOpen, onClose, onSave }) => {
       setImageUrl('');
     }
   }, [product, isOpen]);
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+        const url = await uploadToR2(file);
+        setImageUrl(url);
+    } catch (error: any) {
+        showError(error.message);
+    } finally {
+        setIsUploading(false);
+        if(fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -70,15 +92,28 @@ const ProductFormDialog = ({ product, isOpen, onClose, onSave }) => {
               <Label htmlFor="imageUrl" className="text-right">
                 URL Hình ảnh
               </Label>
-              <Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="col-span-3" />
+              <div className="col-span-3 flex items-center gap-2">
+                <Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="flex-grow" />
+                <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+                <Button type="button" variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
+                    {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
+            {imageUrl && (
+              <div className="grid grid-cols-4 items-start gap-4">
+                  <div className="col-start-2 col-span-3">
+                      <img src={imageUrl} alt="Xem trước" className="mt-2 rounded-md border max-h-40 object-contain" />
+                  </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isSaving || isUploading}>
               Hủy
             </Button>
-            <Button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white" disabled={isSaving}>
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" className="bg-orange-500 hover:bg-orange-600 text-white" disabled={isSaving || isUploading}>
+              {(isSaving || isUploading) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {product ? 'Lưu thay đổi' : 'Tạo sản phẩm'}
             </Button>
           </DialogFooter>
