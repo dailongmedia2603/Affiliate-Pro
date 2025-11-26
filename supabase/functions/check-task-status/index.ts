@@ -39,7 +39,9 @@ async function getTaskStatus(token, taskId) {
 
 function replacePlaceholders(template, data) {
   if (!template) return '';
-  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => data[key] || match);
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return data[key] !== undefined && data[key] !== null ? data[key] : match;
+  });
 }
 
 const handleStepFailure = async (supabaseAdmin, step, errorMessage) => {
@@ -197,34 +199,22 @@ serve(async (req) => {
               await logToDb(supabaseAdmin, step.run.id, `Bước ${step.step_type} đã hoàn thành.`, 'SUCCESS', step.id);
 
               if (step.step_type === 'generate_image') {
-                const { data: config, error: configError } = await supabaseAdmin.from('automation_configs').select('config_data').eq('channel_id', step.run.channel_id).single();
-                if (configError || !config) throw new Error(`Không tìm thấy cấu hình cho kênh ${step.run.channel_id}`);
-                
+                const videoPromptTemplate = step.input_data?.video_prompt;
+                if (!videoPromptTemplate) {
+                    throw new Error(`Không tìm thấy video_prompt trong input_data của bước tạo ảnh ${step.id}.`);
+                }
+
                 const { data: subProduct, error: subProductError } = await supabaseAdmin.from('sub_products').select('name, description').eq('id', step.sub_product_id).single();
                 if (subProductError) throw subProductError;
 
-                // --- Get Video Prompt Template ---
-                let videoPromptTemplate = config.config_data.videoPromptGenerationTemplate;
-                if (config.config_data.useLibraryPromptForVideo && config.config_data.videoPromptId) {
-                    await logToDb(supabaseAdmin, step.run.id, `Sử dụng prompt tạo video từ thư viện (ID: ${config.config_data.videoPromptId}).`, 'INFO', step.id);
-                    const { data: promptData, error: promptError } = await supabaseAdmin.from('prompts').select('content').eq('id', config.config_data.videoPromptId).single();
-                    if (promptError || !promptData) {
-                        await logToDb(supabaseAdmin, step.run.id, `Lỗi tải prompt video từ thư viện (ID: ${config.config_data.videoPromptId}), sử dụng prompt mặc định. Lỗi: ${promptError?.message}`, 'WARN', step.id);
-                    } else {
-                        videoPromptTemplate = promptData.content;
-                    }
-                }
-                // --- End Get Video Prompt Template ---
-
-                const geminiVideoPrompt = replacePlaceholders(videoPromptTemplate, { image_prompt: step.input_data.prompt, product_name: subProduct.name, product_description: subProduct.description });
-                const { data: geminiResponse, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-vertex-ai', { body: { userId: step.run.user_id, prompt: geminiVideoPrompt } });
-                if (geminiError || !geminiResponse.success) throw new Error(`Lỗi tạo prompt video từ AI: ${geminiError?.message || geminiResponse?.error}`);
+                const finalVideoPrompt = replacePlaceholders(videoPromptTemplate, {
+                    product_name: subProduct.name,
+                    product_description: subProduct.description,
+                    image_prompt: step.input_data.prompt
+                });
                 
-                const finalVideoPrompt = geminiResponse.data;
-                if (!finalVideoPrompt) throw new Error("AI không trả về prompt video.");
-
                 const sequence_number = step.input_data?.sequence_number;
-                const videoInputData = { prompt: finalVideoPrompt, imageUrl: resultUrl, source_image_step_id: step.id, gemini_prompt_for_video: geminiVideoPrompt, sequence_number: sequence_number };
+                const videoInputData = { prompt: finalVideoPrompt, imageUrl: resultUrl, source_image_step_id: step.id, sequence_number: sequence_number };
                 const { error: videoStepError } = await supabaseAdmin.from('automation_run_steps').insert({ run_id: step.run.id, sub_product_id: step.sub_product_id, step_type: 'generate_video', status: 'pending', input_data: videoInputData });
                 if (videoStepError) throw videoStepError;
                 await logToDb(supabaseAdmin, step.run.id, `Đã xếp hàng bước tạo video.`, 'INFO');

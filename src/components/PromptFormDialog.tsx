@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Loader2 } from 'lucide-react';
+import { Loader2, PlusCircle, Trash2 } from 'lucide-react';
 
 const VariablesList = ({ variables }: { variables: string[] }) => (
     <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -34,10 +34,10 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
   const [content, setContent] = useState('');
   const [productId, setProductId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [pairs, setPairs] = useState([{ image_prompt: '', video_prompt: '' }]);
 
   const categoryVariables = {
     image: ['product_name', 'product_description', 'image_count'],
-    video: ['image_prompt', 'product_name', 'product_description'],
     voice: ['product_name', 'product_description'],
   };
 
@@ -47,23 +47,55 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
     if (isOpen) {
       if (prompt) {
         setName(prompt.name || '');
-        setContent(prompt.content || '');
         setProductId(prompt.product_id || '');
+        if (category === 'video') {
+          try {
+            const parsedContent = JSON.parse(prompt.content);
+            if (Array.isArray(parsedContent) && parsedContent.length > 0) {
+              setPairs(parsedContent);
+            } else {
+              setPairs([{ image_prompt: '', video_prompt: '' }]);
+            }
+          } catch (e) {
+            setPairs([{ image_prompt: '', video_prompt: '' }]);
+          }
+        } else {
+          setContent(prompt.content || '');
+        }
       } else {
         setName('');
         setContent('');
         setProductId('');
+        setPairs([{ image_prompt: '', video_prompt: '' }]);
       }
     }
-  }, [prompt, isOpen]);
+  }, [prompt, isOpen, category]);
+
+  const handleAddPair = () => {
+    setPairs([...pairs, { image_prompt: '', video_prompt: '' }]);
+  };
+
+  const handleRemovePair = (index: number) => {
+    if (pairs.length > 1) {
+      const newPairs = pairs.filter((_, i) => i !== index);
+      setPairs(newPairs);
+    }
+  };
+
+  const handlePairChange = (index: number, field: 'image_prompt' | 'video_prompt', value: string) => {
+    const newPairs = [...pairs];
+    newPairs[index][field] = value;
+    setPairs(newPairs);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    const finalContent = category === 'video' ? JSON.stringify(pairs) : content;
     await onSave({
       id: prompt?.id,
       name,
-      content,
+      content: finalContent,
       product_id: productId || null,
       category,
     });
@@ -74,9 +106,64 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
     setProductId(value === 'none' ? '' : value);
   };
 
+  const renderVideoForm = () => (
+    <div className="space-y-4">
+      {pairs.map((pair, index) => (
+        <div key={index} className="p-4 border rounded-lg relative space-y-3 bg-gray-50">
+          <h4 className="font-semibold text-gray-700">Cặp Prompt #{index + 1}</h4>
+          {pairs.length > 1 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute top-2 right-2 h-7 w-7 text-red-500"
+              onClick={() => handleRemovePair(index)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor={`image-prompt-${index}`}>Prompt Tạo Ảnh</Label>
+            <Textarea
+              id={`image-prompt-${index}`}
+              value={pair.image_prompt}
+              onChange={(e) => handlePairChange(index, 'image_prompt', e.target.value)}
+              placeholder="e.g., a cinematic shot of a panda..."
+              className="min-h-[100px]"
+            />
+            <VariablesList variables={['product_name', 'product_description']} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`video-prompt-${index}`}>Prompt Tạo Video (Chuyển động)</Label>
+            <Textarea
+              id={`video-prompt-${index}`}
+              value={pair.video_prompt}
+              onChange={(e) => handlePairChange(index, 'video_prompt', e.target.value)}
+              placeholder="e.g., a slow zoom in"
+              className="min-h-[60px]"
+            />
+             <VariablesList variables={['product_name', 'product_description', 'image_prompt']} />
+          </div>
+        </div>
+      ))}
+      <Button type="button" variant="outline" onClick={handleAddPair}>
+        <PlusCircle className="w-4 h-4 mr-2" />
+        Thêm cặp Prompt
+      </Button>
+    </div>
+  );
+
+  const renderDefaultForm = () => (
+    <div className="space-y-2">
+      <Label htmlFor="content">Nội dung Prompt</Label>
+      <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} required className="min-h-[150px]" />
+      <VariablesList variables={availableVariables} />
+    </div>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-3xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{prompt ? 'Chỉnh sửa Prompt' : 'Thêm Prompt Mới'}</DialogTitle>
@@ -84,7 +171,7 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
               {prompt ? 'Cập nhật thông tin cho prompt của bạn.' : `Điền thông tin để tạo một prompt mới cho mục "${category}".`}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto px-2">
             <div className="space-y-2">
               <Label htmlFor="name">Tên Prompt</Label>
               <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -105,13 +192,9 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="content">Nội dung Prompt</Label>
-              <Textarea id="content" value={content} onChange={(e) => setContent(e.target.value)} required className="min-h-[150px]" />
-              <VariablesList variables={availableVariables} />
-            </div>
+            {category === 'video' ? renderVideoForm() : renderDefaultForm()}
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-4 border-t">
             <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
               Hủy
             </Button>

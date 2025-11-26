@@ -65,13 +65,8 @@ serve(async (req) => {
     if (configError) throw new Error(`Lỗi khi tải cấu hình automation: ${configError.message}`);
     if (!configData?.config_data) throw new Error("Kênh này chưa được cấu hình. Vui lòng nhấn nút 'Cấu hình' và lưu lại trước khi chạy.");
     const config = configData.config_data;
-    if (!config.imagePromptGenerationTemplate || !config.imageCount) {
-      throw new Error("Cấu hình automation không đầy đủ. Thiếu 'Mẫu Prompt cho AI' hoặc 'Số lượng ảnh'.");
-    }
-
-    const { data: settings, error: settingsError } = await supabaseAdmin.from('user_settings').select('gemini_api_key, gemini_api_url').eq('id', user.id).single();
-    if (settingsError || !settings?.gemini_api_url || !settings?.gemini_api_key) {
-      throw new Error("Chưa cấu hình API Gemini trong Cài đặt (thiếu URL hoặc Key).");
+    if (!config.videoScriptId) {
+      throw new Error("Chưa chọn kịch bản video trong cấu hình automation.");
     }
 
     const { data: channel, error: channelError } = await supabaseAdmin.from('channels').select('product_id, character_image_url').eq('id', channelId).single();
@@ -100,81 +95,56 @@ serve(async (req) => {
     
     await logToDb(supabaseAdmin, runId, `Tìm thấy ${subProducts.length} sản phẩm con đang hoạt động. Bắt đầu tạo prompt và xếp hàng các bước tạo ảnh.`);
 
-    // --- Get Image Prompt Template ---
-    let imagePromptTemplate = config.imagePromptGenerationTemplate;
-    if (config.useLibraryPromptForImage && config.imagePromptId) {
-        await logToDb(supabaseAdmin, runId, `Sử dụng prompt tạo ảnh từ thư viện (ID: ${config.imagePromptId}).`);
-        const { data: promptData, error: promptError } = await supabaseAdmin.from('prompts').select('content').eq('id', config.imagePromptId).single();
-        if (promptError || !promptData) {
-            throw new Error(`Không thể tải prompt từ thư viện (ID: ${config.imagePromptId}): ${promptError?.message}`);
-        }
-        imagePromptTemplate = promptData.content;
+    await logToDb(supabaseAdmin, runId, `Đang tải kịch bản video từ thư viện (ID: ${config.videoScriptId}).`);
+    const { data: videoScriptData, error: videoScriptError } = await supabaseAdmin
+      .from('prompts')
+      .select('content')
+      .eq('id', config.videoScriptId)
+      .single();
+
+    if (videoScriptError || !videoScriptData) {
+      throw new Error(`Không thể tải kịch bản video: ${videoScriptError?.message}`);
     }
-    // --- End Get Image Prompt Template ---
+
+    let promptPairs = [];
+    try {
+      promptPairs = JSON.parse(videoScriptData.content);
+      if (!Array.isArray(promptPairs) || promptPairs.length === 0) {
+        throw new Error("Nội dung kịch bản không phải là một mảng hợp lệ hoặc rỗng.");
+      }
+    } catch (e) {
+      throw new Error(`Lỗi phân tích kịch bản video: ${e.message}`);
+    }
+    await logToDb(supabaseAdmin, runId, `Tải thành công kịch bản với ${promptPairs.length} cặp prompt.`);
 
     let totalStepsCreated = 0;
     for (const subProduct of subProducts) {
       await logToDb(supabaseAdmin, runId, `Đang xử lý sản phẩm con: "${subProduct.name}".`);
-      
-      const geminiPromptData = {
-        product_name: subProduct.name,
-        product_description: subProduct.description,
-        image_count: config.imageCount
-      };
-      const geminiPrompt = replacePlaceholders(imagePromptTemplate, geminiPromptData);
-      
-      const { data: geminiResult, error: geminiError } = await supabaseAdmin.functions.invoke('proxy-gemini-api', {
-        body: { apiUrl: settings.gemini_api_url, prompt: geminiPrompt, token: settings.gemini_api_key }
-      });
-
-      if (geminiError || !geminiResult || !geminiResult.success) {
-        const errorMessage = geminiError?.message || geminiResult?.error || geminiResult?.message || 'Lỗi không xác định từ Gemini API';
-        await logToDb(supabaseAdmin, runId, `Lỗi tạo prompt ảnh từ AI cho sản phẩm "${subProduct.name}": ${errorMessage}. Bỏ qua sản phẩm này.`, 'ERROR');
-        continue; // Skip to the next sub-product on error
-      }
-      
-      const answerString = geminiResult.answer;
-      if (!answerString) {
-        await logToDb(supabaseAdmin, runId, `Phản hồi từ AI cho sản phẩm "${subProduct.name}" không chứa trường 'answer'. Bỏ qua.`, 'WARN');
-        continue;
-      }
-      
-      let imagePrompts = [];
-      try {
-        const jsonMatch = answerString.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("Không tìm thấy đối tượng JSON trong phản hồi của AI.");
-        
-        const parsed = JSON.parse(jsonMatch[0]);
-        if (Array.isArray(parsed.prompts)) {
-            imagePrompts = parsed.prompts;
-            await logToDb(supabaseAdmin, runId, `Đã phân tích thành công ${imagePrompts.length} prompt từ JSON.`, 'SUCCESS');
-        } else {
-            throw new Error("Phản hồi JSON không chứa một mảng (array) 'prompts'.");
-        }
-      } catch (e) {
-          await logToDb(supabaseAdmin, runId, `Phân tích JSON thất bại: ${e.message}. Thử phương pháp dự phòng (phân tích theo dòng).`, 'WARN');
-          imagePrompts = answerString.split('\n').map(line => {
-              return line.replace(/^\d+\.\s*/, '').replace(/^Prompt\s*\d*:\s*/i, '').replace(/^Ảnh\s*\d*:\s*/i, '').trim();
-          }).filter(line => line.length > 10);
-      }
-
-      if (imagePrompts.length === 0) {
-        await logToDb(supabaseAdmin, runId, `Không thể trích xuất bất kỳ prompt nào từ phản hồi của AI cho sản phẩm "${subProduct.name}". Bỏ qua.`, 'WARN');
-        continue;
-      }
-      
-      await logToDb(supabaseAdmin, runId, `Đã tạo ${imagePrompts.length} prompt ảnh cho sản phẩm "${subProduct.name}".`);
 
       const imageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
       const stepsToInsert = [];
 
-      for (const [index, imagePrompt] of imagePrompts.entries()) {
-        const inputData = { 
-          prompt: imagePrompt, 
-          model: 'banana', 
-          aspect_ratio: '9:16', 
+      for (const [index, pair] of promptPairs.entries()) {
+        if (!pair.image_prompt || !pair.video_prompt) {
+          await logToDb(supabaseAdmin, runId, `Cặp prompt #${index + 1} không hợp lệ (thiếu prompt ảnh hoặc video). Bỏ qua.`, 'WARN');
+          continue;
+        }
+
+        const templateData = {
+          product_name: subProduct.name,
+          product_description: subProduct.description,
+        };
+
+        const finalImagePrompt = replacePlaceholders(pair.image_prompt, templateData);
+        const finalVideoPrompt = replacePlaceholders(pair.video_prompt, templateData);
+
+        const inputData = {
+          prompt: finalImagePrompt,
+          video_prompt: finalVideoPrompt,
+          model: 'banana',
+          aspect_ratio: '9:16',
           image_urls: imageUrls,
-          sequence_number: index // Add sequence number
+          sequence_number: index
         };
         stepsToInsert.push({
             run_id: run.id,
@@ -189,7 +159,7 @@ serve(async (req) => {
         const { error: stepInsertError } = await supabaseAdmin.from('automation_run_steps').insert(stepsToInsert);
         if (stepInsertError) {
             await logToDb(supabaseAdmin, runId, `Lỗi khi lưu các bước tạo ảnh cho sản phẩm "${subProduct.name}": ${stepInsertError.message}`, 'ERROR');
-            continue; // Skip to next sub-product
+            continue;
         }
         totalStepsCreated += stepsToInsert.length;
         await logToDb(supabaseAdmin, runId, `Đã xếp hàng ${stepsToInsert.length} bước tạo ảnh cho sản phẩm "${subProduct.name}".`);
@@ -198,7 +168,7 @@ serve(async (req) => {
 
     // 5. --- FINALIZE RUN START ---
     if (totalStepsCreated === 0) {
-        throw new Error("Không có bước nào được tạo. Vui lòng kiểm tra lại cấu hình và prompt template.");
+        throw new Error("Không có bước nào được tạo. Vui lòng kiểm tra lại cấu hình và kịch bản video.");
     }
 
     await supabaseAdmin.from('automation_runs').update({ status: 'running' }).eq('id', run.id);
