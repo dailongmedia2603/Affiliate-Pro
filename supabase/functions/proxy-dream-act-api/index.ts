@@ -26,21 +26,19 @@ serve(async (req) => {
   }
 
   try {
-    // Create a standard Supabase client
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
-
-    // Extract the token from the header
+    // Create a Supabase client with the Auth context of the logged-in user.
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       throw new Error("Missing Authorization header.");
     }
-    const token = authHeader.replace('Bearer ', '');
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
 
-    // Authenticate the user using the token
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    // Now we can get the user object
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) {
       console.error("Authentication error:", userError?.message);
       throw new Error("User not authenticated.");
