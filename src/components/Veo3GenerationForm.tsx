@@ -149,7 +149,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
         
-        finalStartImageId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId;
+        finalStartImageId = data.data?.[0]?.id;
 
         if (!finalStartImageId) {
             console.error("VEO3 image upload response missing ID:", data);
@@ -168,7 +168,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
         
-        finalEndImageId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId;
+        finalEndImageId = data.data?.[0]?.id;
 
         if (!finalEndImageId) {
             console.error("VEO3 image upload response missing ID:", data);
