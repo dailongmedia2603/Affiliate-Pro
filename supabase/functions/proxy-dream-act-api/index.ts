@@ -7,13 +7,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null) => {
+const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
   if (!taskId) return;
   
   const sanitizedRequest = { ...requestPayload };
   if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
   if (sanitizedRequest.photo) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
   if (sanitizedRequest.video) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
+  if (targetUrl) {
+    sanitizedRequest._dyad_target_url = targetUrl;
+  }
 
   const logEntry = {
     task_id: taskId,
@@ -51,6 +54,7 @@ serve(async (req) => {
   let requestPayloadForLog;
   let responseData;
   let errorForLog = null;
+  let targetUrl;
 
   try {
     const authHeader = req.headers.get('Authorization');
@@ -166,7 +170,7 @@ serve(async (req) => {
         throw new Error(`Invalid action: ${action}`);
     }
 
-    const targetUrl = `${dream_act_domain}${targetPath}`;
+    targetUrl = `${dream_act_domain}${targetPath}`;
     
     try {
         const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
@@ -179,7 +183,7 @@ serve(async (req) => {
         errorForLog = e;
         throw e;
     } finally {
-        await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, errorForLog);
+        await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, errorForLog, targetUrl);
     }
 
     return new Response(JSON.stringify(responseData), {
@@ -188,7 +192,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
-    await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, error);
+    await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, error, targetUrl);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

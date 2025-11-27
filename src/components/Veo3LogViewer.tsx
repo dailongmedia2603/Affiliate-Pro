@@ -62,10 +62,21 @@ const Veo3LogViewer = ({ taskId }) => {
                       </div>
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pt-0 pb-4">
+                      {log.request_payload?._dyad_target_url && (
+                        <div className="mb-2 text-xs text-gray-500 font-mono">
+                          <span className="font-semibold text-gray-600">Endpoint Called:</span> {log.request_payload._dyad_target_url}
+                        </div>
+                      )}
                       <div className="grid grid-cols-2 gap-4 border-t pt-4">
                         <div>
                           <p className="text-sm font-medium text-gray-600">Request Payload:</p>
-                          <pre className="text-xs bg-gray-800 text-gray-200 p-2 rounded-md overflow-auto mt-1 h-48">{JSON.stringify(log.request_payload, null, 2)}</pre>
+                          <pre className="text-xs bg-gray-800 text-gray-200 p-2 rounded-md overflow-auto mt-1 h-48">
+                            {JSON.stringify(
+                              Object.fromEntries(Object.entries(log.request_payload || {}).filter(([key]) => key !== '_dyad_target_url')),
+                              null,
+                              2
+                            )}
+                          </pre>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-600">API Response:</p>

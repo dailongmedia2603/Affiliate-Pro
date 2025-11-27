@@ -9,7 +9,7 @@ const corsHeaders = {
 
 const API_BASE_URL = 'https://api.beautyapp.work';
 
-const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null) => {
+const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
   if (!taskId) return;
   
   const sanitizedRequest = { ...requestPayload };
@@ -17,6 +17,9 @@ const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, respo
   if (sanitizedRequest.cookie) sanitizedRequest.cookie = '[REDACTED]';
   if (sanitizedRequest.base64) sanitizedRequest.base64 = '[BASE64_DATA]';
   if (sanitizedRequest.file_data) sanitizedRequest.file_data = '[BASE64_DATA]';
+  if (targetUrl) {
+    sanitizedRequest._dyad_target_url = targetUrl;
+  }
 
   const logEntry = {
     task_id: taskId,
@@ -105,6 +108,7 @@ serve(async (req) => {
   let requestPayloadForLog;
   let responseData;
   let errorForLog = null;
+  let targetUrl;
 
   try {
     const body = await req.json();
@@ -131,7 +135,7 @@ serve(async (req) => {
       correctedPath = 'video/uploadmedia';
     }
     
-    const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
+    targetUrl = new URL(correctedPath, API_BASE_URL).toString();
     
     let finalPayload;
     const cookieEndpoints = ['veo3/re_promt', 'veo3/get_token'];
@@ -176,7 +180,7 @@ serve(async (req) => {
         errorForLog = e;
         throw e;
     } finally {
-        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, responseData, errorForLog);
+        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, responseData, errorForLog, targetUrl);
     }
 
     return new Response(JSON.stringify(responseData), {
@@ -186,7 +190,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("[proxy-veo3-api] FATAL ERROR:", error.message);
     if (!errorForLog) {
-        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, { error: error.message }, error);
+        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, { error: error.message }, error, targetUrl);
     }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
