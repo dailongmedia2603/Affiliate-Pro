@@ -26,19 +26,32 @@ serve(async (req) => {
   }
 
   try {
-    // Create a Supabase client with the Auth context of the logged-in user.
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error("Missing Authorization header.");
-    }
+    const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
+    let action, payload, file, accessToken;
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    // Now we can get the user object
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (isFormDataRequest) {
+      const formData = await req.formData();
+      action = formData.get('action');
+      file = formData.get('file');
+      accessToken = formData.get('accessToken');
+      payload = {};
+    } else {
+      const body = await req.json();
+      action = body.action;
+      payload = body.payload;
+      accessToken = body.accessToken;
+    }
+
+    if (!accessToken) {
+      throw new Error("Authentication token is missing.");
+    }
+
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
     if (userError || !user) {
       console.error("Authentication error:", userError?.message);
       throw new Error("User not authenticated.");
@@ -48,20 +61,6 @@ serve(async (req) => {
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     const settings = await getUserSettings(supabaseAdmin, userId);
     const { dream_act_domain, ...credentials } = settings;
-
-    const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
-    let action, payload, file;
-
-    if (isFormDataRequest) {
-      const formData = await req.formData();
-      action = formData.get('action');
-      file = formData.get('file');
-      payload = {};
-    } else {
-      const body = await req.json();
-      action = body.action;
-      payload = body.payload;
-    }
 
     let targetPath = '';
     let method = 'POST';
