@@ -36,38 +36,6 @@ const getErrorMessage = (error: any): string => {
   return JSON.stringify(error);
 };
 
-const pollForImageUploadResult = async (mediaGenerationId: string, taskId: string): Promise<string> => {
-  const MAX_ATTEMPTS = 20;
-  const DELAY = 3000; // 3 seconds
-
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    await new Promise(resolve => setTimeout(resolve, DELAY));
-
-    const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-      body: {
-        path: 'veo3/check_status',
-        payload: { operations: [{ mediaGenerationId }] },
-        taskId,
-      },
-    });
-
-    if (error) throw error;
-    if (data.error) throw new Error(getErrorMessage(data));
-
-    const result = data.results?.[0];
-    if (result?.status === 'SUCCESS') {
-      const finalUrl = result.image?.url;
-      if (!finalUrl) throw new Error('Tác vụ xử lý ảnh thành công nhưng không tìm thấy URL cuối cùng.');
-      return finalUrl;
-    } else if (result?.status === 'FAILED') {
-      throw new Error(result.error || 'Tác vụ xử lý ảnh thất bại.');
-    }
-    // If still processing, the loop will continue
-  }
-
-  throw new Error('Tác vụ xử lý ảnh mất quá nhiều thời gian.');
-};
-
 const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [projectId, setProjectId] = useState('50c7f7bf-4799-4cd3-83ff-742090513f21');
   const [prompt, setPrompt] = useState('a beautiful girl in a beautiful dress');
@@ -157,10 +125,10 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       taskId = newTask.id;
       onTaskCreated();
 
-      let finalStartImageUrl: string | null = null;
-      let finalEndImageUrl: string | null = null;
+      let finalStartImageObject: object | null = null;
+      let finalEndImageObject: object | null = null;
 
-      const processImage = async (file: File, toastMessage: string): Promise<string> => {
+      const processImage = async (file: File, toastMessage: string): Promise<object> => {
         dismissToast(loadingToast);
         const uploadToast = showLoading(toastMessage);
         const r2Url = await uploadToR2(file);
@@ -172,21 +140,19 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh: ${getErrorMessage(data)}`);
         
-        const mediaGenerationId = data.mediaGenerationId?.mediaGenerationId;
-        if (!mediaGenerationId) throw new Error('API không trả về mediaGenerationId.');
+        const mediaGenerationIdObject = data.mediaGenerationId;
+        if (!mediaGenerationIdObject) throw new Error('API không trả về đối tượng mediaGenerationId.');
 
-        showSuccess('Đăng ký thành công. Đang chờ VEO3 xử lý ảnh...', uploadToast);
-        const finalUrl = await pollForImageUploadResult(mediaGenerationId, taskId);
-        showSuccess('Xử lý ảnh hoàn tất!', uploadToast);
-        return finalUrl;
+        showSuccess('Đăng ký ảnh thành công!', uploadToast);
+        return mediaGenerationIdObject;
       };
 
       if (startImageFile) {
-        finalStartImageUrl = await processImage(startImageFile, 'Đang xử lý ảnh bắt đầu...');
+        finalStartImageObject = await processImage(startImageFile, 'Đang xử lý ảnh bắt đầu...');
       }
 
       if (endImageFile) {
-        finalEndImageUrl = await processImage(endImageFile, 'Đang xử lý ảnh kết thúc...');
+        finalEndImageObject = await processImage(endImageFile, 'Đang xử lý ảnh kết thúc...');
       }
 
       showSuccess('Đang gửi yêu cầu tạo video...', loadingToast);
@@ -200,8 +166,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         bath: batchSize,
         aspect_ratio: apiAspectRatio,
-        startImage: finalStartImageUrl,
-        endImage: finalEndImageUrl,
+        startImage: finalStartImageObject,
+        endImage: finalEndImageObject,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
