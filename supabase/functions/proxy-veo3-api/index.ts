@@ -124,9 +124,8 @@ serve(async (req) => {
     const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
 
     let correctedPath = path;
-    if (path === 'veo3/generate') {
-      correctedPath = 'video/veo3';
-    } else if (path === 'veo3/image_uploadv2') {
+    // Logic to correct paths for different API versions or conventions
+    if (path === 'veo3/image_uploadv2') {
       correctedPath = 'img/uploadmediav2';
     } else if (path === 'veo3/image_upload') {
       correctedPath = 'video/uploadmedia';
