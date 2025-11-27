@@ -466,10 +466,14 @@ serve(async (req) => {
             if (statusError) throw statusError;
             if (statusData.error) throw new Error(statusData.error);
 
-            const firstResult = statusData.results?.[0];
-            if (firstResult?.status === 'SUCCESS') {
-                await supabaseAdmin.from('veo3_tasks').update({ status: 'completed', result_url: firstResult.url }).eq('id', task.id);
-            } else if (firstResult?.status === 'FAILED') {
+            const firstResult = statusData.operations?.[0];
+            if (firstResult?.status === 'MEDIA_GENERATION_STATUS_SUCCESSFUL') {
+                const finalUrl = firstResult.operation?.metadata?.video?.fifeUrl;
+                if (!finalUrl) {
+                    throw new Error('VEO3 task successful but fifeUrl is missing.');
+                }
+                await supabaseAdmin.from('veo3_tasks').update({ status: 'completed', result_url: finalUrl }).eq('id', task.id);
+            } else if (firstResult?.status === 'MEDIA_GENERATION_STATUS_FAILED') {
                 await supabaseAdmin.from('veo3_tasks').update({ status: 'failed', error_message: firstResult.error || 'Lỗi không xác định từ VEO3' }).eq('id', task.id);
             }
         } catch (e) {
