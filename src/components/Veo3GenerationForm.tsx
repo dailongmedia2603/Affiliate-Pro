@@ -181,7 +181,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       const payload = {
         prompt,
         project_id: projectId,
-        batch: batchSize,
+        bath: batchSize,
         aspect_ratio: aspectRatio,
         startImage: finalStartImageUrl,
         endImage: finalEndImageUrl,
