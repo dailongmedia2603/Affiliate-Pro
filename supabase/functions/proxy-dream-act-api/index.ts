@@ -26,16 +26,29 @@ serve(async (req) => {
   }
 
   try {
+    // Create a standard Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
+
+    // Extract the token from the header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error("Missing Authorization header.");
+    }
+    const token = authHeader.replace('Bearer ', '');
+
+    // Authenticate the user using the token
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    if (userError || !user) {
+      console.error("Authentication error:", userError?.message);
+      throw new Error("User not authenticated.");
+    }
+    const userId = user.id;
 
     const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    const settings = await getUserSettings(supabaseAdmin, user.id);
+    const settings = await getUserSettings(supabaseAdmin, userId);
     const { dream_act_domain, ...credentials } = settings;
 
     const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
@@ -112,7 +125,6 @@ serve(async (req) => {
     const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
     const responseData = await response.json();
 
-    // Corrected check: Use 'resultCode' and check for non-zero for errors.
     if (!response.ok || responseData.resultCode !== 0) {
       throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
     }
