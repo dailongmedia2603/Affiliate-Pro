@@ -51,46 +51,48 @@ async function getUserSettings(supabaseAdmin, userId) {
   return settings;
 }
 
-// Helper to get Veo3 token, with refresh logic
-async function getVeo3Token(cookie) {
+// Helper to get Veo3 token, with refresh logic and logging
+async function getVeo3Token(cookie, supabaseAdmin, taskId) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
-  
-  let response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cookie }),
-  });
-
-  let responseText = await response.text();
-  let responseData;
-  try { responseData = JSON.parse(responseText); } catch (e) { /* ignore */ }
-
-  if (!response.ok && responseData && responseData.error === 'ACCESS_TOKEN_REFRESH_NEEDED') {
-    console.log('[proxy-veo3-api] INFO: Access token refresh needed. Retrying get_token with refresh flag.');
-    
-    response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cookie, refresh: true }),
-    });
-    responseText = await response.text();
-  }
-
-  if (!response.ok) {
-    throw new Error(`Failed to get Veo3 token: ${responseText}`);
-  }
+  let responseData, errorForLog = null;
 
   try {
-    responseData = JSON.parse(responseText);
-  } catch (e) {
-    throw new Error(`Invalid JSON response from Veo3 get_token: ${responseText}`);
-  }
+    let response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cookie }),
+    });
 
-  if (!responseData.access_token) {
-    throw new Error("Veo3 get_token response did not include access_token.");
+    let responseText = await response.text();
+    try { responseData = JSON.parse(responseText); } catch (e) { responseData = { raw_response: responseText }; }
+
+    if (!response.ok && responseData && responseData.error === 'ACCESS_TOKEN_REFRESH_NEEDED') {
+      console.log('[proxy-veo3-api] INFO: Access token refresh needed. Retrying get_token with refresh flag.');
+      
+      response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cookie, refresh: true }),
+      });
+      responseText = await response.text();
+      try { responseData = JSON.parse(responseText); } catch (e) { responseData = { raw_response: responseText }; }
+    }
+
+    if (!response.ok) {
+      throw new Error(`Failed to get Veo3 token: ${responseText}`);
+    }
+    
+    if (!responseData.access_token) {
+      throw new Error("Veo3 get_token response did not include access_token.");
+    }
+    
+    return responseData.access_token;
+  } catch (e) {
+    errorForLog = e;
+    throw e;
+  } finally {
+    await logApiCall(supabaseAdmin, taskId, 'veo3/get_token (Internal)', { cookie: '[REDACTED]' }, responseData, errorForLog, url);
   }
-  
-  return responseData.access_token;
 }
 
 
@@ -130,12 +132,12 @@ serve(async (req) => {
     targetUrl = new URL(path, API_BASE_URL).toString();
     
     let finalPayload;
-    const cookieEndpoints = ['veo3/re_promt', 'veo3/get_token'];
+    const cookieEndpoints = ['veo3/re_promt']; // get_token is handled separately
 
     if (cookieEndpoints.includes(path)) {
         finalPayload = { cookie: veo3_cookie, ...payload };
     } else {
-        const token = await getVeo3Token(veo3_cookie);
+        const token = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
         finalPayload = { token: token, ...payload };
     }
 
