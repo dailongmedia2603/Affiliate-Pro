@@ -136,8 +136,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       taskId = newTask.id;
       onTaskCreated();
 
-      let finalStartImageId: string | null = null;
-      let finalEndImageId: string | null = null;
+      let finalStartImageUrl: string | null = null;
+      let finalEndImageUrl: string | null = null;
 
       if (startImageFile) {
         dismissToast(loadingToast);
@@ -149,11 +149,11 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
         
-        finalStartImageId = data.data?.[0]?.id;
+        finalStartImageUrl = data.data?.[0]?.url;
 
-        if (!finalStartImageId) {
-            console.error("VEO3 image upload response missing ID:", data);
-            throw new Error('API không trả về ID cho ảnh bắt đầu.');
+        if (!finalStartImageUrl) {
+            console.error("VEO3 image upload response missing URL:", data);
+            throw new Error('API không trả về URL cho ảnh bắt đầu.');
         }
         showSuccess('Tải lên ảnh bắt đầu thành công!', startToast);
       }
@@ -168,11 +168,11 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
         
-        finalEndImageId = data.data?.[0]?.id;
+        finalEndImageUrl = data.data?.[0]?.url;
 
-        if (!finalEndImageId) {
-            console.error("VEO3 image upload response missing ID:", data);
-            throw new Error('API không trả về ID cho ảnh kết thúc.');
+        if (!finalEndImageUrl) {
+            console.error("VEO3 image upload response missing URL:", data);
+            throw new Error('API không trả về URL cho ảnh kết thúc.');
         }
         showSuccess('Tải lên ảnh kết thúc thành công!', endToast);
       }
@@ -183,8 +183,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        startImage: finalStartImageId,
-        endImage: finalEndImageId,
+        startImage: finalStartImageUrl,
+        endImage: finalEndImageUrl,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
