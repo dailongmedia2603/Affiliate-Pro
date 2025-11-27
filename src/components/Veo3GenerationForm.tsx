@@ -35,12 +35,27 @@ const getErrorMessage = (error: any): string => {
   return JSON.stringify(error);
 };
 
+const fileToBase64 = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      const base64String = (reader.result as string).split(',')[1];
+      resolve(base64String);
+    };
+    reader.onerror = error => reject(error);
+  });
+};
 
 const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [projectId, setProjectId] = useState('50c7f7bf-4799-4cd3-83ff-742090513f21');
   const [prompt, setPrompt] = useState('a beautiful girl in a beautiful dress');
-  const [startImageUrl, setStartImageUrl] = useState('');
-  const [endImageUrl, setEndImageUrl] = useState('');
+  
+  const [startImageUrl, setStartImageUrl] = useState(''); // Will hold blob URL for preview
+  const [endImageUrl, setEndImageUrl] = useState(''); // Will hold blob URL for preview
+  const [startImageFile, setStartImageFile] = useState<File | null>(null);
+  const [endImageFile, setEndImageFile] = useState<File | null>(null);
+
   const [startImageId, setStartImageId] = useState<string | null>(null);
   const [endImageId, setEndImageId] = useState<string | null>(null);
   const [batchSize, setBatchSize] = useState(1);
@@ -74,44 +89,69 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     }
   };
 
-  const handleUrlChange = async (url: string, type: 'start' | 'end') => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'start' | 'end') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     const setImageUrl = type === 'start' ? setStartImageUrl : setEndImageUrl;
     const setImageId = type === 'start' ? setStartImageId : setEndImageId;
     const setIsRegistering = type === 'start' ? setIsRegisteringStart : setIsRegisteringEnd;
+    const setFile = type === 'start' ? setStartImageFile : setEndImageFile;
 
-    setImageUrl(url);
-    if (!url) {
-      setImageId(null);
-      return;
-    }
+    setFile(file);
+    const previewUrl = URL.createObjectURL(file);
+    setImageUrl(previewUrl);
 
     setIsRegistering(true);
-    const toastId = showLoading(`Đang đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'}...`);
+    const toastId = showLoading(`Đang tải lên và đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'}...`);
+
     try {
-      const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-        body: { 
-          path: 'veo3/image_uploadv2',
-          payload: { img_url: [url] }
-        },
-      });
+        const base64 = await fileToBase64(file);
 
-      if (error) throw error;
-      if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
-      
-      const mediaId = data.mediaGenerationId || data.data?.[0]?.mediaGenerationId || data.data?.mediaGenerationId;
+        const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
+            body: { 
+                path: 'veo3/image_upload',
+                payload: { base64 }
+            },
+        });
 
-      if (mediaId) {
-        setImageId(mediaId);
-        showSuccess('Đăng ký ảnh thành công!', toastId);
-      } else {
-        throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
-      }
+        if (error) throw error;
+        if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
+        
+        const mediaId = data.mediaGenerationId || data.data?.mediaGenerationId;
+
+        if (mediaId) {
+            setImageId(mediaId);
+            showSuccess('Đăng ký ảnh thành công!', toastId);
+        } else {
+            throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
+        }
     } catch (err) {
-      showError(`Lỗi đăng ký ảnh: ${getErrorMessage(err)}`, toastId);
-      setImageId(null);
+        showError(`Lỗi đăng ký ảnh: ${getErrorMessage(err)}`, toastId);
+        setImageId(null);
+        setImageUrl('');
+        setFile(null);
+        URL.revokeObjectURL(previewUrl);
     } finally {
-      setIsRegistering(false);
+        setIsRegistering(false);
+        if (e.target) {
+            e.target.value = '';
+        }
     }
+  };
+
+  const handleRemoveImage = (type: 'start' | 'end') => {
+    const setImageUrl = type === 'start' ? setStartImageUrl : setEndImageUrl;
+    const setImageId = type === 'start' ? setStartImageId : setEndImageId;
+    const setFile = type === 'start' ? setStartImageFile : setEndImageFile;
+    const imageUrl = type === 'start' ? startImageUrl : endImageUrl;
+
+    if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+    }
+    setImageUrl('');
+    setImageId(null);
+    setFile(null);
   };
 
   const handleSubmit = async () => {
@@ -119,8 +159,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       showError('Vui lòng nhập Project ID và Prompt.');
       return;
     }
-    if ((startImageUrl && !startImageId) || (endImageUrl && !endImageId)) {
-      showError('Vui lòng chờ đăng ký ảnh hoàn tất (hoặc xóa URL ảnh) trước khi tạo video.');
+    if ((startImageFile && !startImageId) || (endImageFile && !endImageId)) {
+      showError('Vui lòng chờ đăng ký ảnh hoàn tất trước khi tạo video.');
       return;
     }
     setIsGenerating(true);
@@ -190,57 +230,51 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
-            <Label>Ảnh Bắt Đầu (Tùy chọn)</Label>
-            <Input 
-              type="url" 
-              placeholder="Dán URL ảnh vào đây..." 
-              value={startImageUrl} 
-              onChange={(e) => handleUrlChange(e.target.value, 'start')}
-            />
-            <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center">
-              {isRegisteringStart ? <Loader2 className="w-8 h-8 animate-spin text-orange-500" /> : startImageUrl ? (
+            <Label htmlFor="start-image-upload">Ảnh Bắt Đầu (Tùy chọn)</Label>
+            <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center relative">
+              {isRegisteringStart ? (
+                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+              ) : startImageUrl ? (
                 <div className="relative group w-full h-full">
                   <img src={startImageUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
                   <Button
-                    variant="destructive" size="icon" onClick={() => handleUrlChange('', 'start')}
+                    variant="destructive" size="icon" onClick={() => handleRemoveImage('start')}
                     className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
               ) : (
-                <div className="text-center text-gray-500">
+                <label htmlFor="start-image-upload" className="cursor-pointer text-center text-gray-500">
                   <ImagePlus className="mx-auto h-8 w-8" />
-                  <p className="text-sm mt-1">Xem trước ảnh sẽ hiện ở đây</p>
-                </div>
+                  <p className="text-sm mt-1">Tải ảnh lên</p>
+                </label>
               )}
+              <Input id="start-image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'start')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isRegisteringStart} />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Ảnh Kết Thúc (Tùy chọn)</Label>
-            <Input 
-              type="url" 
-              placeholder="Dán URL ảnh vào đây..." 
-              value={endImageUrl} 
-              onChange={(e) => handleUrlChange(e.target.value, 'end')}
-            />
-            <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center">
-              {isRegisteringEnd ? <Loader2 className="w-8 h-8 animate-spin text-orange-500" /> : endImageUrl ? (
+            <Label htmlFor="end-image-upload">Ảnh Kết Thúc (Tùy chọn)</Label>
+            <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center relative">
+              {isRegisteringEnd ? (
+                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+              ) : endImageUrl ? (
                 <div className="relative group w-full h-full">
                   <img src={endImageUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
                   <Button
-                    variant="destructive" size="icon" onClick={() => handleUrlChange('', 'end')}
+                    variant="destructive" size="icon" onClick={() => handleRemoveImage('end')}
                     className="absolute top-1 right-1 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="w-4 h-4" />
                   </Button>
                 </div>
               ) : (
-                <div className="text-center text-gray-500">
+                <label htmlFor="end-image-upload" className="cursor-pointer text-center text-gray-500">
                   <ImagePlus className="mx-auto h-8 w-8" />
-                  <p className="text-sm mt-1">Xem trước ảnh sẽ hiện ở đây</p>
-                </div>
+                  <p className="text-sm mt-1">Tải ảnh lên</p>
+                </label>
               )}
+              <Input id="end-image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'end')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isRegisteringEnd} />
             </div>
           </div>
         </div>

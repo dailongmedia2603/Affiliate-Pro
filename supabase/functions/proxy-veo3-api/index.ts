@@ -99,6 +99,8 @@ serve(async (req) => {
       correctedPath = 'video/veo3';
     } else if (path === 'veo3/image_uploadv2') {
       correctedPath = 'img/uploadmediav2';
+    } else if (path === 'veo3/image_upload') {
+      correctedPath = 'video/uploadmedia';
     }
     console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
     // --- End Path Correction ---
@@ -128,6 +130,13 @@ serve(async (req) => {
         console.log('[proxy-veo3-api] INFO: Renaming "img_url" to "url" for compatibility.');
         finalPayload.url = finalPayload.img_url;
         delete finalPayload.img_url;
+    }
+
+    // Handle base64 upload
+    if (path === 'veo3/image_upload' && finalPayload.base64) {
+        console.log('[proxy-veo3-api] INFO: Renaming "base64" to "file_data" for compatibility.');
+        finalPayload.file_data = [finalPayload.base64];
+        delete finalPayload.base64;
     }
 
     const response = await fetch(targetUrl, {
