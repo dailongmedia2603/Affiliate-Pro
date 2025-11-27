@@ -76,8 +76,12 @@ const DreamActGenerationPage = () => {
     let loadingToast = showLoading('Bắt đầu quá trình...');
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Cần đăng nhập để thực hiện.");
+      // Explicitly get session to ensure auth header is correct
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error("Không thể lấy thông tin phiên đăng nhập. Vui lòng đăng nhập lại.");
+      }
+      const headers = { Authorization: `Bearer ${session.access_token}` };
 
       // Step 1: Upload Image to Dream ACT API
       dismissToast(loadingToast);
@@ -85,7 +89,7 @@ const DreamActGenerationPage = () => {
       const imageFormData = new FormData();
       imageFormData.append('action', 'upload_image');
       imageFormData.append('file', imageFile);
-      const { data: imageData, error: imageUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: imageFormData });
+      const { data: imageData, error: imageUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { headers, body: imageFormData });
       if (imageUploadError) throw imageUploadError;
       if (imageData.error) throw new Error(imageData.error);
       const imageUrl = imageData.extraData.filePath;
@@ -96,7 +100,7 @@ const DreamActGenerationPage = () => {
       const videoFormData = new FormData();
       videoFormData.append('action', 'upload_video');
       videoFormData.append('file', videoFile);
-      const { data: videoData, error: videoUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: videoFormData });
+      const { data: videoData, error: videoUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { headers, body: videoFormData });
       if (videoUploadError) throw videoUploadError;
       if (videoData.error) throw new Error(videoData.error);
       const videoUrl = videoData.extraData.videoUrl;
@@ -105,6 +109,7 @@ const DreamActGenerationPage = () => {
       dismissToast(loadingToast);
       loadingToast = showLoading('Bước 3/3: Đang gửi yêu cầu tạo video...');
       const { data: animateData, error: animateError } = await supabase.functions.invoke('proxy-dream-act-api', {
+        headers, // Use the same headers
         body: {
           action: 'animate_video',
           payload: { imageUrl, videoUrl }
@@ -116,6 +121,7 @@ const DreamActGenerationPage = () => {
       if (!animateId) throw new Error('API không trả về animateId.');
 
       // Step 4: Create the task in DB
+      const { user } = session; // Use user from session
       const { error: taskError } = await supabase
         .from('dream_act_tasks')
         .insert({ 
@@ -135,6 +141,9 @@ const DreamActGenerationPage = () => {
       setVideoFile(null);
       setImagePreview(null);
       setVideoPreview(null);
+
+      // Manually fetch history for immediate UI update
+      fetchHistory();
 
     } catch (error) {
       dismissToast(loadingToast);
