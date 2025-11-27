@@ -117,8 +117,25 @@ serve(async (req) => {
       case 'animate_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/animateVideo';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-        requestPayloadForLog = { ...baseParams, ...payload };
+        
+        const params = new URLSearchParams();
+        params.append('userId', baseParams.userId);
+        params.append('clientId', baseParams.clientId);
+        params.append('accountId', baseParams.accountId);
+        params.append('token', baseParams.token);
+        params.append('imageUrl', payload.imageUrl);
+        params.append('videoUrl', payload.videoUrl);
+
+        bodyToSend = params.toString();
+        
+        requestPayloadForLog = {
+            userId: baseParams.userId,
+            clientId: baseParams.clientId,
+            accountId: baseParams.accountId,
+            token: baseParams.token,
+            imageUrl: payload.imageUrl,
+            videoUrl: payload.videoUrl,
+        };
         break;
       case 'fetch_status':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
