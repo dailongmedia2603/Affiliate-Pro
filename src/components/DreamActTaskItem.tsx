@@ -2,8 +2,9 @@ import React from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Trash2, Download } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Trash2, Download, Code } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
+import DreamActLogViewer from './DreamActLogViewer';
 
 const DreamActTaskItem = ({ task, onTaskDeleted }) => {
 
@@ -39,7 +40,10 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
           {renderStatus()}
           <p className="text-xs text-gray-500">Tạo lúc: {new Date(task.created_at).toLocaleString()}</p>
         </div>
-        <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
+        <div className="flex items-center">
+          <DreamActLogViewer taskId={task.id} />
+          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
+        </div>
       </div>
       {task.status === 'failed' && task.error_message && (
         <p className="text-xs text-red-600 bg-red-50 p-2 rounded-md">{task.error_message}</p>

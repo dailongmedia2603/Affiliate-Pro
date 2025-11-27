@@ -7,6 +7,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null) => {
+  if (!taskId) return;
+  
+  const sanitizedRequest = { ...requestPayload };
+  if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
+  if (sanitizedRequest.photo) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
+  if (sanitizedRequest.video) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
+
+  const logEntry = {
+    task_id: taskId,
+    step_name: stepName,
+    request_payload: sanitizedRequest,
+    response_data: responseData,
+    is_error: !!error,
+    error_message: error ? error.message : null,
+  };
+  await supabaseAdmin.from('dream_act_logs').insert(logEntry);
+};
+
+
 async function getUserSettings(supabaseAdmin, userId) {
   const { data, error } = await supabaseAdmin
     .from('user_settings')
@@ -25,9 +45,16 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+  let taskId;
+  let action;
+  let requestPayloadForLog;
+  let responseData;
+  let errorForLog = null;
+
   try {
     const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
-    let action, payload, file, accessToken;
+    let payload, file, accessToken;
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -39,12 +66,14 @@ serve(async (req) => {
       action = formData.get('action');
       file = formData.get('file');
       accessToken = formData.get('accessToken');
+      taskId = formData.get('taskId');
       payload = {};
     } else {
       const body = await req.json();
       action = body.action;
-      payload = body.payload; // The payload is the body itself for non-form-data
+      payload = body.payload;
       accessToken = body.accessToken;
+      taskId = body.taskId;
     }
 
     if (!accessToken) {
@@ -58,7 +87,6 @@ serve(async (req) => {
     }
     const userId = user.id;
 
-    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     const settings = await getUserSettings(supabaseAdmin, userId);
     const { dream_act_domain, ...credentials } = settings;
 
@@ -80,18 +108,20 @@ serve(async (req) => {
         bodyToSend = new FormData();
         Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
         bodyToSend.append('photo', file);
+        requestPayloadForLog = { ...baseParams, photo: file };
         break;
       case 'upload_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedAct';
         bodyToSend = new FormData();
         Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
         bodyToSend.append('video', file);
+        requestPayloadForLog = { ...baseParams, video: file };
         break;
       case 'animate_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/animateVideo';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        // Combine base params with the flat payload from the client
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
+        requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'fetch_status':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
@@ -99,6 +129,7 @@ serve(async (req) => {
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
         targetPath += `?${bodyToSend}`;
+        requestPayloadForLog = { ...baseParams, ...payload };
         bodyToSend = undefined;
         break;
       case 'download_video':
@@ -106,6 +137,7 @@ serve(async (req) => {
          method = 'PATCH';
          headers['Content-Type'] = 'application/x-www-form-urlencoded';
          bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
+         requestPayloadForLog = { ...baseParams, ...payload };
          break;
       case 'test_connection':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
@@ -113,6 +145,7 @@ serve(async (req) => {
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         const testParams = new URLSearchParams({ ...baseParams, pageSize: 1 }).toString();
         targetPath += `?${testParams}`;
+        requestPayloadForLog = { ...baseParams, pageSize: 1 };
         bodyToSend = undefined;
         break;
       default:
@@ -120,11 +153,19 @@ serve(async (req) => {
     }
 
     const targetUrl = `${dream_act_domain}${targetPath}`;
-    const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
-    const responseData = await response.json();
+    
+    try {
+        const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
+        responseData = await response.json();
 
-    if (!response.ok || responseData.resultCode !== 0) {
-      throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
+        if (!response.ok || responseData.resultCode !== 0) {
+          throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
+        }
+    } catch (e) {
+        errorForLog = e;
+        throw e;
+    } finally {
+        await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, errorForLog);
     }
 
     return new Response(JSON.stringify(responseData), {
@@ -133,6 +174,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
+    await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
