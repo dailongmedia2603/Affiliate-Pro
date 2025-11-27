@@ -144,55 +144,6 @@ serve(async (req) => {
         finalPayload = { token: token, ...payload };
     }
 
-    // NEW LOGIC: Handle image URL to ID conversion for 'generate' action
-    if (path === 'veo3/generate') {
-        const { startImage: startImageUrl, endImage: endImageUrl, ...restOfPayload } = payload;
-        
-        const token = finalPayload.token; // We already have the token
-        let startImageId = null;
-        let endImageId = null;
-
-        if (startImageUrl) {
-            await logApiCall(supabaseAdmin, taskId, 'veo3/image_uploadv2 (start)', { url: startImageUrl }, null, null);
-            const uploadResponse = await fetch(new URL('img/uploadmediav2', API_BASE_URL).toString(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, url: [startImageUrl], cookie: veo3_cookie }),
-            });
-            const uploadData = await uploadResponse.json();
-            await logApiCall(supabaseAdmin, taskId, 'veo3/image_uploadv2 (start) response', {}, uploadData, uploadResponse.ok ? null : new Error(JSON.stringify(uploadData)));
-
-            if (!uploadResponse.ok || !uploadData.status || !uploadData.data?.[0]?.mediaGenerationId) {
-                throw new Error(`Failed to register start image with Veo3. Response: ${JSON.stringify(uploadData)}`);
-            }
-            startImageId = uploadData.data[0].mediaGenerationId;
-        }
-
-        if (endImageUrl) {
-            await logApiCall(supabaseAdmin, taskId, 'veo3/image_uploadv2 (end)', { url: endImageUrl }, null, null);
-            const uploadResponse = await fetch(new URL('img/uploadmediav2', API_BASE_URL).toString(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ token, url: [endImageUrl], cookie: veo3_cookie }),
-            });
-            const uploadData = await uploadResponse.json();
-            await logApiCall(supabaseAdmin, taskId, 'veo3/image_uploadv2 (end) response', {}, uploadData, uploadResponse.ok ? null : new Error(JSON.stringify(uploadData)));
-
-            if (!uploadResponse.ok || !uploadData.status || !uploadData.data?.[0]?.mediaGenerationId) {
-                throw new Error(`Failed to register end image with Veo3. Response: ${JSON.stringify(uploadData)}`);
-            }
-            endImageId = uploadData.data[0].mediaGenerationId;
-        }
-
-        // Reconstruct the payload for the final generation call
-        finalPayload = {
-            ...finalPayload,
-            ...restOfPayload,
-            startImage: startImageId,
-            endImage: endImageId,
-        };
-    }
-
     if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
         finalPayload.url = finalPayload.img_url;
         delete finalPayload.img_url;
