@@ -136,8 +136,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       taskId = newTask.id;
       onTaskCreated();
 
-      let finalStartImageUrl: string | null = null;
-      let finalEndImageUrl: string | null = null;
+      let startImageId: string | null = null;
+      let endImageId: string | null = null;
 
       if (startImageFile) {
         dismissToast(loadingToast);
@@ -148,8 +148,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
-        finalStartImageUrl = data?.data?.[0]?.url;
-        if (!finalStartImageUrl) throw new Error('API không trả về URL cho ảnh bắt đầu. Phản hồi: ' + JSON.stringify(data));
+        startImageId = data?.data?.[0]?.id;
+        if (!startImageId) throw new Error('API không trả về ID cho ảnh bắt đầu. Phản hồi: ' + JSON.stringify(data));
         showSuccess('Tải lên ảnh bắt đầu thành công!', startToast);
       }
 
@@ -162,8 +162,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
-        finalEndImageUrl = data?.data?.[0]?.url;
-        if (!finalEndImageUrl) throw new Error('API không trả về URL cho ảnh kết thúc. Phản hồi: ' + JSON.stringify(data));
+        endImageId = data?.data?.[0]?.id;
+        if (!endImageId) throw new Error('API không trả về ID cho ảnh kết thúc. Phản hồi: ' + JSON.stringify(data));
         showSuccess('Tải lên ảnh kết thúc thành công!', endToast);
       }
 
@@ -173,8 +173,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        img_url: finalStartImageUrl,
-        end_img_url: finalEndImageUrl,
+        startImage: startImageId,
+        endImage: endImageId,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
