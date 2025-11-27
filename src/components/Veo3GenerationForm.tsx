@@ -188,7 +188,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-        body: { path: 'veo3/generate', payload, taskId },
+        body: { path: 'veo3/genarate', payload, taskId },
       });
 
       if (error) throw error;
