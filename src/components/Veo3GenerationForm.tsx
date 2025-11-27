@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Sparkles, X, ImagePlus } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const getErrorMessage = (error: any): string => {
   if (!error) return 'Đã xảy ra lỗi không xác định.';
@@ -33,18 +34,6 @@ const getErrorMessage = (error: any): string => {
   if (typeof error === 'string') return error;
 
   return JSON.stringify(error);
-};
-
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
-    };
-    reader.onerror = error => reject(error);
-  });
 };
 
 const Veo3GenerationForm = ({ onTaskCreated }) => {
@@ -136,34 +125,19 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       taskId = newTask.id;
       onTaskCreated();
 
-      let finalStartImageId: string | null = null;
-      let finalEndImageId: string | null = null;
-
+      let finalStartImageUrl: string | null = null;
       if (startImageFile) {
         dismissToast(loadingToast);
         const startToast = showLoading('Đang tải lên ảnh bắt đầu...');
-        const base64 = await fileToBase64(startImageFile);
-        const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { path: 'veo3/image_upload', payload: { base64 }, taskId },
-        });
-        if (error) throw error;
-        if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
-        finalStartImageId = data.mediaGenerationId || data.data?.mediaGenerationId;
-        if (!finalStartImageId) throw new Error('API không trả về ID cho ảnh bắt đầu.');
+        finalStartImageUrl = await uploadToR2(startImageFile);
         showSuccess('Tải lên ảnh bắt đầu thành công!', startToast);
       }
 
+      let finalEndImageUrl: string | null = null;
       if (endImageFile) {
         dismissToast(loadingToast);
         const endToast = showLoading('Đang tải lên ảnh kết thúc...');
-        const base64 = await fileToBase64(endImageFile);
-        const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { path: 'veo3/image_upload', payload: { base64 }, taskId },
-        });
-        if (error) throw error;
-        if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
-        finalEndImageId = data.mediaGenerationId || data.data?.mediaGenerationId;
-        if (!finalEndImageId) throw new Error('API không trả về ID cho ảnh kết thúc.');
+        finalEndImageUrl = await uploadToR2(endImageFile);
         showSuccess('Tải lên ảnh kết thúc thành công!', endToast);
       }
 
@@ -173,8 +147,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        startImage: finalStartImageId,
-        endImage: finalEndImageId,
+        startImage: finalStartImageUrl,
+        endImage: finalEndImageUrl,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
