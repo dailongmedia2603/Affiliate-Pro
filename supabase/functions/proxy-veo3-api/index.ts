@@ -128,8 +128,6 @@ serve(async (req) => {
       correctedPath = 'video/veo3';
     } else if (path === 'veo3/image_uploadv2') {
       correctedPath = 'img/uploadmediav2';
-    } else if (path === 'veo3/image_upload') {
-      correctedPath = 'video/uploadmedia';
     }
     
     const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
