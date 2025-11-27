@@ -37,19 +37,29 @@ serve(async (req) => {
 
   try {
     // 1. --- AUTHENTICATION & PAYLOAD ---
-    const { channelId } = await req.json();
+    const { channelId, userId: payloadUserId, trigger_type: payloadTriggerType } = await req.json();
     if (!channelId) throw new Error("Thiếu tham số channelId.");
 
-    const authHeader = req.headers.get('Authorization')!;
-    if (!authHeader) throw new Error("Thiếu thông tin xác thực (Authorization header).");
+    let userId;
+    // If a userId is provided in the payload, this is likely a service-to-service call (e.g., from a cron job)
+    if (payloadUserId) {
+        userId = payloadUserId;
+    } else {
+        // Otherwise, get the user from the auth header for a client-side call
+        const authHeader = req.headers.get('Authorization')!;
+        if (!authHeader) throw new Error("Thiếu thông tin xác thực (Authorization header).");
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("Không thể xác thực người dùng.");
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { global: { headers: { Authorization: authHeader } } }
+        );
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) throw new Error("Không thể xác thực người dùng.");
+        userId = user.id;
+    }
+    
+    const triggerType = payloadTriggerType === 'auto' ? 'auto' : 'manual';
 
     // 2. --- PRE-FLIGHT CHECKS ---
     const { data: existingRun, error: existingRunError } = await supabaseAdmin
@@ -76,12 +86,12 @@ serve(async (req) => {
     // 3. --- CREATE AUTOMATION RUN ---
     const { data: run, error: runError } = await supabaseAdmin
       .from('automation_runs')
-      .insert({ user_id: user.id, channel_id: channelId, status: 'starting' })
+      .insert({ user_id: userId, channel_id: channelId, status: 'starting', trigger_type: triggerType })
       .select()
       .single();
     if (runError) throw runError;
     runId = run.id;
-    await logToDb(supabaseAdmin, runId, 'Đã tạo phiên chạy automation. Bắt đầu xếp hàng các công việc.');
+    await logToDb(supabaseAdmin, runId, `Đã tạo phiên chạy automation (${triggerType}). Bắt đầu xếp hàng các công việc.`);
 
     // 4. --- QUEUE ALL TASKS ---
     const { data: subProducts, error: subProductsError } = await supabaseAdmin

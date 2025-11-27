@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -17,6 +17,7 @@ import { Loader2 } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
+import { Input } from '@/components/ui/input';
 
 type Prompt = {
   id: string;
@@ -33,6 +34,8 @@ type Config = {
   isVoiceEnabled: boolean;
   useLibraryPromptForVoice: boolean;
   voicePromptId: string | null;
+  isAutoRunEnabled: boolean;
+  autoRunCount: number;
 };
 
 const defaultConfig: Config = {
@@ -43,6 +46,8 @@ const defaultConfig: Config = {
   isVoiceEnabled: true,
   useLibraryPromptForVoice: false,
   voicePromptId: null,
+  isAutoRunEnabled: false,
+  autoRunCount: 3,
 };
 
 const VariablesList = ({ variables }: { variables: string[] }) => (
@@ -230,9 +235,10 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
           </div>
         ) : (
           <Tabs defaultValue="video_script" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="video_script">1. Prompt tạo Ảnh / Video</TabsTrigger>
               <TabsTrigger value="voice">2. Tạo Voice</TabsTrigger>
+              <TabsTrigger value="auto_run">3. Chạy Tự Động</TabsTrigger>
             </TabsList>
             <div className="mt-4 max-h-[60vh] overflow-y-auto p-1">
               <TabsContent value="video_script" className="space-y-4">
@@ -307,6 +313,32 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+              </TabsContent>
+              <TabsContent value="auto_run" className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-gray-100 rounded-md">
+                  <Label htmlFor="auto-run-enabled-switch" className="cursor-pointer font-semibold">
+                    Kích hoạt chạy tự động
+                  </Label>
+                  <Switch
+                    id="auto-run-enabled-switch"
+                    checked={config.isAutoRunEnabled}
+                    onCheckedChange={(checked) => handleConfigChange('isAutoRunEnabled', checked)}
+                  />
+                </div>
+                <div className={`space-y-2 transition-opacity ${!config.isAutoRunEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <Label htmlFor="autoRunCount">Số lần chạy tự động mỗi ngày</Label>
+                  <Input
+                    id="autoRunCount"
+                    type="number"
+                    min="1"
+                    value={config.autoRunCount}
+                    onChange={(e) => handleConfigChange('autoRunCount', parseInt(e.target.value, 10) || 1)}
+                    disabled={!config.isAutoRunEnabled}
+                  />
+                  <p className="text-xs text-gray-500">
+                    Hệ thống sẽ tự động chạy automation cho kênh này với số lần đã chỉ định. Mỗi lần chạy cách nhau ít nhất 10 phút.
+                  </p>
                 </div>
               </TabsContent>
             </div>
