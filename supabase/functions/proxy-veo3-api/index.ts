@@ -9,6 +9,30 @@ const corsHeaders = {
 
 const API_BASE_URL = 'https://api.beautyapp.work';
 
+const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null) => {
+  if (!taskId) return;
+  
+  const sanitizedRequest = { ...requestPayload };
+  if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
+  if (sanitizedRequest.cookie) sanitizedRequest.cookie = '[REDACTED]';
+  if (sanitizedRequest.base64) sanitizedRequest.base64 = '[BASE64_DATA]';
+  if (sanitizedRequest.file_data) sanitizedRequest.file_data = '[BASE64_DATA]';
+
+  const logEntry = {
+    task_id: taskId,
+    step_name: stepName,
+    request_payload: sanitizedRequest,
+    response_data: responseData,
+    is_error: !!error,
+    error_message: error ? error.message : null,
+  };
+  try {
+    await supabaseAdmin.from('veo3_logs').insert(logEntry);
+  } catch(e) {
+    console.error(`[proxy-veo3-api] Failed to write log to DB: ${e.message}`);
+  }
+};
+
 // Helper to get user settings
 async function getUserSettings(supabaseAdmin, userId) {
   const { data: settings, error } = await supabaseAdmin
@@ -28,7 +52,6 @@ async function getUserSettings(supabaseAdmin, userId) {
 async function getVeo3Token(cookie) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
   
-  // First attempt
   let response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -39,7 +62,6 @@ async function getVeo3Token(cookie) {
   let responseData;
   try { responseData = JSON.parse(responseText); } catch (e) { /* ignore */ }
 
-  // Check if refresh is needed and retry
   if (!response.ok && responseData && responseData.error === 'ACCESS_TOKEN_REFRESH_NEEDED') {
     console.log('[proxy-veo3-api] INFO: Access token refresh needed. Retrying get_token with refresh flag.');
     
@@ -74,9 +96,22 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const supabaseAdmin = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
+  let taskId;
+  let path;
+  let requestPayloadForLog;
+  let responseData;
+  let errorForLog = null;
+
   try {
-    const { path, payload, method = 'POST' } = await req.json();
-    if (!path) throw new Error("Path is required.");
+    const body = await req.json();
+    path = body.path;
+    const payload = body.payload;
+    const method = body.method || 'POST';
+    taskId = body.taskId; // Extract taskId for logging
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -86,14 +121,8 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
     if (userError || !user) throw new Error("User not authenticated.");
 
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
     const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
 
-    // --- Path Correction ---
     let correctedPath = path;
     if (path === 'veo3/generate') {
       correctedPath = 'video/veo3';
@@ -102,54 +131,54 @@ serve(async (req) => {
     } else if (path === 'veo3/image_upload') {
       correctedPath = 'video/uploadmedia';
     }
-    console.log(`[proxy-veo3-api] INFO: Corrected path from '${path}' to '${correctedPath}'.`);
-    // --- End Path Correction ---
-
+    
     const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
     
     let finalPayload;
     const cookieEndpoints = ['veo3/re_promt', 'veo3/get_token'];
 
     if (cookieEndpoints.includes(path)) {
-        console.log(`[proxy-veo3-api] INFO: Path '${path}' uses cookie directly.`);
-        finalPayload = {
-            cookie: veo3_cookie,
-            ...payload
-        };
+        finalPayload = { cookie: veo3_cookie, ...payload };
     } else {
-        console.log(`[proxy-veo3-api] INFO: Path '${path}' requires a token. Fetching token...`);
         const token = await getVeo3Token(veo3_cookie);
-        finalPayload = {
-            token: token,
-            ...payload
-        };
+        finalPayload = { token: token, ...payload };
     }
 
-    // Handle parameter name mismatch for image upload
     if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
-        console.log('[proxy-veo3-api] INFO: Renaming "img_url" to "url" for compatibility.');
         finalPayload.url = finalPayload.img_url;
         delete finalPayload.img_url;
     }
 
-    // Handle base64 upload
     if (path === 'veo3/image_upload' && finalPayload.base64) {
-        console.log('[proxy-veo3-api] INFO: Renaming "base64" to "file_data" for compatibility.');
         finalPayload.file_data = [finalPayload.base64];
         delete finalPayload.base64;
     }
 
-    const response = await fetch(targetUrl, {
-        method: method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(finalPayload),
-    });
+    requestPayloadForLog = finalPayload;
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Lỗi từ API Veo3 (${response.status}): ${errorText}`);
+    try {
+        const response = await fetch(targetUrl, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(finalPayload),
+        });
+        
+        const responseText = await response.text();
+        try {
+            responseData = JSON.parse(responseText);
+        } catch(e) {
+            responseData = { raw_response: responseText };
+        }
+
+        if (!response.ok) {
+            throw new Error(`Lỗi từ API Veo3 (${response.status}): ${responseText}`);
+        }
+    } catch (e) {
+        errorForLog = e;
+        throw e;
+    } finally {
+        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, responseData, errorForLog);
     }
-    const responseData = await response.json();
 
     return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -157,6 +186,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-veo3-api] FATAL ERROR:", error.message);
+    if (!errorForLog) {
+        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, { error: error.message }, error);
+    }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

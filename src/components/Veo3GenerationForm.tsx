@@ -51,20 +51,16 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
   const [projectId, setProjectId] = useState('50c7f7bf-4799-4cd3-83ff-742090513f21');
   const [prompt, setPrompt] = useState('a beautiful girl in a beautiful dress');
   
-  const [startImageUrl, setStartImageUrl] = useState(''); // Will hold blob URL for preview
-  const [endImageUrl, setEndImageUrl] = useState(''); // Will hold blob URL for preview
+  const [startImageUrl, setStartImageUrl] = useState('');
+  const [endImageUrl, setEndImageUrl] = useState('');
   const [startImageFile, setStartImageFile] = useState<File | null>(null);
   const [endImageFile, setEndImageFile] = useState<File | null>(null);
 
-  const [startImageId, setStartImageId] = useState<string | null>(null);
-  const [endImageId, setEndImageId] = useState<string | null>(null);
   const [batchSize, setBatchSize] = useState(1);
   const [aspectRatio, setAspectRatio] = useState('9:16');
   
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBeautifying, setIsBeautifying] = useState(false);
-  const [isRegisteringStart, setIsRegisteringStart] = useState(false);
-  const [isRegisteringEnd, setIsRegisteringEnd] = useState(false);
 
   const handleBeautifyPrompt = async () => {
     if (!prompt) {
@@ -89,60 +85,25 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, type: 'start' | 'end') => {
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'start' | 'end') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const setImageUrl = type === 'start' ? setStartImageUrl : setEndImageUrl;
-    const setImageId = type === 'start' ? setStartImageId : setEndImageId;
-    const setIsRegistering = type === 'start' ? setIsRegisteringStart : setIsRegisteringEnd;
     const setFile = type === 'start' ? setStartImageFile : setEndImageFile;
+    const currentPreviewUrl = type === 'start' ? startImageUrl : endImageUrl;
+
+    if (currentPreviewUrl) {
+        URL.revokeObjectURL(currentPreviewUrl);
+    }
 
     setFile(file);
     const previewUrl = URL.createObjectURL(file);
     setImageUrl(previewUrl);
-
-    setIsRegistering(true);
-    const toastId = showLoading(`Đang tải lên và đăng ký ${type === 'start' ? 'ảnh bắt đầu' : 'ảnh kết thúc'}...`);
-
-    try {
-        const base64 = await fileToBase64(file);
-
-        const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { 
-                path: 'veo3/image_upload',
-                payload: { base64 }
-            },
-        });
-
-        if (error) throw error;
-        if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
-        
-        const mediaId = data.mediaGenerationId || data.data?.mediaGenerationId;
-
-        if (mediaId) {
-            setImageId(mediaId);
-            showSuccess('Đăng ký ảnh thành công!', toastId);
-        } else {
-            throw new Error('API không trả về ID ảnh (mediaGenerationId). Phản hồi: ' + JSON.stringify(data));
-        }
-    } catch (err) {
-        showError(`Lỗi đăng ký ảnh: ${getErrorMessage(err)}`, toastId);
-        setImageId(null);
-        setImageUrl('');
-        setFile(null);
-        URL.revokeObjectURL(previewUrl);
-    } finally {
-        setIsRegistering(false);
-        if (e.target) {
-            e.target.value = '';
-        }
-    }
   };
 
   const handleRemoveImage = (type: 'start' | 'end') => {
     const setImageUrl = type === 'start' ? setStartImageUrl : setEndImageUrl;
-    const setImageId = type === 'start' ? setStartImageId : setEndImageId;
     const setFile = type === 'start' ? setStartImageFile : setEndImageFile;
     const imageUrl = type === 'start' ? startImageUrl : endImageUrl;
 
@@ -150,7 +111,6 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         URL.revokeObjectURL(imageUrl);
     }
     setImageUrl('');
-    setImageId(null);
     setFile(null);
   };
 
@@ -159,46 +119,87 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       showError('Vui lòng nhập Project ID và Prompt.');
       return;
     }
-    if ((startImageFile && !startImageId) || (endImageFile && !endImageId)) {
-      showError('Vui lòng chờ đăng ký ảnh hoàn tất trước khi tạo video.');
-      return;
-    }
     setIsGenerating(true);
+    let taskId: string | null = null;
+    const loadingToast = showLoading('Đang khởi tạo tác vụ...');
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
+      const { data: newTask, error: taskError } = await supabase
+        .from('veo3_tasks')
+        .insert({ user_id: user.id, project_id: projectId, prompt, status: 'pending' })
+        .select('id')
+        .single();
+      if (taskError) throw taskError;
+      taskId = newTask.id;
+      onTaskCreated();
+
+      let finalStartImageId: string | null = null;
+      let finalEndImageId: string | null = null;
+
+      if (startImageFile) {
+        dismissToast(loadingToast);
+        const startToast = showLoading('Đang tải lên ảnh bắt đầu...');
+        const base64 = await fileToBase64(startImageFile);
+        const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
+            body: { path: 'veo3/image_upload', payload: { base64 }, taskId },
+        });
+        if (error) throw error;
+        if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
+        finalStartImageId = data.mediaGenerationId || data.data?.mediaGenerationId;
+        if (!finalStartImageId) throw new Error('API không trả về ID cho ảnh bắt đầu.');
+        showSuccess('Tải lên ảnh bắt đầu thành công!', startToast);
+      }
+
+      if (endImageFile) {
+        dismissToast(loadingToast);
+        const endToast = showLoading('Đang tải lên ảnh kết thúc...');
+        const base64 = await fileToBase64(endImageFile);
+        const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
+            body: { path: 'veo3/image_upload', payload: { base64 }, taskId },
+        });
+        if (error) throw error;
+        if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
+        finalEndImageId = data.mediaGenerationId || data.data?.mediaGenerationId;
+        if (!finalEndImageId) throw new Error('API không trả về ID cho ảnh kết thúc.');
+        showSuccess('Tải lên ảnh kết thúc thành công!', endToast);
+      }
+
+      showSuccess('Đang gửi yêu cầu tạo video...', loadingToast);
       const payload = {
         prompt,
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        startImage: startImageId,
-        endImage: endImageId,
+        startImage: finalStartImageId,
+        endImage: finalEndImageId,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-        body: { path: 'veo3/generate', payload },
+        body: { path: 'veo3/generate', payload, taskId },
       });
 
       if (error) throw error;
-      if (data.error) throw new Error(typeof data.error === 'object' ? JSON.stringify(data.error) : data.error);
+      if (data.error) throw new Error(getErrorMessage(data));
 
       if (data.operations) {
-        await supabase.from('veo3_tasks').insert({
-          user_id: user.id,
-          project_id: projectId,
-          prompt,
+        await supabase.from('veo3_tasks').update({
           api_operations: data.operations,
           status: 'processing',
-        });
-        showSuccess('Đã gửi yêu cầu tạo video thành công!');
-        onTaskCreated();
+        }).eq('id', taskId);
+        showSuccess('Đã gửi yêu cầu tạo video thành công!', loadingToast);
+        handleRemoveImage('start');
+        handleRemoveImage('end');
       } else {
         throw new Error('API không trả về thông tin tác vụ (operations).');
       }
     } catch (err) {
-      showError(`Lỗi tạo video: ${getErrorMessage(err)}`);
+      showError(`Lỗi tạo video: ${getErrorMessage(err)}`, loadingToast);
+      if (taskId) {
+        await supabase.from('veo3_tasks').update({ status: 'failed', error_message: getErrorMessage(err) }).eq('id', taskId);
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -232,9 +233,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
           <div className="space-y-2">
             <Label htmlFor="start-image-upload">Ảnh Bắt Đầu (Tùy chọn)</Label>
             <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center relative">
-              {isRegisteringStart ? (
-                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-              ) : startImageUrl ? (
+              {startImageUrl ? (
                 <div className="relative group w-full h-full">
                   <img src={startImageUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
                   <Button
@@ -250,15 +249,13 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
                   <p className="text-sm mt-1">Tải ảnh lên</p>
                 </label>
               )}
-              <Input id="start-image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'start')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isRegisteringStart} />
+              <Input id="start-image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'start')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
           </div>
           <div className="space-y-2">
             <Label htmlFor="end-image-upload">Ảnh Kết Thúc (Tùy chọn)</Label>
             <div className="w-full aspect-video border-2 border-dashed rounded-lg p-2 bg-gray-50 flex items-center justify-center relative">
-              {isRegisteringEnd ? (
-                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
-              ) : endImageUrl ? (
+              {endImageUrl ? (
                 <div className="relative group w-full h-full">
                   <img src={endImageUrl} alt="Preview" className="w-full h-full object-contain rounded-md" />
                   <Button
@@ -274,7 +271,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
                   <p className="text-sm mt-1">Tải ảnh lên</p>
                 </label>
               )}
-              <Input id="end-image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'end')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isRegisteringEnd} />
+              <Input id="end-image-upload" type="file" accept="image/*" onChange={(e) => handleFileChange(e, 'end')} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
             </div>
           </div>
         </div>
@@ -296,7 +293,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
             </Select>
           </div>
         </div>
-        <Button onClick={handleSubmit} disabled={isGenerating || isRegisteringStart || isRegisteringEnd} size="lg" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
+        <Button onClick={handleSubmit} disabled={isGenerating} size="lg" className="w-full bg-orange-500 hover:bg-orange-600 text-white">
           {isGenerating ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Wand2 className="mr-2 h-5 w-5" />}
           Tạo Video
         </Button>

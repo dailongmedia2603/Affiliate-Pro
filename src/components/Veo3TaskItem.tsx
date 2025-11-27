@@ -2,7 +2,7 @@ import React from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Trash2, Download } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Trash2, Download, Code } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import {
   Tooltip,
@@ -10,6 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import Veo3LogViewer from './Veo3LogViewer';
 
 const Veo3TaskItem = ({ task, onTaskDeleted }) => {
   const handleDelete = async () => {
@@ -52,7 +53,10 @@ const Veo3TaskItem = ({ task, onTaskDeleted }) => {
           <p className="text-sm font-medium" title={task.prompt}>{task.prompt || "Không có prompt"}</p>
           <p className="text-xs text-gray-500">Project ID: {task.project_id}</p>
         </div>
-        <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
+        <div className="flex items-center">
+          <Veo3LogViewer taskId={task.id} />
+          <Button variant="ghost" size="icon" className="w-7 h-7 text-red-500" onClick={handleDelete}><Trash2 className="w-4 h-4" /></Button>
+        </div>
       </div>
       {task.status === 'completed' && task.result_url && (
         <div className="relative aspect-video bg-black rounded-md overflow-hidden">
