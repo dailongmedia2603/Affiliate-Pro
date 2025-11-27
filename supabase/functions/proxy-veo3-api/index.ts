@@ -132,13 +132,13 @@ serve(async (req) => {
     targetUrl = new URL(path, API_BASE_URL).toString();
     
     let finalPayload;
-    const cookieEndpoints = ['veo3/re_promt']; // get_token is handled separately
+    const cookieEndpoints = ['veo3/re_promt'];
 
     if (cookieEndpoints.includes(path)) {
         finalPayload = { cookie: veo3_cookie, ...payload };
     } else {
-        const token = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
-        finalPayload = { token: token, ...payload };
+        const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
+        finalPayload = { token: accessToken, ...payload };
     }
 
     requestPayloadForLog = finalPayload;
