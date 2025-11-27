@@ -43,7 +43,7 @@ serve(async (req) => {
     } else {
       const body = await req.json();
       action = body.action;
-      payload = body.payload;
+      payload = body.payload; // The payload is the body itself for non-form-data
       accessToken = body.accessToken;
     }
 
@@ -90,6 +90,7 @@ serve(async (req) => {
       case 'animate_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/animateVideo';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        // Combine base params with the flat payload from the client
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
         break;
       case 'fetch_status':

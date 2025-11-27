@@ -111,7 +111,7 @@ const DreamActGenerationPage = () => {
       const { data: animateData, error: animateError } = await supabase.functions.invoke('proxy-dream-act-api', {
         body: {
           action: 'animate_video',
-          payload: { imageUrl, videoUrl },
+          payload: { imageUrl, videoUrl }, // Send flat payload
           accessToken: session.access_token
         }
       });
