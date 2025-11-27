@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -77,6 +77,11 @@ const DreamActGenerationPage = () => {
     let taskId: string | null = null;
 
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error("Không thể lấy thông tin phiên đăng nhập. Vui lòng đăng nhập lại.");
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
@@ -96,6 +101,12 @@ const DreamActGenerationPage = () => {
       await supabase.from('dream_act_tasks').update({ status: 'uploading_image' }).eq('id', taskId);
       fetchHistory();
 
+      const functionUrl = `${SUPABASE_URL}/functions/v1/proxy-dream-act-api`;
+      const baseHeaders = {
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': SUPABASE_PUBLISHABLE_KEY,
+      };
+
       // Step 1: Upload Image
       dismissToast(loadingToast);
       loadingToast = showLoading('Bước 1/3: Đang tải ảnh nguồn...');
@@ -103,9 +114,9 @@ const DreamActGenerationPage = () => {
       imageFormData.append('action', 'upload_image');
       imageFormData.append('file', imageFile);
       imageFormData.append('taskId', taskId);
-      const { data: imageData, error: imageUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: imageFormData });
-      if (imageUploadError) throw imageUploadError;
-      if (imageData.error) throw new Error(imageData.error);
+      const imageUploadResponse = await fetch(functionUrl, { method: 'POST', headers: baseHeaders, body: imageFormData });
+      const imageData = await imageUploadResponse.json();
+      if (!imageUploadResponse.ok || imageData.error) throw new Error(imageData.error || 'Lỗi tải ảnh nguồn.');
       const imageUrl = imageData.extraData.filePath;
       await supabase.from('dream_act_tasks').update({ status: 'uploading_video' }).eq('id', taskId);
 
@@ -116,24 +127,26 @@ const DreamActGenerationPage = () => {
       videoFormData.append('action', 'upload_video');
       videoFormData.append('file', videoFile);
       videoFormData.append('taskId', taskId);
-      const { data: videoData, error: videoUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: videoFormData });
-      if (videoUploadError) throw videoUploadError;
-      if (videoData.error) throw new Error(videoData.error);
+      const videoUploadResponse = await fetch(functionUrl, { method: 'POST', headers: baseHeaders, body: videoFormData });
+      const videoData = await videoUploadResponse.json();
+      if (!videoUploadResponse.ok || videoData.error) throw new Error(videoData.error || 'Lỗi tải video điều khiển.');
       const videoUrl = videoData.extraData.videoUrl;
       await supabase.from('dream_act_tasks').update({ status: 'animating' }).eq('id', taskId);
 
       // Step 3: Animate
       dismissToast(loadingToast);
       loadingToast = showLoading('Bước 3/3: Đang gửi yêu cầu tạo video...');
-      const { data: animateData, error: animateError } = await supabase.functions.invoke('proxy-dream-act-api', {
-        body: {
+      const animateResponse = await fetch(functionUrl, {
+        method: 'POST',
+        headers: { ...baseHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           action: 'animate_video',
           payload: { imageUrl, videoUrl },
           taskId: taskId,
-        }
+        }),
       });
-      if (animateError) throw animateError;
-      if (animateData.error) throw new Error(animateData.error);
+      const animateData = await animateResponse.json();
+      if (!animateResponse.ok || animateData.error) throw new Error(animateData.error || 'Lỗi khi tạo video.');
       const animateId = animateData.extraData.animateId;
       if (!animateId) throw new Error('API không trả về animateId.');
       await supabase.from('dream_act_tasks').update({ animate_id: animateId }).eq('id', taskId);
@@ -148,10 +161,9 @@ const DreamActGenerationPage = () => {
 
     } catch (error) {
       dismissToast(loadingToast);
-      const errorMessage = error.context?.json?.error || error.message;
-      showError(`Tạo video thất bại: ${errorMessage}`);
+      showError(`Tạo video thất bại: ${error.message}`);
       if (taskId) {
-        await supabase.from('dream_act_tasks').update({ status: 'failed', error_message: errorMessage }).eq('id', taskId);
+        await supabase.from('dream_act_tasks').update({ status: 'failed', error_message: error.message }).eq('id', taskId);
       }
     } finally {
       setIsGenerating(false);
