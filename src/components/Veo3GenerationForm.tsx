@@ -125,10 +125,10 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       taskId = newTask.id;
       onTaskCreated();
 
-      let finalStartImageObject: object | null = null;
-      let finalEndImageObject: object | null = null;
+      let finalStartImageValue: string | null = null;
+      let finalEndImageValue: string | null = null;
 
-      const processImage = async (file: File, toastMessage: string): Promise<object> => {
+      const processImage = async (file: File, toastMessage: string): Promise<string> => {
         dismissToast(loadingToast);
         const uploadToast = showLoading(toastMessage);
         const r2Url = await uploadToR2(file);
@@ -140,19 +140,19 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh: ${getErrorMessage(data)}`);
         
-        const mediaGenerationIdObject = data.mediaGenerationId;
-        if (!mediaGenerationIdObject) throw new Error('API không trả về đối tượng mediaGenerationId.');
+        const mediaGenerationIdValue = data.mediaGenerationId?.mediaGenerationId;
+        if (!mediaGenerationIdValue) throw new Error('API không trả về giá trị mediaGenerationId.');
 
         showSuccess('Đăng ký ảnh thành công!', uploadToast);
-        return mediaGenerationIdObject;
+        return mediaGenerationIdValue;
       };
 
       if (startImageFile) {
-        finalStartImageObject = await processImage(startImageFile, 'Đang xử lý ảnh bắt đầu...');
+        finalStartImageValue = await processImage(startImageFile, 'Đang xử lý ảnh bắt đầu...');
       }
 
       if (endImageFile) {
-        finalEndImageObject = await processImage(endImageFile, 'Đang xử lý ảnh kết thúc...');
+        finalEndImageValue = await processImage(endImageFile, 'Đang xử lý ảnh kết thúc...');
       }
 
       showSuccess('Đang gửi yêu cầu tạo video...', loadingToast);
@@ -166,8 +166,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         bath: batchSize,
         aspect_ratio: apiAspectRatio,
-        startImage: finalStartImageObject,
-        endImage: finalEndImageObject,
+        startImage: finalStartImageValue,
+        endImage: finalEndImageValue,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
