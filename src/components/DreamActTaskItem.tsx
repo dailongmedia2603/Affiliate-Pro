@@ -28,7 +28,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
       case 'uploading_video':
       case 'animating':
       default:
-        return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />{task.status.replace('_', ' ')}</Badge>;
+        return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />{task.status.replace(/_/g, ' ')}</Badge>;
     }
   };
 
