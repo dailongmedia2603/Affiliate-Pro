@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Wand2, Loader2, Sparkles, X, ImagePlus } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const getErrorMessage = (error: any): string => {
   if (!error) return 'Đã xảy ra lỗi không xác định.';
@@ -33,18 +34,6 @@ const getErrorMessage = (error: any): string => {
   if (typeof error === 'string') return error;
 
   return JSON.stringify(error);
-};
-
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
-    };
-    reader.onerror = error => reject(error);
-  });
 };
 
 const Veo3GenerationForm = ({ onTaskCreated }) => {
@@ -141,10 +130,12 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
 
       if (startImageFile) {
         dismissToast(loadingToast);
-        const startToast = showLoading('Đang tải lên ảnh bắt đầu...');
-        const base64 = await fileToBase64(startImageFile);
+        const startToast = showLoading('Đang tải ảnh bắt đầu lên R2...');
+        const r2Url = await uploadToR2(startImageFile);
+        showSuccess('Tải lên R2 thành công. Đang đăng ký với VEO3...', startToast);
+        
         const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { path: 'veo3/image_uploadv2', payload: { base64 }, taskId },
+            body: { path: 'veo3/image_uploadv2', payload: { img_url: r2Url }, taskId },
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
@@ -155,15 +146,17 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
             console.error("VEO3 image upload response missing URL:", data);
             throw new Error('API không trả về URL cho ảnh bắt đầu.');
         }
-        showSuccess('Tải lên ảnh bắt đầu thành công!', startToast);
+        showSuccess('Đăng ký ảnh bắt đầu thành công!', startToast);
       }
 
       if (endImageFile) {
         dismissToast(loadingToast);
-        const endToast = showLoading('Đang tải lên ảnh kết thúc...');
-        const base64 = await fileToBase64(endImageFile);
+        const endToast = showLoading('Đang tải ảnh kết thúc lên R2...');
+        const r2Url = await uploadToR2(endImageFile);
+        showSuccess('Tải lên R2 thành công. Đang đăng ký với VEO3...', endToast);
+
         const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { path: 'veo3/image_uploadv2', payload: { base64 }, taskId },
+            body: { path: 'veo3/image_uploadv2', payload: { img_url: r2Url }, taskId },
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
@@ -174,7 +167,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
             console.error("VEO3 image upload response missing URL:", data);
             throw new Error('API không trả về URL cho ảnh kết thúc.');
         }
-        showSuccess('Tải lên ảnh kết thúc thành công!', endToast);
+        showSuccess('Đăng ký ảnh kết thúc thành công!', endToast);
       }
 
       showSuccess('Đang gửi yêu cầu tạo video...', loadingToast);
