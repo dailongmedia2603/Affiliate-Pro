@@ -13,7 +13,8 @@ const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, respo
   if (!taskId) return;
   
   const sanitizedRequest = { ...requestPayload };
-  if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
+  // --- DEBUGGING: Temporarily disabled token redaction per user request ---
+  // if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
   if (sanitizedRequest.cookie) sanitizedRequest.cookie = '[REDACTED]';
   if (sanitizedRequest.base64) sanitizedRequest.base64 = '[BASE64_DATA]';
   if (sanitizedRequest.file_data) sanitizedRequest.file_data = '[BASE64_DATA]';
