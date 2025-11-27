@@ -136,8 +136,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       taskId = newTask.id;
       onTaskCreated();
 
-      let startImageId: string | null = null;
-      let endImageId: string | null = null;
+      let finalStartImageId: string | null = null;
+      let finalEndImageId: string | null = null;
 
       if (startImageFile) {
         dismissToast(loadingToast);
@@ -148,8 +148,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
-        startImageId = data?.data?.[0]?.id;
-        if (!startImageId) throw new Error('API không trả về ID cho ảnh bắt đầu. Phản hồi: ' + JSON.stringify(data));
+        finalStartImageId = data.mediaGenerationId || data.data?.mediaGenerationId;
+        if (!finalStartImageId) throw new Error('API không trả về ID cho ảnh bắt đầu.');
         showSuccess('Tải lên ảnh bắt đầu thành công!', startToast);
       }
 
@@ -162,8 +162,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
-        endImageId = data?.data?.[0]?.id;
-        if (!endImageId) throw new Error('API không trả về ID cho ảnh kết thúc. Phản hồi: ' + JSON.stringify(data));
+        finalEndImageId = data.mediaGenerationId || data.data?.mediaGenerationId;
+        if (!finalEndImageId) throw new Error('API không trả về ID cho ảnh kết thúc.');
         showSuccess('Tải lên ảnh kết thúc thành công!', endToast);
       }
 
@@ -173,8 +173,8 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         project_id: projectId,
         batch: batchSize,
         aspect_ratio: aspectRatio,
-        startImage: startImageId,
-        endImage: endImageId,
+        startImage: finalStartImageId,
+        endImage: finalEndImageId,
       };
 
       const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
