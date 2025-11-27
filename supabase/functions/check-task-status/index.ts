@@ -440,10 +440,25 @@ serve(async (req) => {
             if (!settings?.veo3_cookie) {
                 throw new Error(`Không tìm thấy cookie VEO3 cho người dùng ${task.user_id}`);
             }
+
+            if (!Array.isArray(task.api_operations)) {
+                throw new Error(`api_operations for task ${task.id} is not an array.`);
+            }
+
+            const operationsForCheck = task.api_operations.map(op => {
+                if (!op.operation?.name || !op.sceneId) {
+                    throw new Error(`Invalid operation object in api_operations for task ${task.id}`);
+                }
+                return {
+                    name: op.operation.name,
+                    sceneId: op.sceneId,
+                };
+            });
+
             const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-veo3-api', {
                 body: { 
                     path: 'veo3/check_status', 
-                    payload: { operations: task.api_operations },
+                    payload: { operations: operationsForCheck },
                     veo3_cookie: settings.veo3_cookie,
                     taskId: task.id
                 }
