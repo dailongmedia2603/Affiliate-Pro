@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Upload, Wand2, RefreshCw } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import DreamActTaskItem from './DreamActTaskItem';
-import { uploadToR2 } from '@/utils/r2-upload';
 
 const DreamActGenerationPage = () => {
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -74,52 +73,59 @@ const DreamActGenerationPage = () => {
       return;
     }
     setIsGenerating(true);
-    let loadingToast = showLoading('Đang tải file lên...');
+    let loadingToast = showLoading('Bắt đầu quá trình...');
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Cần đăng nhập để thực hiện.");
 
-      // Step 1: Upload files to R2 and get public URLs
-      const [imageUrl, videoUrl] = await Promise.all([
-        uploadToR2(imageFile),
-        uploadToR2(videoFile)
-      ]);
-      
+      // Step 1: Upload Image to Dream ACT API
       dismissToast(loadingToast);
-      loadingToast = showLoading('Đang gửi yêu cầu tạo video...');
+      loadingToast = showLoading('Bước 1/3: Đang tải ảnh nguồn lên API...');
+      const imageFormData = new FormData();
+      imageFormData.append('action', 'upload_image');
+      imageFormData.append('file', imageFile);
+      const { data: imageData, error: imageUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: imageFormData });
+      if (imageUploadError || imageData.code !== 200) throw new Error(imageUploadError?.message || imageData.message || 'Lỗi tải ảnh nguồn.');
+      const imageUrl = imageData.data.extraData.filePath;
 
-      // Step 2: Call the animate_video endpoint with R2 URLs
+      // Step 2: Upload Video to Dream ACT API
+      dismissToast(loadingToast);
+      loadingToast = showLoading('Bước 2/3: Đang tải video điều khiển lên API...');
+      const videoFormData = new FormData();
+      videoFormData.append('action', 'upload_video');
+      videoFormData.append('file', videoFile);
+      const { data: videoData, error: videoUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: videoFormData });
+      if (videoUploadError || videoData.code !== 200) throw new Error(videoUploadError?.message || videoData.message || 'Lỗi tải video điều khiển.');
+      const videoUrl = videoData.data.extraData.videoUrl;
+
+      // Step 3: Call animate_video with the obtained URLs
+      dismissToast(loadingToast);
+      loadingToast = showLoading('Bước 3/3: Đang gửi yêu cầu tạo video...');
       const { data: animateData, error: animateError } = await supabase.functions.invoke('proxy-dream-act-api', {
         body: {
           action: 'animate_video',
           payload: { imageUrl, videoUrl }
         }
       });
+      if (animateError || animateData.code !== 200) throw new Error(animateError?.message || animateData.message || 'Lỗi tạo video.');
+      const animateId = animateData.data.animateId;
+      if (!animateId) throw new Error('API không trả về animateId.');
 
-      if (animateError) throw animateError;
-      if (animateData.error) throw new Error(animateData.error);
-      if (animateData.code !== 200) throw new Error(animateData.message || 'Lỗi không xác định từ API.');
-      
-      const animateId = animateData.data?.animateId;
-      if (!animateId) {
-        throw new Error('API không trả về animateId.');
-      }
-
-      // Step 3: Create the task in DB with all info
+      // Step 4: Create the task in DB
       const { error: taskError } = await supabase
         .from('dream_act_tasks')
         .insert({ 
             user_id: user.id, 
             status: 'animating',
-            source_image_url: imageUrl,
-            driving_video_url: videoUrl,
+            source_image_url: imagePreview, // Use preview URL for display
+            driving_video_url: videoPreview, // Use preview URL for display
             animate_id: animateId
         });
       if (taskError) throw taskError;
 
       dismissToast(loadingToast);
-      showSuccess('Đã gửi yêu cầu tạo video thành công! Trạng thái sẽ được cập nhật trong lịch sử.');
+      showSuccess('Đã gửi yêu cầu tạo video thành công! Vui lòng kiểm tra lịch sử.');
       
       // Reset form
       setImageFile(null);
@@ -129,8 +135,7 @@ const DreamActGenerationPage = () => {
 
     } catch (error) {
       dismissToast(loadingToast);
-      const errorMessage = error.context?.json?.error || error.message;
-      showError(`Tạo video thất bại: ${errorMessage}`);
+      showError(`Tạo video thất bại: ${error.message}`);
     } finally {
       setIsGenerating(false);
     }
