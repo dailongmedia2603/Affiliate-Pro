@@ -441,7 +441,12 @@ serve(async (req) => {
                 throw new Error(`Không tìm thấy cookie VEO3 cho người dùng ${task.user_id}`);
             }
             const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-veo3-api', {
-                body: { path: 'veo3/check_status', payload: { operations: task.api_operations } }
+                body: { 
+                    path: 'veo3/check_status', 
+                    payload: { operations: task.api_operations },
+                    veo3_cookie: settings.veo3_cookie,
+                    taskId: task.id
+                }
             });
             if (statusError) throw statusError;
             if (statusData.error) throw new Error(statusData.error);

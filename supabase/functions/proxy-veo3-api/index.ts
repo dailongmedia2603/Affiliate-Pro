@@ -118,17 +118,22 @@ serve(async (req) => {
     path = body.path;
     const payload = body.payload;
     const method = body.method || 'POST';
-    taskId = body.taskId; // Extract taskId for logging
+    taskId = body.taskId;
+    let veo3_cookie = body.veo3_cookie; // NEW: Get cookie from body
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("User not authenticated.");
+    // If cookie is not passed in body, get it from user settings via JWT
+    if (!veo3_cookie) {
+        const supabaseClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+        );
+        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+        if (userError || !user) throw new Error("User not authenticated.");
 
-    const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
+        const settings = await getUserSettings(supabaseAdmin, user.id);
+        veo3_cookie = settings.veo3_cookie;
+    }
     
     targetUrl = new URL(path, API_BASE_URL).toString();
     
