@@ -86,8 +86,9 @@ const DreamActGenerationPage = () => {
       imageFormData.append('action', 'upload_image');
       imageFormData.append('file', imageFile);
       const { data: imageData, error: imageUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: imageFormData });
-      if (imageUploadError || imageData.code !== 200) throw new Error(imageUploadError?.message || imageData.message || 'Lỗi tải ảnh nguồn.');
-      const imageUrl = imageData.data.extraData.filePath;
+      if (imageUploadError) throw imageUploadError;
+      if (imageData.error) throw new Error(imageData.error);
+      const imageUrl = imageData.extraData.filePath;
 
       // Step 2: Upload Video to Dream ACT API
       dismissToast(loadingToast);
@@ -96,8 +97,9 @@ const DreamActGenerationPage = () => {
       videoFormData.append('action', 'upload_video');
       videoFormData.append('file', videoFile);
       const { data: videoData, error: videoUploadError } = await supabase.functions.invoke('proxy-dream-act-api', { body: videoFormData });
-      if (videoUploadError || videoData.code !== 200) throw new Error(videoUploadError?.message || videoData.message || 'Lỗi tải video điều khiển.');
-      const videoUrl = videoData.data.extraData.videoUrl;
+      if (videoUploadError) throw videoUploadError;
+      if (videoData.error) throw new Error(videoData.error);
+      const videoUrl = videoData.extraData.videoUrl;
 
       // Step 3: Call animate_video with the obtained URLs
       dismissToast(loadingToast);
@@ -108,8 +110,9 @@ const DreamActGenerationPage = () => {
           payload: { imageUrl, videoUrl }
         }
       });
-      if (animateError || animateData.code !== 200) throw new Error(animateError?.message || animateData.message || 'Lỗi tạo video.');
-      const animateId = animateData.data.animateId;
+      if (animateError) throw animateError;
+      if (animateData.error) throw new Error(animateData.error);
+      const animateId = animateData.extraData.animateId;
       if (!animateId) throw new Error('API không trả về animateId.');
 
       // Step 4: Create the task in DB
@@ -135,7 +138,8 @@ const DreamActGenerationPage = () => {
 
     } catch (error) {
       dismissToast(loadingToast);
-      showError(`Tạo video thất bại: ${error.message}`);
+      const errorMessage = error.context?.json?.error || error.message;
+      showError(`Tạo video thất bại: ${errorMessage}`);
     } finally {
       setIsGenerating(false);
     }

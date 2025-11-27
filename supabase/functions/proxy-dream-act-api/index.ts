@@ -26,37 +26,31 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    );
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) throw new Error("User not authenticated.");
+
+    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+    const settings = await getUserSettings(supabaseAdmin, user.id);
+    const { dream_act_domain, ...credentials } = settings;
+
     const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
-    let action, payload, file, userId;
+    let action, payload, file;
 
     if (isFormDataRequest) {
       const formData = await req.formData();
       action = formData.get('action');
       file = formData.get('file');
       payload = {};
-      // For form data, userId must be part of the form
-      userId = formData.get('userId');
     } else {
       const body = await req.json();
       action = body.action;
       payload = body.payload;
-      userId = body.userId; // Get userId from body for server-to-server calls
     }
-
-    if (!userId) { // If not passed in body/form, get from auth context
-        const supabaseClient = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-          { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-        );
-        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-        if (userError || !user) throw new Error("User not authenticated.");
-        userId = user.id;
-    }
-
-    const supabaseAdmin = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    const settings = await getUserSettings(supabaseAdmin, userId);
-    const { dream_act_domain, ...credentials } = settings;
 
     let targetPath = '';
     let method = 'POST';
@@ -93,7 +87,6 @@ serve(async (req) => {
         method = 'GET';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-        // For GET request, body should be in query params
         targetPath += `?${bodyToSend}`;
         bodyToSend = undefined;
         break;
@@ -119,7 +112,8 @@ serve(async (req) => {
     const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
     const responseData = await response.json();
 
-    if (!response.ok || responseData.code !== 200) {
+    // Corrected check: Use 'resultCode' and check for non-zero for errors.
+    if (!response.ok || responseData.resultCode !== 0) {
       throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
     }
 
