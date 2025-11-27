@@ -53,42 +53,39 @@ serve(async (req) => {
   let errorForLog = null;
 
   try {
-    const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
-    let payload, file, accessToken;
-
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error("Authorization header is missing.");
+    }
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
     );
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      throw new Error(userError?.message || "User not authenticated.");
+    }
+    const userId = user.id;
+
+    const settings = await getUserSettings(supabaseAdmin, userId);
+    const { dream_act_domain, ...credentials } = settings;
+
+    const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
+    let payload, file;
 
     if (isFormDataRequest) {
       const formData = await req.formData();
       action = formData.get('action');
       file = formData.get('file');
-      accessToken = formData.get('accessToken');
       taskId = formData.get('taskId');
       payload = {};
     } else {
       const body = await req.json();
       action = body.action;
       payload = body.payload;
-      accessToken = body.accessToken;
       taskId = body.taskId;
     }
-
-    if (!accessToken) {
-      throw new Error("Authentication token is missing.");
-    }
-
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(accessToken);
-    if (userError || !user) {
-      console.error("Authentication error:", userError?.message);
-      throw new Error("User not authenticated.");
-    }
-    const userId = user.id;
-
-    const settings = await getUserSettings(supabaseAdmin, userId);
-    const { dream_act_domain, ...credentials } = settings;
 
     let targetPath = '';
     let method = 'POST';
