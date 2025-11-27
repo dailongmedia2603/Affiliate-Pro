@@ -126,16 +126,8 @@ serve(async (req) => {
     if (userError || !user) throw new Error("User not authenticated.");
 
     const { veo3_cookie } = await getUserSettings(supabaseAdmin, user.id);
-
-    let correctedPath = path;
-    // Logic to correct paths for different API versions or conventions
-    if (path === 'veo3/image_uploadv2') {
-      correctedPath = 'img/uploadmediav2';
-    } else if (path === 'veo3/image_upload') {
-      correctedPath = 'video/uploadmedia';
-    }
     
-    targetUrl = new URL(correctedPath, API_BASE_URL).toString();
+    targetUrl = new URL(path, API_BASE_URL).toString();
     
     let finalPayload;
     const cookieEndpoints = ['veo3/re_promt', 'veo3/get_token'];
@@ -145,16 +137,6 @@ serve(async (req) => {
     } else {
         const token = await getVeo3Token(veo3_cookie);
         finalPayload = { token: token, ...payload };
-    }
-
-    if (path === 'veo3/image_uploadv2' && finalPayload.img_url) {
-        finalPayload.url = finalPayload.img_url;
-        delete finalPayload.img_url;
-    }
-
-    if (path === 'veo3/image_upload' && finalPayload.base64) {
-        finalPayload.file_data = [finalPayload.base64];
-        delete finalPayload.base64;
     }
 
     requestPayloadForLog = finalPayload;

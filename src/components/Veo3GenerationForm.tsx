@@ -144,7 +144,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         const startToast = showLoading('Đang tải lên ảnh bắt đầu...');
         const base64 = await fileToBase64(startImageFile);
         const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { path: 'veo3/image_upload', payload: { base64 }, taskId },
+            body: { path: 'veo3/image_uploadv2', payload: { base64 }, taskId },
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh bắt đầu: ${getErrorMessage(data)}`);
@@ -163,7 +163,7 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
         const endToast = showLoading('Đang tải lên ảnh kết thúc...');
         const base64 = await fileToBase64(endImageFile);
         const { data, error } = await supabase.functions.invoke('proxy-veo3-api', {
-            body: { path: 'veo3/image_upload', payload: { base64 }, taskId },
+            body: { path: 'veo3/image_uploadv2', payload: { base64 }, taskId },
         });
         if (error) throw error;
         if (data.error) throw new Error(`Lỗi đăng ký ảnh kết thúc: ${getErrorMessage(data)}`);
