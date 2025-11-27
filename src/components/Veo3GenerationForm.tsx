@@ -178,11 +178,16 @@ const Veo3GenerationForm = ({ onTaskCreated }) => {
       }
 
       showSuccess('Đang gửi yêu cầu tạo video...', loadingToast);
+      
+      const apiAspectRatio = aspectRatio === '9:16' 
+        ? 'VIDEO_ASPECT_RATIO_PORTRAIT' 
+        : 'VIDEO_ASPECT_RATIO_LANDSCAPE';
+
       const payload = {
         prompt,
         project_id: projectId,
         bath: batchSize,
-        aspect_ratio: aspectRatio,
+        aspect_ratio: apiAspectRatio,
         startImage: finalStartImageUrl,
         endImage: finalEndImageUrl,
       };
