@@ -106,7 +106,7 @@ serve(async (req) => {
     const targetUrl = new URL(correctedPath, API_BASE_URL).toString();
     
     let finalPayload;
-    const cookieEndpoints = ['veo3/re_promt'];
+    const cookieEndpoints = ['veo3/re_promt', 'veo3/get_token'];
 
     if (cookieEndpoints.includes(path)) {
         console.log(`[proxy-veo3-api] INFO: Path '${path}' uses cookie directly.`);
