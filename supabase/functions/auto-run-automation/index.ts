@@ -11,14 +11,35 @@ const MIN_INTERVAL_MINUTES = 10;
 
 serve(async (req) => {
   console.log(`[INFO] auto-run-automation function invoked.`);
-  // 1. Check for cron secret
+  
   const authHeader = req.headers.get('Authorization');
-  const cronSecret = Deno.env.get('CRON_SECRET');
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-    console.error('[ERROR] Unauthorized: Cron secret mismatch or missing.');
-    return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+  if (!authHeader) {
+    return new Response('Unauthorized: Missing Authorization header.', { status: 401, headers: corsHeaders });
   }
-  console.log(`[INFO] Cron secret validated.`);
+
+  const token = authHeader.replace('Bearer ', '');
+  const cronSecret = Deno.env.get('CRON_SECRET');
+
+  // Check for cron secret or a valid user JWT
+  if (cronSecret && token === cronSecret) {
+    console.log(`[INFO] Cron secret validated.`);
+  } else {
+    try {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      if (userError || !user) {
+        throw new Error(userError?.message || "User not authenticated.");
+      }
+      console.log(`[INFO] Manual invocation by user ${user.id} validated.`);
+    } catch (e) {
+      console.error('[ERROR] Unauthorized: Invalid token or cron secret.', e.message);
+      return new Response('Unauthorized: Invalid token or cron secret.', { status: 401, headers: corsHeaders });
+    }
+  }
 
   const supabaseAdmin = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
@@ -26,7 +47,7 @@ serve(async (req) => {
   );
 
   try {
-    // 2. Get all configs with auto-run enabled directly from the database query
+    // Get all configs with auto-run enabled directly from the database query
     console.log(`[INFO] Fetching channels with auto-run enabled...`);
     const { data: configs, error: configError } = await supabaseAdmin
       .from('automation_configs')
@@ -53,14 +74,14 @@ serve(async (req) => {
     console.log(`[INFO] Found ${eligibleConfigs.length} eligible channels to process.`);
     const summary = [];
 
-    // 3. Loop through each eligible config
+    // Loop through each eligible config
     for (const config of eligibleConfigs) {
       const { channel_id, user_id, config_data } = config;
       const autoRunCount = config_data.autoRunCount;
       console.log(`\n[PROCESS] Processing Channel ID: ${channel_id}`);
 
       try {
-        // 4. Check for an active run
+        // Check for an active run
         console.log(`[PROCESS] Channel ${channel_id}: Checking for existing active runs...`);
         const { data: activeRun, error: activeRunError } = await supabaseAdmin
           .from('automation_runs')
@@ -78,7 +99,7 @@ serve(async (req) => {
         }
         console.log(`[PROCESS] Channel ${channel_id}: No active runs found.`);
 
-        // 5. Check daily run count (only for 'auto' runs)
+        // Check daily run count (only for 'auto' runs)
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         console.log(`[PROCESS] Channel ${channel_id}: Checking auto-runs since ${today.toISOString()}...`);
@@ -98,7 +119,7 @@ serve(async (req) => {
           continue;
         }
 
-        // 6. Check time since last run (any type)
+        // Check time since last run (any type)
         console.log(`[PROCESS] Channel ${channel_id}: Checking time since last completed run...`);
         const { data: lastRun, error: lastRunError } = await supabaseAdmin
           .from('automation_runs')
@@ -126,7 +147,7 @@ serve(async (req) => {
             console.log(`[PROCESS] Channel ${channel_id}: No previous completed runs found. Proceeding.`);
         }
 
-        // 7. All checks passed, trigger automation
+        // All checks passed, trigger automation
         console.log(`[TRIGGER] Channel ${channel_id}: All checks passed. Invoking 'run-automation' function...`);
         const { error: invokeError } = await supabaseAdmin.functions.invoke('run-automation', {
           body: { channelId: channel_id, userId: user_id, trigger_type: 'auto' },
