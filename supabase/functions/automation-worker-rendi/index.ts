@@ -7,6 +7,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const ALL_TRANSITIONS = [
+    'fade', 'wipeleft', 'wiperight', 'wipeup', 'wipedown', 'slideleft', 
+    'slideright', 'slideup', 'slidedown', 'circlecrop', 'rectcrop', 
+    'distance', 'radial', 'smoothleft', 'dissolve', 'pixelize', 
+    'diagtl', 'diagtr', 'diagbl', 'diagbr'
+];
+
 const logToDb = async (supabaseAdmin, runId, message, level = 'INFO', stepId = null) => {
   if (!runId) return;
   try {
@@ -87,6 +94,8 @@ serve(async (req) => {
   } else {
     const videoDuration = config.videoDuration || 5;
     const transitionDuration = 1;
+    const transitionMode = config.transitionMode || 'select'; // Default to select for safety
+    const selectedTransition = config.selectedTransition || 'fade'; // Default to fade
 
     if (videoDuration <= transitionDuration) {
       throw new Error(`Thời lượng video (${videoDuration}s) phải lớn hơn thời lượng chuyển cảnh (${transitionDuration}s).`);
@@ -101,7 +110,16 @@ serve(async (req) => {
     for (let i = 1; i < video_urls.length; i++) {
       const offset = i * (videoDuration - transitionDuration);
       const outStream = (i === video_urls.length - 1) ? '[vout]' : `[vt${i}]`;
-      filterComplexParts.push(`${lastStream}[v${i}]xfade=transition=fade:duration=${transitionDuration}:offset=${offset}${outStream}`);
+      
+      let transitionEffect = 'fade';
+      if (transitionMode === 'select') {
+          transitionEffect = selectedTransition;
+      } else { // random
+          transitionEffect = ALL_TRANSITIONS[Math.floor(Math.random() * ALL_TRANSITIONS.length)];
+      }
+      
+      await logToDb(supabaseAdmin, runId, `Áp dụng chuyển cảnh '${transitionEffect}' giữa video ${i-1} và ${i}.`, 'INFO', stepId);
+      filterComplexParts.push(`${lastStream}[v${i}]xfade=transition=${transitionEffect}:duration=${transitionDuration}:offset=${offset}${outStream}`);
       lastStream = outStream;
     }
 

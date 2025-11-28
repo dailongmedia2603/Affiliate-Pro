@@ -36,7 +36,32 @@ type Config = {
   voicePromptId: string | null;
   isAutoRunEnabled: boolean;
   autoRunCount: number;
+  transitionMode: 'random' | 'select';
+  selectedTransition: string;
 };
+
+const transitions = [
+    { value: 'fade', label: 'Mờ dần (Fade)' },
+    { value: 'wipeleft', label: 'Quét Trái (Wipe Left)' },
+    { value: 'wiperight', label: 'Quét Phải (Wipe Right)' },
+    { value: 'wipeup', label: 'Quét Lên (Wipe Up)' },
+    { value: 'wipedown', label: 'Quét Xuống (Wipe Down)' },
+    { value: 'slideleft', label: 'Trượt Trái (Slide Left)' },
+    { value: 'slideright', label: 'Trượt Phải (Slide Right)' },
+    { value: 'slideup', label: 'Trượt Lên (Slide Up)' },
+    { value: 'slidedown', label: 'Trượt Xuống (Slide Down)' },
+    { value: 'circlecrop', label: 'Cắt Tròn (Circle Crop)' },
+    { value: 'rectcrop', label: 'Cắt Chữ Nhật (Rect Crop)' },
+    { value: 'distance', label: 'Khoảng Cách (Distance)' },
+    { value: 'radial', label: 'Tỏa Tròn (Radial)' },
+    { value: 'smoothleft', label: 'Mượt Trái (Smooth Left)' },
+    { value: 'dissolve', label: 'Hòa Tan (Dissolve)' },
+    { value: 'pixelize', label: 'Điểm Ảnh (Pixelize)' },
+    { value: 'diagtl', label: 'Chéo Trên Trái (Diagonal TL)' },
+    { value: 'diagtr', label: 'Chéo Trên Phải (Diagonal TR)' },
+    { value: 'diagbl', label: 'Chéo Dưới Trái (Diagonal BL)' },
+    { value: 'diagbr', label: 'Chéo Dưới Phải (Diagonal BR)' },
+];
 
 const defaultConfig: Config = {
   videoScriptId: null,
@@ -48,6 +73,8 @@ const defaultConfig: Config = {
   voicePromptId: null,
   isAutoRunEnabled: false,
   autoRunCount: 3,
+  transitionMode: 'random',
+  selectedTransition: 'fade',
 };
 
 const VariablesList = ({ variables }: { variables: string[] }) => (
@@ -277,6 +304,39 @@ const AutomationConfigDialog = ({ isOpen, onClose, channelId, channelName }) => 
                           <Label htmlFor="duration-10" className="cursor-pointer">10 giây</Label>
                       </div>
                   </RadioGroup>
+                </div>
+                <div className="space-y-3 pt-3 border-t">
+                    <Label className="font-semibold">Hiệu ứng chuyển cảnh</Label>
+                    <RadioGroup
+                        value={config.transitionMode}
+                        onValueChange={(value) => handleConfigChange('transitionMode', value)}
+                        className="flex items-center gap-6"
+                    >
+                        <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="random" id="transition-random" />
+                            <Label htmlFor="transition-random" className="cursor-pointer font-normal">Ngẫu nhiên</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="select" id="transition-select" />
+                            <Label htmlFor="transition-select" className="cursor-pointer font-normal">Chọn hiệu ứng</Label>
+                        </div>
+                    </RadioGroup>
+                    {config.transitionMode === 'select' && (
+                        <div className="space-y-2 pl-2">
+                            <Label htmlFor="transition-effect">Chọn hiệu ứng cụ thể</Label>
+                            <Select
+                                value={config.selectedTransition}
+                                onValueChange={(value) => handleConfigChange('selectedTransition', value)}
+                            >
+                                <SelectTrigger id="transition-effect">
+                                    <SelectValue placeholder="Chọn một hiệu ứng..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {transitions.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
                 </div>
               </TabsContent>
               <TabsContent value="voice" className="space-y-4">
