@@ -2,10 +2,11 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Search, Settings, Play, Bot } from 'lucide-react';
+import { Loader2, Search, Settings, Play, Bot, FileClock } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import AutomationConfigDialog from '@/components/AutomationConfigDialog';
 import AutomationRunHistory from '@/components/AutomationRunHistory';
+import AutoRunLogDialog from '@/components/AutoRunLogDialog';
 
 type Channel = {
   id: string;
@@ -22,6 +23,7 @@ const AutomationPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [configuringChannel, setConfiguringChannel] = useState<Channel | null>(null);
+  const [isLogDialogOpen, setIsLogDialogOpen] = useState(false);
 
   const fetchChannelsAndRuns = useCallback(async () => {
     setLoading(true);
@@ -163,9 +165,15 @@ const AutomationPage = () => {
         <div className="flex-1 bg-white rounded-xl border border-gray-200 flex flex-col overflow-hidden">
           {selectedChannel ? (
             <>
-              <div className="p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-800">Lịch sử chạy: {selectedChannel.name}</h2>
-                <p className="text-sm text-gray-500">Xem lại các lần chạy tự động hóa cho kênh này.</p>
+              <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-800">Lịch sử chạy: {selectedChannel.name}</h2>
+                  <p className="text-sm text-gray-500">Xem lại các lần chạy tự động hóa cho kênh này.</p>
+                </div>
+                <Button variant="outline" onClick={() => setIsLogDialogOpen(true)}>
+                  <FileClock className="w-4 h-4 mr-2" />
+                  Log Chạy Tự Động
+                </Button>
               </div>
               <div className="flex-1 overflow-y-auto p-6">
                 <AutomationRunHistory channelId={selectedChannel.id} onRerun={handleRunAutomation} />
@@ -186,6 +194,14 @@ const AutomationPage = () => {
           onClose={() => setIsConfigOpen(false)}
           channelId={configuringChannel.id}
           channelName={configuringChannel.name}
+        />
+      )}
+      {selectedChannel && (
+        <AutoRunLogDialog
+          isOpen={isLogDialogOpen}
+          onClose={() => setIsLogDialogOpen(false)}
+          channelId={selectedChannel.id}
+          channelName={selectedChannel.name}
         />
       )}
     </>
