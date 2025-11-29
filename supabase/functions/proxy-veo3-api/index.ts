@@ -119,9 +119,8 @@ serve(async (req) => {
     const payload = body.payload;
     const method = body.method || 'POST';
     taskId = body.taskId;
-    let veo3_cookie = body.veo3_cookie; // NEW: Get cookie from body
+    let veo3_cookie = body.veo3_cookie;
 
-    // If cookie is not passed in body, get it from user settings via JWT
     if (!veo3_cookie) {
         const supabaseClient = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
@@ -134,43 +133,51 @@ serve(async (req) => {
         const settings = await getUserSettings(supabaseAdmin, user.id);
         veo3_cookie = settings.veo3_cookie;
     }
-    
-    targetUrl = new URL(path, API_BASE_URL).toString();
-    
-    let finalPayload;
-    const cookieEndpoints = ['veo3/re_promt'];
 
-    if (cookieEndpoints.includes(path)) {
-        finalPayload = { cookie: veo3_cookie, ...payload };
-    } else {
+    if (path === 'veo3/get_token') {
+        // This is a connection test. We just need to get the token and return it.
         const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
-        finalPayload = { token: accessToken, ...payload };
-    }
-
-    requestPayloadForLog = finalPayload;
-
-    try {
-        const response = await fetch(targetUrl, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(finalPayload),
-        });
+        responseData = { access_token: accessToken };
+        // The log is already written inside getVeo3Token
+    } else {
+        // For all other endpoints, get the token and then call the endpoint.
+        targetUrl = new URL(path, API_BASE_URL).toString();
         
-        const responseText = await response.text();
-        try {
-            responseData = JSON.parse(responseText);
-        } catch(e) {
-            responseData = { raw_response: responseText };
+        let finalPayload;
+        const cookieEndpoints = ['veo3/re_promt'];
+
+        if (cookieEndpoints.includes(path)) {
+            finalPayload = { cookie: veo3_cookie, ...payload };
+        } else {
+            const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
+            finalPayload = { token: accessToken, ...payload };
         }
 
-        if (!response.ok) {
-            throw new Error(`Lỗi từ API Veo3 (${response.status}): ${responseText}`);
+        requestPayloadForLog = finalPayload;
+
+        try {
+            const response = await fetch(targetUrl, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finalPayload),
+            });
+            
+            const responseText = await response.text();
+            try {
+                responseData = JSON.parse(responseText);
+            } catch(e) {
+                responseData = { raw_response: responseText };
+            }
+
+            if (!response.ok) {
+                throw new Error(`Lỗi từ API Veo3 (${response.status}): ${responseText}`);
+            }
+        } catch (e) {
+            errorForLog = e;
+            throw e;
+        } finally {
+            await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, responseData, errorForLog, targetUrl);
         }
-    } catch (e) {
-        errorForLog = e;
-        throw e;
-    } finally {
-        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, responseData, errorForLog, targetUrl);
     }
 
     return new Response(JSON.stringify(responseData), {
