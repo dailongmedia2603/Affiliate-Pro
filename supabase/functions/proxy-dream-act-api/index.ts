@@ -143,12 +143,10 @@ serve(async (req) => {
         break;
       case 'fetch_status':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
-        method = 'GET';
+        method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-        targetPath += `?${bodyToSend}`;
         requestPayloadForLog = { ...baseParams, ...payload };
-        bodyToSend = undefined;
         break;
       case 'download_video':
          targetPath = '/oapi/composite/v3/private/common/mgmt/downloadVideo';
@@ -159,12 +157,10 @@ serve(async (req) => {
          break;
       case 'test_connection':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
-        method = 'GET';
+        method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        const testParams = new URLSearchParams({ ...baseParams, pageSize: 1 }).toString();
-        targetPath += `?${testParams}`;
+        bodyToSend = new URLSearchParams({ ...baseParams, pageSize: 1 }).toString();
         requestPayloadForLog = { ...baseParams, pageSize: 1 };
-        bodyToSend = undefined;
         break;
       default:
         throw new Error(`Invalid action: ${action}`);
