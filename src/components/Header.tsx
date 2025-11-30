@@ -27,6 +27,8 @@ const navItems = [
   { label: "Quản lý kênh", Icon: Network },
   { label: "Sản phẩm", Icon: Package },
   { label: "Automation", Icon: Bot },
+  { label: "Thư Viện Prompt", Icon: BookText },
+  { label: "Tạo Voice", Icon: Mic },
   {
     label: "Tạo Ảnh / Video",
     Icon: Clapperboard,
@@ -36,8 +38,6 @@ const navItems = [
       { label: "Ffmpeg Rendi", Icon: Film },
     ],
   },
-  { label: "Tạo Voice", Icon: Mic },
-  { label: "Thư Viện Prompt", Icon: BookText },
   { label: "Tài khoản", Icon: Users },
   { label: "Cài Đặt", Icon: Settings },
 ];
