@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info, Cpu, Camera } from "lucide-react";
+import SettingsLogViewer from '@/components/SettingsLogViewer';
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -603,6 +604,7 @@ const SettingsPage = () => {
               <div className="flex items-center gap-4 mt-4">
                 <Button onClick={handleTestDreamActConnection} disabled={isTestingDreamAct} variant="outline">{isTestingDreamAct ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
                 <Button onClick={() => handleSaveSettings('dream_act')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+                <SettingsLogViewer logType="dream_act" buttonTitle="Xem Logs" />
               </div>
             </div>
             {dreamActConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Dream ACT thành công.</AlertDescription></Alert>)}

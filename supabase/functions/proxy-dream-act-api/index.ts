@@ -7,8 +7,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
-  if (!taskId) return;
+const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
+  if (!userId) {
+    console.error('[proxy-dream-act-api] logApiCall was called without a userId. Skipping log insertion.');
+    return;
+  }
   
   const sanitizedRequest = { ...requestPayload };
   if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
@@ -20,13 +23,18 @@ const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, respo
 
   const logEntry = {
     task_id: taskId,
+    user_id: userId,
     step_name: stepName,
     request_payload: sanitizedRequest,
     response_data: responseData,
     is_error: !!error,
     error_message: error ? error.message : null,
   };
-  await supabaseAdmin.from('dream_act_logs').insert(logEntry);
+  try {
+    await supabaseAdmin.from('dream_act_logs').insert(logEntry);
+  } catch(e) {
+    console.error(`[proxy-dream-act-api] Failed to write log to DB: ${e.message}`);
+  }
 };
 
 
@@ -55,6 +63,7 @@ serve(async (req) => {
   let responseData;
   let errorForLog = null;
   let targetUrl;
+  let userId;
 
   try {
     const authHeader = req.headers.get('Authorization');
@@ -70,7 +79,7 @@ serve(async (req) => {
     if (userError || !user) {
       throw new Error(userError?.message || "User not authenticated.");
     }
-    const userId = user.id;
+    userId = user.id;
 
     const settings = await getUserSettings(supabaseAdmin, userId);
     const { dream_act_domain, ...credentials } = settings;
@@ -181,7 +190,7 @@ serve(async (req) => {
         errorForLog = e;
         throw e;
     } finally {
-        await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, errorForLog, targetUrl);
+        await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, responseData, errorForLog, targetUrl);
     }
 
     return new Response(JSON.stringify(responseData), {
@@ -190,7 +199,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
-    await logApiCall(supabaseAdmin, taskId, action, requestPayloadForLog, responseData, error, targetUrl);
+    if (userId && action) {
+        await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, responseData, error, targetUrl);
+    }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
