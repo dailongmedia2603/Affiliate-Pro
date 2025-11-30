@@ -144,6 +144,7 @@ serve(async (req) => {
         params.append('videoUrl', payload.videoUrl);
 
         bodyToSend = params.toString();
+        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
         
         requestPayloadForLog = {
             userId: baseParams.userId,
@@ -159,6 +160,7 @@ serve(async (req) => {
         method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
+        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'download_video':
@@ -166,6 +168,7 @@ serve(async (req) => {
          method = 'PATCH';
          headers['Content-Type'] = 'application/x-www-form-urlencoded';
          bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
+         headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
          requestPayloadForLog = { ...baseParams, ...payload };
          break;
       case 'test_connection':
@@ -173,6 +176,7 @@ serve(async (req) => {
         method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams }).toString();
+        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
         requestPayloadForLog = { ...baseParams };
         break;
       default:
