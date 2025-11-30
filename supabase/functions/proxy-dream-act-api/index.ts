@@ -14,8 +14,7 @@ const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayloa
   }
   
   const sanitizedRequest = { ...requestPayload };
-  // --- DEBUGGING: Temporarily disabled token redaction per user request ---
-  // if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
+  if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
   if (sanitizedRequest.photo && sanitizedRequest.photo.name) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
   if (sanitizedRequest.video && sanitizedRequest.video.name) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
   if (targetUrl) {
@@ -190,39 +189,47 @@ serve(async (req) => {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
+
+        // Retry on server errors (5xx)
+        if (response.status >= 500) {
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+
         const responseText = await response.text();
         
         try {
             responseData = JSON.parse(responseText);
         } catch (jsonError) {
-            responseData = { _raw_response: responseText };
-            // This is a critical failure, likely an HTML error page, so we throw to retry.
-            throw new Error(`Invalid JSON response from API: ${responseText.substring(0, 100)}...`);
+            // Retry if response is not JSON (e.g., HTML error page)
+            throw new Error(`Invalid JSON response from API: ${responseText.substring(0, 200)}...`);
         }
 
+        // Do NOT retry on client errors (4xx) or API-level errors. Fail fast.
         if (!response.ok || responseData.resultCode !== 0) {
-          // This is an API-level error, not a network error. Don't retry.
           errorForLog = new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
-          // We throw the error but it will be caught by the outer catch block, and since it's the final action, it will be logged and returned.
-          throw errorForLog;
+          // Break the loop to fail immediately instead of retrying.
+          break;
         }
         
-        // If successful, break the loop
+        // Success, clear any error from previous attempts and break the loop
+        errorForLog = null;
         break;
 
       } catch (e) {
         errorForLog = e;
         if (attempt < MAX_RETRIES - 1) {
-          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s
           console.log(`[proxy-dream-act-api] Attempt ${attempt + 1} failed. Retrying in ${delay / 1000}s... Error: ${e.message}`);
           await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          // If this was the last attempt, re-throw the error to be caught by the final catch block.
-          throw e;
         }
       }
     }
     // --- End Retry Logic ---
+
+    // If there's an error after all retries, throw it to be caught by the final catch block.
+    if (errorForLog) {
+      throw errorForLog;
+    }
 
     await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, responseData, null, targetUrl);
 
@@ -232,6 +239,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
+    // Ensure the final error is logged
     await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, { error: error.message }, error, targetUrl);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
