@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, PlusCircle, Edit, Trash2, Video, Mic, BookText } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Trash2, Video, Mic, BookText, Copy } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import PromptFormDialog from '@/components/PromptFormDialog';
 import { Badge } from '@/components/ui/badge';
@@ -129,6 +129,31 @@ const PromptLibraryPage = () => {
     setIsFormOpen(false);
   };
 
+  const handleCopy = async (promptToCopy: Prompt) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      showError('Bạn cần đăng nhập để thực hiện.');
+      return;
+    }
+
+    const newPromptData = {
+      name: `Bản sao của ${promptToCopy.name}`,
+      content: promptToCopy.content,
+      category: promptToCopy.category,
+      product_id: promptToCopy.product_id,
+      user_id: user.id,
+    };
+
+    const { error } = await supabase.from('prompts').insert(newPromptData);
+
+    if (error) {
+      showError(`Sao chép prompt thất bại: ${error.message}`);
+    } else {
+      showSuccess('Đã sao chép prompt thành công!');
+      fetchPrompts(activeTab);
+    }
+  };
+
   const renderContent = () => (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -169,10 +194,13 @@ const PromptLibraryPage = () => {
                   <TableCell className="max-w-sm truncate" title={prompt.content}>{prompt.content}</TableCell>
                   <TableCell>{new Date(prompt.created_at).toLocaleDateString()}</TableCell>
                   <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(prompt)}>
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(prompt)} title="Chỉnh sửa">
                       <Edit className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(prompt)}>
+                    <Button variant="ghost" size="icon" onClick={() => handleCopy(prompt)} title="Sao chép">
+                      <Copy className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(prompt)} title="Xóa">
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </TableCell>
