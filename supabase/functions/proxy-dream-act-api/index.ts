@@ -14,7 +14,8 @@ const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayloa
   }
   
   const sanitizedRequest = { ...requestPayload };
-  if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
+  // --- DEBUGGING: Temporarily disabled token redaction per user request ---
+  // if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
   if (sanitizedRequest.photo && sanitizedRequest.photo.name) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
   if (sanitizedRequest.video && sanitizedRequest.video.name) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
   if (targetUrl) {
