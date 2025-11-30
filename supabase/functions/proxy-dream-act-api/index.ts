@@ -15,8 +15,8 @@ const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayloa
   
   const sanitizedRequest = { ...requestPayload };
   if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
-  if (sanitizedRequest.photo) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
-  if (sanitizedRequest.video) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
+  if (sanitizedRequest.photo && sanitizedRequest.photo.name) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
+  if (sanitizedRequest.video && sanitizedRequest.video.name) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
   if (targetUrl) {
     sanitizedRequest._dyad_target_url = targetUrl;
   }
@@ -181,7 +181,14 @@ serve(async (req) => {
     
     try {
         const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
-        responseData = await response.json();
+        const responseText = await response.text();
+        
+        try {
+            responseData = JSON.parse(responseText);
+        } catch (jsonError) {
+            responseData = { _raw_response: responseText };
+            throw new Error(`Invalid JSON response from API: ${responseText.substring(0, 100)}...`);
+        }
 
         if (!response.ok || responseData.resultCode !== 0) {
           throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
@@ -199,7 +206,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
-    if (userId && action) {
+    if (!errorForLog) {
         await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, responseData, error, targetUrl);
     }
     return new Response(JSON.stringify({ error: error.message }), {
