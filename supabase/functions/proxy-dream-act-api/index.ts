@@ -109,7 +109,7 @@ serve(async (req) => {
       userId: credentials.dream_act_user_id,
       clientId: credentials.dream_act_client_id,
       accountId: credentials.dream_act_account_id,
-      token: credentials.dream_act_token,
+      token: credentials.dream_act_token.trim(),
     };
 
     switch (action) {
