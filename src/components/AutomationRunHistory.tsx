@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package, Layers } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package, Layers, Download } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AutomationLogViewer from './AutomationLogViewer';
@@ -88,6 +88,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [retryingStepId, setRetryingStepId] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
@@ -205,6 +206,38 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     } finally {
       dismissToast(loadingToast);
       setRetryingStepId(null);
+    }
+  };
+
+  const handleDownload = async (url: string, filename?: string) => {
+    if (!url || isDownloading) return;
+    setIsDownloading(true);
+    const loadingToast = showLoading('Đang chuẩn bị tệp để tải xuống...');
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Không thể tải dữ liệu video.');
+      
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      
+      const finalFilename = filename || url.split('/').pop()?.split('?')[0] || 'automation-video.mp4';
+      link.setAttribute('download', finalFilename);
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+      
+      showSuccess('Đã bắt đầu tải video.', loadingToast);
+    } catch (error: any) {
+      console.error('Lỗi tải video:', error);
+      showError(`Tải video thất bại: ${error.message}`, loadingToast);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -347,6 +380,17 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                     {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (<video src={mergeStep.output_data.final_video_url} controls className="w-full max-h-96 rounded-md border" />)}
                                     <div className="flex items-center gap-2">
                                       <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                      {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm" 
+                                          onClick={() => handleDownload(mergeStep.output_data!.final_video_url!)}
+                                          disabled={isDownloading}
+                                        >
+                                          {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                          Tải xuống
+                                        </Button>
+                                      )}
                                       {mergeStep.status === 'failed' && (
                                         <Button variant="secondary" size="sm" onClick={() => handleRetryStep(mergeStep.id)} disabled={retryingStepId === mergeStep.id}>
                                           {retryingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
