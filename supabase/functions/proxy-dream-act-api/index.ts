@@ -168,8 +168,8 @@ serve(async (req) => {
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
         method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        bodyToSend = new URLSearchParams({ ...baseParams, pageSize: 1 }).toString();
-        requestPayloadForLog = { ...baseParams, pageSize: 1 };
+        bodyToSend = new URLSearchParams({ ...baseParams }).toString();
+        requestPayloadForLog = { ...baseParams };
         break;
       default:
         throw new Error(`Invalid action: ${action}`);
