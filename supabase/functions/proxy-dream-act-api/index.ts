@@ -103,9 +103,7 @@ serve(async (req) => {
     let targetPath = '';
     let method = 'POST';
     let bodyToSend;
-    let headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-    };
+    let headers = {}; // Removed User-Agent
 
     const baseParams = {
       userId: credentials.dream_act_user_id,
@@ -206,9 +204,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
-    if (!errorForLog) {
-        await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, responseData, error, targetUrl);
-    }
+    // Ensure logging happens even on fatal errors before the fetch call
+    await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, { error: error.message }, error, targetUrl);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
