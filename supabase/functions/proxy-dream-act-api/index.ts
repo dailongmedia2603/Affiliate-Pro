@@ -157,10 +157,11 @@ serve(async (req) => {
       case 'fetch_status':
       case 'test_connection':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
-        method = 'POST';
+        method = 'GET';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
+        const queryString = new URLSearchParams({ ...baseParams, ...payload }).toString();
+        targetUrl = `${dream_act_domain}${targetPath}?${queryString}`;
+        bodyToSend = undefined;
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'download_video':
