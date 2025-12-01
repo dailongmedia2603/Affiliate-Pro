@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2, PlusCircle, Trash2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 
 const VariablesList = ({ variables }: { variables: string[] }) => (
     <div className="mt-2 flex items-center gap-2 flex-wrap">
@@ -35,6 +36,7 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
   const [productId, setProductId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [pairs, setPairs] = useState([{ image_prompt: '', video_prompt: '' }]);
+  const [isPublic, setIsPublic] = useState(false);
 
   const categoryVariables = {
     image: ['product_name', 'product_description', 'image_count'],
@@ -48,6 +50,7 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
       if (prompt) {
         setName(prompt.name || '');
         setProductId(prompt.product_id || '');
+        setIsPublic(prompt.is_public || false);
         if (category === 'video') {
           try {
             const parsedContent = JSON.parse(prompt.content);
@@ -67,6 +70,7 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
         setContent('');
         setProductId('');
         setPairs([{ image_prompt: '', video_prompt: '' }]);
+        setIsPublic(false);
       }
     }
   }, [prompt, isOpen, category]);
@@ -98,6 +102,7 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
       content: finalContent,
       product_id: productId || null,
       category,
+      is_public: isPublic,
     });
     setIsSaving(false);
   };
@@ -197,6 +202,21 @@ const PromptFormDialog = ({ isOpen, onClose, onSave, prompt, products, category 
               </Select>
             </div>
             {category === 'video' ? renderVideoForm() : renderDefaultForm()}
+            <div className="space-y-2 pt-4 border-t">
+                <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                    <div className="space-y-0.5">
+                        <Label htmlFor="is-public-switch">Chia sẻ công khai</Label>
+                        <p className="text-xs text-muted-foreground">
+                            Cho phép các tài khoản khác xem và sử dụng prompt này.
+                        </p>
+                    </div>
+                    <Switch
+                        id="is-public-switch"
+                        checked={isPublic}
+                        onCheckedChange={setIsPublic}
+                    />
+                </div>
+            </div>
           </div>
           <DialogFooter className="pt-4 border-t">
             <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
