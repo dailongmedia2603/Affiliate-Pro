@@ -155,11 +155,12 @@ serve(async (req) => {
         };
         break;
       case 'fetch_status':
+      case 'test_connection':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
-        method = 'POST';
-        headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
+        method = 'GET';
+        const queryString = new URLSearchParams({ ...baseParams, ...payload }).toString();
+        targetUrl = `${dream_act_domain}${targetPath}?${queryString}`;
+        bodyToSend = undefined;
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'download_video':
@@ -170,19 +171,13 @@ serve(async (req) => {
          headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
          requestPayloadForLog = { ...baseParams, ...payload };
          break;
-      case 'test_connection':
-        targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
-        method = 'POST';
-        headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        bodyToSend = new URLSearchParams({ ...baseParams }).toString();
-        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
-        requestPayloadForLog = { ...baseParams };
-        break;
       default:
         throw new Error(`Invalid action: ${action}`);
     }
 
-    targetUrl = `${dream_act_domain}${targetPath}`;
+    if (!targetUrl) {
+      targetUrl = `${dream_act_domain}${targetPath}`;
+    }
     
     // --- Retry Logic ---
     const MAX_RETRIES = 3;
