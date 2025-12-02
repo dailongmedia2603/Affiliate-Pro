@@ -97,11 +97,6 @@ serve(async (req) => {
       if (file && typeof file === "string") {
         throw new Error("File is missing or invalid. Expected a file blob, but received a string.");
       }
-      if (action === 'upload_image' || action === 'upload_video') {
-        if (!file) {
-          throw new Error("File is required for upload actions.");
-        }
-      }
     } else {
       body = await req.json();
       action = body.action;
@@ -148,6 +143,7 @@ serve(async (req) => {
 
     switch (action) {
       case 'upload_image':
+        if (!file) throw new Error("A file is required for 'upload_image' action.");
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedUrl';
         method = 'POST';
         bodyToSend = new FormData();
@@ -156,6 +152,7 @@ serve(async (req) => {
         requestPayloadForLog = { ...baseParams, photo: `[File: ${file.name}]` };
         break;
       case 'upload_video':
+        if (!file) throw new Error("A file is required for 'upload_video' action.");
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedAct';
         method = 'POST';
         bodyToSend = new FormData();
@@ -164,6 +161,9 @@ serve(async (req) => {
         requestPayloadForLog = { ...baseParams, video: `[File: ${file.name}]` };
         break;
       case 'animate_video':
+        if (!payload?.imageUrl || !payload?.videoUrl) {
+            throw new Error("imageUrl and videoUrl are required for 'animate_video' action.");
+        }
         targetPath = '/oapi/composite/v3/private/common/mgmt/animateVideo';
         method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
@@ -172,7 +172,7 @@ serve(async (req) => {
         break;
       case 'fetch_status':
         if (!payload?.animateId) {
-          throw new Error("animateId is required for fetch_status action, but was not provided.");
+          throw new Error("animateId is required for 'fetch_status' action.");
         }
         // Fallthrough intended
       case 'test_connection':
@@ -186,6 +186,9 @@ serve(async (req) => {
         requestPayloadForLog = { ...baseParams, ...(payload || {}) };
         break;
       case 'download_video':
+         if (!payload?.workId) {
+            throw new Error("workId is required for 'download_video' action.");
+         }
          const downloadQuery = new URLSearchParams({
            ...baseParams,
            ...(payload || {}),
