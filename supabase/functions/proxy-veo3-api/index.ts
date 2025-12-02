@@ -54,7 +54,11 @@ async function getUserSettings(supabaseAdmin, userId) {
 async function getVeo3Token(cookie, supabaseAdmin, taskId, forceRefresh = false) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
   let responseData, errorForLog = null;
-  const requestBody = { cookie, refresh: forceRefresh };
+  
+  const requestBody: { cookie: string; refresh?: boolean } = { cookie };
+  if (forceRefresh) {
+    requestBody.refresh = true;
+  }
 
   try {
     const response = await fetch(url, {
@@ -79,7 +83,11 @@ async function getVeo3Token(cookie, supabaseAdmin, taskId, forceRefresh = false)
     errorForLog = e;
     throw e;
   } finally {
-    await logApiCall(supabaseAdmin, taskId, `veo3/get_token (Internal, refresh=${forceRefresh})`, { cookie: '[REDACTED]', refresh: forceRefresh }, responseData, errorForLog, url);
+    const logPayload = { cookie: '[REDACTED]' };
+    if (forceRefresh) {
+      (logPayload as any).refresh = true;
+    }
+    await logApiCall(supabaseAdmin, taskId, `veo3/get_token (Internal, refresh=${forceRefresh})`, logPayload, responseData, errorForLog, url);
   }
 }
 
