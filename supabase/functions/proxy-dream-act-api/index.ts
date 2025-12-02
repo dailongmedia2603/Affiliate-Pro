@@ -133,7 +133,6 @@ serve(async (req) => {
     let headers = {
         'Accept': 'application/json, text/plain, */*',
     };
-    let queryString = '';
 
     const baseParams = {
       userId: credentials.dream_act_user_id,
@@ -146,7 +145,6 @@ serve(async (req) => {
       case 'upload_image':
         if (!file) throw new Error("A file is required for 'upload_image' action.");
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedUrl';
-        method = 'POST';
         bodyToSend = new FormData();
         Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
         bodyToSend.append('photo', file);
@@ -155,7 +153,6 @@ serve(async (req) => {
       case 'upload_video':
         if (!file) throw new Error("A file is required for 'upload_video' action.");
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedAct';
-        method = 'POST';
         bodyToSend = new FormData();
         Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
         bodyToSend.append('video', file);
@@ -166,7 +163,6 @@ serve(async (req) => {
             throw new Error("imageUrl and videoUrl are required for 'animate_video' action.");
         }
         targetPath = '/oapi/composite/v3/private/common/mgmt/animateVideo';
-        method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
         requestPayloadForLog = { ...baseParams, ...payload };
@@ -177,26 +173,18 @@ serve(async (req) => {
         }
         // Fallthrough intended
       case 'test_connection':
-        queryString = new URLSearchParams({
-          ...baseParams,
-          ...(payload || {}),
-        }).toString();
         targetPath = `/oapi/composite/v3/private/common/mgmt/fetchRecentCreation`;
-        method = 'GET';
-        bodyToSend = undefined;
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        bodyToSend = new URLSearchParams({ ...baseParams, ...(payload || {}) }).toString();
         requestPayloadForLog = { ...baseParams, ...(payload || {}) };
         break;
       case 'download_video':
          if (!payload?.workId) {
             throw new Error("workId is required for 'download_video' action.");
          }
-         queryString = new URLSearchParams({
-           ...baseParams,
-           ...(payload || {}),
-         }).toString();
          targetPath = `/oapi/composite/v3/private/common/mgmt/downloadVideo`;
-         method = 'GET';
-         bodyToSend = undefined;
+         headers['Content-Type'] = 'application/x-www-form-urlencoded';
+         bodyToSend = new URLSearchParams({ ...baseParams, ...(payload || {}) }).toString();
          requestPayloadForLog = { ...baseParams, ...(payload || {}) };
          break;
       default:
@@ -204,7 +192,7 @@ serve(async (req) => {
     }
 
     if (!targetUrl) {
-      targetUrl = `${domain}${targetPath}${queryString ? `?${queryString}` : ''}`;
+      targetUrl = `${domain}${targetPath}`;
     }
     
     try {
