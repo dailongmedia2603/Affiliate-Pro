@@ -495,7 +495,12 @@ serve(async (req) => {
             console.log(`[INFO] Processing Dream ACT task ID: ${task.id}, Animate ID: ${task.animate_id}`);
             try {
                 const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
-                    body: { action: 'fetch_status', payload: { animateId: task.animate_id }, userId: task.user_id }
+                    body: { 
+                        action: 'fetch_status', 
+                        payload: { animateId: task.animate_id }, 
+                        userId: task.user_id,
+                        taskId: task.id
+                    }
                 });
                 if (statusError) throw statusError;
                 if (statusData.error) throw new Error(statusData.error);
@@ -509,7 +514,12 @@ serve(async (req) => {
                     if (creation.status === 2) { // Completed
                         console.log(`[INFO] Task ${task.id}: Status is COMPLETED. Attempting to download video.`);
                         const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
-                            body: { action: 'download_video', payload: { workId: creation.id }, userId: task.user_id }
+                            body: { 
+                                action: 'download_video', 
+                                payload: { workId: creation.id }, 
+                                userId: task.user_id,
+                                taskId: task.id
+                            }
                         });
                         if (downloadError) throw downloadError;
                         if (downloadData.error) throw new Error(downloadData.error);
