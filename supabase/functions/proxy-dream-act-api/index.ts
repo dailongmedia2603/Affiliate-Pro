@@ -133,6 +133,7 @@ serve(async (req) => {
     let headers = {
         'Accept': 'application/json, text/plain, */*',
     };
+    let queryString = '';
 
     const baseParams = {
       userId: credentials.dream_act_user_id,
@@ -176,11 +177,11 @@ serve(async (req) => {
         }
         // Fallthrough intended
       case 'test_connection':
-        const query = new URLSearchParams({
+        queryString = new URLSearchParams({
           ...baseParams,
           ...(payload || {}),
         }).toString();
-        targetPath = `/oapi/composite/v3/private/common/mgmt/fetchRecentCreation?${query}`;
+        targetPath = `/oapi/composite/v3/private/common/mgmt/fetchRecentCreation`;
         method = 'GET';
         bodyToSend = undefined;
         requestPayloadForLog = { ...baseParams, ...(payload || {}) };
@@ -189,11 +190,11 @@ serve(async (req) => {
          if (!payload?.workId) {
             throw new Error("workId is required for 'download_video' action.");
          }
-         const downloadQuery = new URLSearchParams({
+         queryString = new URLSearchParams({
            ...baseParams,
            ...(payload || {}),
          }).toString();
-         targetPath = `/oapi/composite/v3/private/common/mgmt/downloadVideo?${downloadQuery}`;
+         targetPath = `/oapi/composite/v3/private/common/mgmt/downloadVideo`;
          method = 'GET';
          bodyToSend = undefined;
          requestPayloadForLog = { ...baseParams, ...(payload || {}) };
@@ -203,7 +204,7 @@ serve(async (req) => {
     }
 
     if (!targetUrl) {
-      targetUrl = `${domain}${targetPath}`;
+      targetUrl = `${domain}${targetPath}${queryString ? `?${queryString}` : ''}`;
     }
     
     try {
