@@ -511,9 +511,9 @@ serve(async (req) => {
             });
             if (statusError) throw statusError;
             if (statusData.error) throw new Error(statusData.error);
-            if (statusData.code !== 200) throw new Error(statusData.message);
+            if (statusData.resultCode !== 0) throw new Error(statusData.message || 'Lỗi không xác định từ API Dream ACT');
 
-            const creation = statusData.data.find(d => d.animateId === task.animate_id);
+            const creation = statusData.data?.list?.find(d => d.animateId === task.animate_id);
             if (creation) {
                 if (creation.status === 2) { // Completed
                     const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
@@ -521,7 +521,7 @@ serve(async (req) => {
                     });
                     if (downloadError) throw downloadError;
                     if (downloadData.error) throw new Error(downloadData.error);
-                    if (downloadData.code !== 200) throw new Error(downloadData.message);
+                    if (downloadData.resultCode !== 0) throw new Error(downloadData.message || 'Lỗi khi tải video.');
 
                     const finalUrl = downloadData.data.url;
                     if (!finalUrl) throw new Error('Dream ACT task successful but final URL is missing.');
