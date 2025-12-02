@@ -502,8 +502,9 @@ serve(async (req) => {
     }
 
     // Process Manual Dream ACT Tasks
-    const { data: manualDreamActTasks } = await supabaseAdmin.from('dream_act_tasks').select('id, user_id, animate_id').eq('status', 'animating').not('animate_id', 'is', null);
-    if (manualDreamActTasks) for (const task of manualDreamActTasks) {
+    // Phase 1: Check animation status
+    const { data: animatingTasks } = await supabaseAdmin.from('dream_act_tasks').select('id, user_id, animate_id').eq('status', 'animating').not('animate_id', 'is', null);
+    if (animatingTasks) for (const task of animatingTasks) {
         try {
             await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Initiating Status Check', { animateId: task.animate_id }, null, null);
             const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
@@ -515,22 +516,10 @@ serve(async (req) => {
 
             const creation = statusData.data?.list?.find(d => d.animateId === task.animate_id);
             if (creation) {
-                if (creation.web_work_status === 200) { // Completed
-                    const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
-                        body: { action: 'download_video', payload: { workId: creation.id }, userId: task.user_id, taskId: task.id }
-                    });
-                    if (downloadError) throw downloadError;
-                    if (downloadData.error) throw new Error(downloadData.error);
-                    if (downloadData.resultCode !== 0) throw new Error(downloadData.message || 'Lỗi khi tải video.');
-
-                    const finalUrl = downloadData.data?.url;
-                    if (finalUrl) {
-                        await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
-                        await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download Success', { workId: creation.id }, { url: finalUrl }, null);
-                    } else {
-                        await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download URL Not Ready', { workId: creation.id }, downloadData, new Error('API reported success but download URL is null. Will retry.'));
-                    }
-                } else if (creation.web_work_status === 0) { // Processing
+                if (creation.web_work_status === 200) { // Animation is complete, ready for download
+                    await supabaseAdmin.from('dream_act_tasks').update({ status: 'downloading', work_id: creation.id }).eq('id', task.id);
+                    await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Animation Complete, Ready for Download', { workId: creation.id }, creation, null);
+                } else if (creation.web_work_status === 0) { // Still processing
                     // Do nothing, let it continue polling
                 } else { // Failed or other states
                     await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: `Tác vụ thất bại trên API Dream ACT. Trạng thái API: ${creation.web_work_status}` }).eq('id', task.id);
@@ -539,6 +528,31 @@ serve(async (req) => {
         } catch (e) {
             await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Status Check Failed', {}, { error: e.message }, e);
             await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
+        }
+    }
+
+    // Phase 2: Download completed videos
+    const { data: downloadingTasks } = await supabaseAdmin.from('dream_act_tasks').select('id, user_id, work_id').eq('status', 'downloading').not('work_id', 'is', null);
+    if (downloadingTasks) for (const task of downloadingTasks) {
+        try {
+            const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
+                body: { action: 'download_video', payload: { workId: task.work_id }, userId: task.user_id, taskId: task.id }
+            });
+            if (downloadError) throw downloadError;
+            if (downloadData.error) throw new Error(downloadData.error);
+            if (downloadData.resultCode !== 0) throw new Error(downloadData.message || 'Lỗi khi tải video.');
+
+            const finalUrl = downloadData.data?.url;
+            if (finalUrl) {
+                await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl }).eq('id', task.id);
+                await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download Success', { workId: task.work_id }, { url: finalUrl }, null);
+            } else {
+                // URL not ready yet, it will be retried in the next cron run. Log it for visibility.
+                await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download URL Not Ready', { workId: task.work_id }, downloadData, new Error('API reported success but download URL is null. Will retry.'));
+            }
+        } catch (e) {
+            await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download Failed', { workId: task.work_id }, { error: e.message }, e);
+            await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: `Lỗi khi tải video: ${e.message}` }).eq('id', task.id);
         }
     }
 

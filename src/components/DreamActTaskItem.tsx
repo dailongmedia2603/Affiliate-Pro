@@ -45,7 +45,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
       const creation = statusData.data?.list?.find(d => d.animateId === task.animate_id);
 
       if (creation) {
-        if (creation.status === 2) { // Completed
+        if (creation.web_work_status === 200) { // Completed
           dismissToast(loadingToast);
           showSuccess('Tác vụ đã hoàn thành! Đang tải video...');
           
@@ -73,7 +73,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
           showSuccess('Đã cập nhật tác vụ thành công!');
           // Realtime will update the UI, no need to call onTaskDeleted()
 
-        } else if (creation.status === 3) { // Failed
+        } else if (creation.web_work_status === 3) { // Failed
           await supabase.from('dream_act_tasks').update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT (kiểm tra lại).' }).eq('id', task.id);
           showError('Tác vụ vẫn ở trạng thái thất bại.', loadingToast);
         } else { // Still processing
@@ -100,6 +100,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
       case 'uploading_image':
       case 'uploading_video':
       case 'animating':
+      case 'downloading':
       default:
         return <Badge variant="outline" className="text-blue-600 border-blue-300"><Loader2 className="w-3 h-3 mr-1 animate-spin" />{task.status.replace(/_/g, ' ')}</Badge>;
     }
