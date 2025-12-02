@@ -459,8 +459,8 @@ serve(async (req) => {
                 body: { 
                     path: 'veo3/check_status', 
                     payload: { operations: operationsForCheck },
-                    veo3_cookie: settings.veo3_cookie,
-                    taskId: task.id
+                    taskId: task.id,
+                    userId: task.user_id
                 }
             });
             if (statusError) throw statusError;
