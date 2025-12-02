@@ -160,7 +160,7 @@ const DreamActGenerationPage = () => {
       });
       const animateData = await animateResponse.json();
       if (!animateResponse.ok || animateData.error) throw new Error(animateData.error || 'Lỗi khi tạo video.');
-      const animateId = animateData.extraData?.animate_id;
+      const animateId = animateData.extraData?.animateId;
       if (!animateId) throw new Error('API không trả về animateId trong extraData.');
       await supabase.from('dream_act_tasks').update({ animate_id: animateId }).eq('id', taskId);
 
