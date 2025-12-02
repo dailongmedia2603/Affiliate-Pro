@@ -179,51 +179,22 @@ serve(async (req) => {
       targetUrl = `${dream_act_domain}${targetPath}`;
     }
     
-    // --- Retry Logic ---
-    const MAX_RETRIES = 3;
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
+    try {
         const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
-
-        // Retry on server errors (5xx)
-        if (response.status >= 500) {
-            throw new Error(`Server error: ${response.status} ${response.statusText}`);
-        }
-
         const responseText = await response.text();
         
         try {
             responseData = JSON.parse(responseText);
         } catch (jsonError) {
-            // Retry if response is not JSON (e.g., HTML error page)
             throw new Error(`Invalid JSON response from API: ${responseText.substring(0, 200)}...`);
         }
 
-        // Do NOT retry on client errors (4xx) or API-level errors. Fail fast.
         if (!response.ok || responseData.resultCode !== 0) {
-          errorForLog = new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
-          // Break the loop to fail immediately instead of retrying.
-          break;
+            throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
         }
-        
-        // Success, clear any error from previous attempts and break the loop
-        errorForLog = null;
-        break;
-
-      } catch (e) {
+    } catch (e) {
         errorForLog = e;
-        if (attempt < MAX_RETRIES - 1) {
-          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s
-          console.log(`[proxy-dream-act-api] Attempt ${attempt + 1} failed. Retrying in ${delay / 1000}s... Error: ${e.message}`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-    }
-    // --- End Retry Logic ---
-
-    // If there's an error after all retries, throw it to be caught by the final catch block.
-    if (errorForLog) {
-      throw errorForLog;
+        throw e;
     }
 
     await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, responseData, null, targetUrl);
@@ -234,7 +205,6 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-dream-act-api] FATAL ERROR:", error.message);
-    // Ensure the final error is logged
     await logApiCall(supabaseAdmin, taskId, userId, action, requestPayloadForLog, { error: error.message }, error, targetUrl);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
