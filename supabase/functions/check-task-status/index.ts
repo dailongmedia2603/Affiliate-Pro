@@ -515,7 +515,7 @@ serve(async (req) => {
 
             const creation = statusData.data?.list?.find(d => d.animateId === task.animate_id);
             if (creation) {
-                if (creation.status === 2) { // Completed
+                if (creation.web_work_status === 200) { // Completed
                     const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
                         body: { action: 'download_video', payload: { workId: creation.id }, userId: task.user_id, taskId: task.id }
                     });
@@ -523,12 +523,17 @@ serve(async (req) => {
                     if (downloadData.error) throw new Error(downloadData.error);
                     if (downloadData.resultCode !== 0) throw new Error(downloadData.message || 'Lỗi khi tải video.');
 
-                    const finalUrl = downloadData.data.url;
-                    if (!finalUrl) throw new Error('Dream ACT task successful but final URL is missing.');
-                    
-                    await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
-                } else if (creation.status === 3) { // Failed
-                    await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT.' }).eq('id', task.id);
+                    const finalUrl = downloadData.data?.url;
+                    if (finalUrl) {
+                        await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
+                        await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download Success', { workId: creation.id }, { url: finalUrl }, null);
+                    } else {
+                        await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Download URL Not Ready', { workId: creation.id }, downloadData, new Error('API reported success but download URL is null. Will retry.'));
+                    }
+                } else if (creation.web_work_status === 0) { // Processing
+                    // Do nothing, let it continue polling
+                } else { // Failed or other states
+                    await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: `Tác vụ thất bại trên API Dream ACT. Trạng thái API: ${creation.web_work_status}` }).eq('id', task.id);
                 }
             }
         } catch (e) {
