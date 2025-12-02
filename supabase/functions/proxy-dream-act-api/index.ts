@@ -15,8 +15,23 @@ const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayloa
   
   const sanitizedRequest = { ...requestPayload };
   if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
-  if (sanitizedRequest.photo && sanitizedRequest.photo.name) sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.type}]`;
-  if (sanitizedRequest.video && sanitizedRequest.video.name) sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.type}]`;
+  
+  // Sanitize file objects for logging
+  if (sanitizedRequest.photo) {
+    if (sanitizedRequest.photo instanceof File) {
+      sanitizedRequest.photo = `[FILE: ${sanitizedRequest.photo.name}, ${sanitizedRequest.photo.size} bytes]`;
+    } else {
+      sanitizedRequest.photo = '[INVALID_FILE_OBJECT]';
+    }
+  }
+  if (sanitizedRequest.video) {
+    if (sanitizedRequest.video instanceof File) {
+      sanitizedRequest.video = `[FILE: ${sanitizedRequest.video.name}, ${sanitizedRequest.video.size} bytes]`;
+    } else {
+      sanitizedRequest.video = '[INVALID_FILE_OBJECT]';
+    }
+  }
+
   if (targetUrl) {
     sanitizedRequest._dyad_target_url = targetUrl;
   }
@@ -82,9 +97,13 @@ serve(async (req) => {
     userId = user.id;
 
     const settings = await getUserSettings(supabaseAdmin, userId);
+    
+    const domain = settings.dream_act_domain.replace(/\/+$/, "");
     const { dream_act_domain, ...credentials } = settings;
 
-    const isFormDataRequest = req.headers.get('content-type')?.includes('multipart/form-data');
+    const contentType = req.headers.get("content-type")?.toLowerCase() || "";
+    const isFormDataRequest = contentType.includes("multipart/form-data");
+    
     let payload, file;
 
     if (isFormDataRequest) {
@@ -93,6 +112,16 @@ serve(async (req) => {
       file = formData.get('file');
       taskId = formData.get('taskId');
       payload = {};
+
+      if (file && typeof file === "string") {
+        throw new Error("File is missing or invalid. Expected a file blob, but received a string.");
+      }
+      if (action === 'upload_image' || action === 'upload_video') {
+        if (!file) {
+          throw new Error("File is required for upload actions.");
+        }
+      }
+
     } else {
       const body = await req.json();
       action = body.action;
@@ -105,7 +134,6 @@ serve(async (req) => {
     let bodyToSend;
     let headers = {
         'Accept': 'application/json, text/plain, */*',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
     };
 
     const baseParams = {
@@ -143,16 +171,8 @@ serve(async (req) => {
         params.append('videoUrl', payload.videoUrl);
 
         bodyToSend = params.toString();
-        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
         
-        requestPayloadForLog = {
-            userId: baseParams.userId,
-            clientId: baseParams.clientId,
-            accountId: baseParams.accountId,
-            token: baseParams.token,
-            imageUrl: payload.imageUrl,
-            videoUrl: payload.videoUrl,
-        };
+        requestPayloadForLog = { ...baseParams, imageUrl: payload.imageUrl, videoUrl: payload.videoUrl };
         break;
       case 'fetch_status':
       case 'test_connection':
@@ -160,7 +180,6 @@ serve(async (req) => {
         method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-        headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'download_video':
@@ -168,7 +187,6 @@ serve(async (req) => {
          method = 'PATCH';
          headers['Content-Type'] = 'application/x-www-form-urlencoded';
          bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
-         headers['Content-Length'] = new TextEncoder().encode(bodyToSend).length.toString();
          requestPayloadForLog = { ...baseParams, ...payload };
          break;
       default:
@@ -176,20 +194,25 @@ serve(async (req) => {
     }
 
     if (!targetUrl) {
-      targetUrl = `${dream_act_domain}${targetPath}`;
+      targetUrl = `${domain}${targetPath}`;
     }
     
     try {
-        const response = await fetch(targetUrl, { method, headers, body: bodyToSend });
-        const responseText = await response.text();
-        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(targetUrl, { method, headers, body: bodyToSend, signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        let responseTextForError = '';
         try {
-            responseData = JSON.parse(responseText);
-        } catch (jsonError) {
-            throw new Error(`Invalid JSON response from API: ${responseText.substring(0, 200)}...`);
+            responseData = await response.json();
+        } catch (e) {
+            responseTextForError = await response.text();
+            throw new Error(`Invalid JSON response from API: ${responseTextForError.substring(0, 200)}...`);
         }
 
-        if (!response.ok || responseData.resultCode !== 0) {
+        if (!response.ok || (responseData.resultCode !== undefined && responseData.resultCode !== 0)) {
             throw new Error(responseData.message || `Dream ACT API Error: ${response.status}`);
         }
     } catch (e) {
