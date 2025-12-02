@@ -40,7 +40,29 @@ const DreamActGenerationPage = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dream_act_tasks' },
         (payload) => {
-          fetchHistory();
+          setTasks(currentTasks => {
+            const { eventType, new: newRecord, old: oldRecord } = payload;
+            
+            if (eventType === 'INSERT') {
+              // Check if the task is already in the list to avoid duplicates
+              if (currentTasks.some(task => task.id === newRecord.id)) {
+                return currentTasks;
+              }
+              return [newRecord, ...currentTasks].slice(0, 20);
+            }
+
+            if (eventType === 'UPDATE') {
+              return currentTasks.map(task => 
+                task.id === newRecord.id ? { ...task, ...newRecord } : task
+              );
+            }
+
+            if (eventType === 'DELETE') {
+              return currentTasks.filter(task => task.id !== oldRecord.id);
+            }
+
+            return currentTasks;
+          });
         }
       )
       .subscribe();
@@ -98,8 +120,10 @@ const DreamActGenerationPage = () => {
         .single();
       if (taskError) throw taskError;
       taskId = newTask.id;
+      
+      // No need to call fetchHistory() here, the real-time subscription will handle it.
+
       await supabase.from('dream_act_tasks').update({ status: 'uploading_image' }).eq('id', taskId);
-      fetchHistory();
 
       const functionUrl = `${SUPABASE_URL}/functions/v1/proxy-dream-act-api`;
       const baseHeaders = {
