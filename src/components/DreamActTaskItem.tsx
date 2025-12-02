@@ -42,7 +42,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
       if (statusData.error) throw new Error(statusData.error);
       if (statusData.resultCode !== 0) throw new Error(statusData.message || 'Lỗi khi kiểm tra trạng thái.');
 
-      const creation = statusData.data.find(d => d.animateId === task.animate_id);
+      const creation = statusData.data?.list?.find(d => d.animateId === task.animate_id);
 
       if (creation) {
         if (creation.status === 2) { // Completed
