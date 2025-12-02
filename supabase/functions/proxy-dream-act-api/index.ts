@@ -204,12 +204,14 @@ serve(async (req) => {
         const response = await fetch(targetUrl, { method, headers, body: bodyToSend, signal: controller.signal });
         clearTimeout(timeoutId);
 
-        let responseTextForError = '';
+        const responseText = await response.text();
         try {
-            responseData = await response.json();
+            responseData = JSON.parse(responseText);
         } catch (e) {
-            responseTextForError = await response.text();
-            throw new Error(`Invalid JSON response from API: ${responseTextForError.substring(0, 200)}...`);
+            if (!response.ok) {
+                throw new Error(`Dream ACT API Error (${response.status}): ${responseText.substring(0, 500)}`);
+            }
+            responseData = { raw_response: responseText };
         }
 
         if (!response.ok || (responseData.resultCode !== undefined && responseData.resultCode !== 0)) {
