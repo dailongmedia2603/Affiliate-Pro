@@ -386,7 +386,7 @@ const SettingsPage = () => {
         body: { action: 'test_connection' },
       });
       if (error) throw error;
-      if (data.code === 200) {
+      if (data.resultCode === 0) {
         setDreamActConnectionStatus('success');
         showSuccess('Kết nối API Dream ACT thành công!');
       } else {
