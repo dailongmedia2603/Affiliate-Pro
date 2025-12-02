@@ -9,8 +9,12 @@ const corsHeaders = {
 
 const API_BASE_URL = 'https://api.beautyapp.work';
 
-const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
-  if (!taskId) return;
+const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
+  // We need a userId to associate the log with an account.
+  if (!userId) {
+    console.error('[proxy-veo3-api] logApiCall was called without a userId. Skipping log insertion.');
+    return;
+  }
   
   const sanitizedRequest = { ...requestPayload };
   if (sanitizedRequest.cookie) sanitizedRequest.cookie = '[REDACTED]';
@@ -21,7 +25,8 @@ const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, respo
   }
 
   const logEntry = {
-    task_id: taskId,
+    task_id: taskId, // Can be null
+    user_id: userId, // Must be present
     step_name: stepName,
     request_payload: sanitizedRequest,
     response_data: responseData,
@@ -51,7 +56,7 @@ async function getUserSettings(supabaseAdmin, userId) {
 }
 
 // Gets a token, with an option to force a refresh from the backend
-async function getVeo3Token(cookie, supabaseAdmin, taskId, forceRefresh = false) {
+async function getVeo3Token(cookie, supabaseAdmin, taskId, userId, forceRefresh = false) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
   let responseData, errorForLog = null;
   
@@ -87,7 +92,7 @@ async function getVeo3Token(cookie, supabaseAdmin, taskId, forceRefresh = false)
     if (forceRefresh) {
       (logPayload as any).refresh = true;
     }
-    await logApiCall(supabaseAdmin, taskId, `veo3/get_token (Internal, refresh=${forceRefresh})`, logPayload, responseData, errorForLog, url);
+    await logApiCall(supabaseAdmin, taskId, userId, `veo3/get_token (Internal, refresh=${forceRefresh})`, logPayload, responseData, errorForLog, url);
   }
 }
 
@@ -103,25 +108,30 @@ serve(async (req) => {
   );
   let taskId;
   let path;
+  let userId;
+  let requestPayloadForLog;
+  let targetUrl;
 
   try {
+    // Authenticate user first to get userId for logging
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
+    );
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) throw new Error("User not authenticated.");
+    userId = user.id;
+
     const body = await req.json();
     path = body.path;
     const payload = body.payload;
     const method = body.method || 'POST';
-    taskId = body.taskId;
+    taskId = body.taskId; // This can be null for connection tests
     let veo3_cookie = body.veo3_cookie;
 
     if (!veo3_cookie) {
-        const supabaseClient = createClient(
-          Deno.env.get('SUPABASE_URL') ?? '',
-          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-          { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-        );
-        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-        if (userError || !user) throw new Error("User not authenticated.");
-
-        const settings = await getUserSettings(supabaseAdmin, user.id);
+        const settings = await getUserSettings(supabaseAdmin, userId);
         veo3_cookie = settings.veo3_cookie;
     }
 
@@ -132,11 +142,12 @@ serve(async (req) => {
         if (cookieEndpoints.includes(path)) {
             finalPayload = { cookie: veo3_cookie, ...payload };
         } else {
-            const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId, forceTokenRefresh);
+            const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId, userId, forceTokenRefresh);
             finalPayload = { token: accessToken, ...payload };
         }
-
-        const targetUrl = new URL(path, API_BASE_URL).toString();
+        
+        requestPayloadForLog = finalPayload; // Store for logging
+        targetUrl = new URL(path, API_BASE_URL).toString();
 
         const response = await fetch(targetUrl, {
             method: method,
@@ -152,7 +163,7 @@ serve(async (req) => {
             apiResponseData = { raw_response: responseText };
         }
 
-        await logApiCall(supabaseAdmin, taskId, path, finalPayload, apiResponseData, response.ok ? null : new Error(responseText), targetUrl);
+        await logApiCall(supabaseAdmin, taskId, userId, path, finalPayload, apiResponseData, response.ok ? null : new Error(responseText), targetUrl);
 
         return { response, responseData: apiResponseData };
     };
@@ -180,7 +191,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-veo3-api] FATAL ERROR:", error.message);
-    // The error is already logged inside performApiCall, so we just re-throw to the client.
+    // Log the final error if it hasn't been logged yet
+    await logApiCall(supabaseAdmin, taskId, userId, path, requestPayloadForLog || {}, { error: error.message }, error, targetUrl);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

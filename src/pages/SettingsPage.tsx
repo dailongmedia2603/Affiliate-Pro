@@ -583,6 +583,7 @@ const SettingsPage = () => {
               <div className="flex items-center gap-4 mt-4">
                 <Button onClick={handleTestVeo3Connection} disabled={isTestingVeo3} variant="outline">{isTestingVeo3 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
                 <Button onClick={() => handleSaveSettings('veo3')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
+                <SettingsLogViewer logType="veo3" buttonTitle="Xem Logs" />
               </div>
             </div>
             {veo3ConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Veo3 thành công.</AlertDescription></Alert>)}
