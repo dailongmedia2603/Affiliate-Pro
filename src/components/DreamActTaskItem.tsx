@@ -40,7 +40,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
 
       if (statusError) throw statusError;
       if (statusData.error) throw new Error(statusData.error);
-      if (statusData.code !== 200) throw new Error(statusData.message);
+      if (statusData.resultCode !== 0) throw new Error(statusData.message || 'Lỗi khi kiểm tra trạng thái.');
 
       const creation = statusData.data.find(d => d.animateId === task.animate_id);
 
@@ -61,7 +61,7 @@ const DreamActTaskItem = ({ task, onTaskDeleted }) => {
 
           if (downloadError) throw downloadError;
           if (downloadData.error) throw new Error(downloadData.error);
-          if (downloadData.code !== 200) throw new Error(downloadData.message);
+          if (downloadData.resultCode !== 0) throw new Error(downloadData.message || 'Lỗi khi tải video.');
 
           const finalUrl = downloadData.data.url;
           if (!finalUrl) {
