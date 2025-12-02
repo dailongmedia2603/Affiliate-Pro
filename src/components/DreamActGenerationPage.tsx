@@ -19,11 +19,20 @@ const DreamActGenerationPage = () => {
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      showError("Không thể xác thực người dùng để tải lịch sử.");
+      setLoadingHistory(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('dream_act_tasks')
       .select('*')
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(20);
+      
     if (error) {
       showError('Không thể tải lịch sử Dream ACT.');
     } else {
@@ -40,29 +49,7 @@ const DreamActGenerationPage = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'dream_act_tasks' },
         (payload) => {
-          setTasks(currentTasks => {
-            const { eventType, new: newRecord, old: oldRecord } = payload;
-            
-            if (eventType === 'INSERT') {
-              // Check if the task is already in the list to avoid duplicates
-              if (currentTasks.some(task => task.id === newRecord.id)) {
-                return currentTasks;
-              }
-              return [newRecord, ...currentTasks].slice(0, 20);
-            }
-
-            if (eventType === 'UPDATE') {
-              return currentTasks.map(task => 
-                task.id === newRecord.id ? { ...task, ...newRecord } : task
-              );
-            }
-
-            if (eventType === 'DELETE') {
-              return currentTasks.filter(task => task.id !== oldRecord.id);
-            }
-
-            return currentTasks;
-          });
+          fetchHistory();
         }
       )
       .subscribe();
