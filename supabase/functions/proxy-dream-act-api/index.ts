@@ -81,36 +81,17 @@ serve(async (req) => {
   let userId;
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error("Authorization header is missing.");
-    }
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
-      throw new Error(userError?.message || "User not authenticated.");
-    }
-    userId = user.id;
-
-    const settings = await getUserSettings(supabaseAdmin, userId);
-    
-    const domain = settings.dream_act_domain.replace(/\/+$/, "");
-    const { dream_act_domain, ...credentials } = settings;
-
     const contentType = req.headers.get("content-type")?.toLowerCase() || "";
     const isFormDataRequest = contentType.includes("multipart/form-data");
     
-    let payload, file;
+    let payload, file, body;
 
     if (isFormDataRequest) {
       const formData = await req.formData();
       action = formData.get('action');
       file = formData.get('file');
       taskId = formData.get('taskId');
+      userId = formData.get('userId'); // Get userId from form data if available
       payload = {};
 
       if (file && typeof file === "string") {
@@ -121,13 +102,36 @@ serve(async (req) => {
           throw new Error("File is required for upload actions.");
         }
       }
-
     } else {
-      const body = await req.json();
+      body = await req.json();
       action = body.action;
       payload = body.payload;
       taskId = body.taskId;
+      userId = body.userId; // Get userId from JSON body if available
     }
+
+    // If userId is not in the body, fall back to auth header (for client-side calls)
+    if (!userId) {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        throw new Error("Authorization header is missing and no userId was provided in the body.");
+      }
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      if (userError || !user) {
+        throw new Error(userError?.message || "User not authenticated.");
+      }
+      userId = user.id;
+    }
+
+    const settings = await getUserSettings(supabaseAdmin, userId);
+    
+    const domain = settings.dream_act_domain.replace(/\/+$/, "");
+    const { dream_act_domain, ...credentials } = settings;
 
     let targetPath = '';
     let method = 'POST';
