@@ -171,6 +171,10 @@ serve(async (req) => {
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'fetch_status':
+        if (!payload?.animateId) {
+          throw new Error("animateId is required for fetch_status action, but was not provided.");
+        }
+        // Fallthrough intended
       case 'test_connection':
         const query = new URLSearchParams({
           ...baseParams,

@@ -141,7 +141,7 @@ const DreamActGenerationPage = () => {
       const imageUploadResponse = await fetch(functionUrl, { method: 'POST', headers: baseHeaders, body: imageFormData });
       const imageData = await imageUploadResponse.json();
       if (!imageUploadResponse.ok || imageData.error) throw new Error(imageData.error || 'Lỗi tải ảnh nguồn.');
-      const imageUrl = imageData.extraData.filePath;
+      const imageUrl = imageData.data.filePath;
       await supabase.from('dream_act_tasks').update({ status: 'uploading_video' }).eq('id', taskId);
 
       // Step 2: Upload Video
@@ -154,7 +154,7 @@ const DreamActGenerationPage = () => {
       const videoUploadResponse = await fetch(functionUrl, { method: 'POST', headers: baseHeaders, body: videoFormData });
       const videoData = await videoUploadResponse.json();
       if (!videoUploadResponse.ok || videoData.error) throw new Error(videoData.error || 'Lỗi tải video điều khiển.');
-      const videoUrl = videoData.extraData.videoUrl;
+      const videoUrl = videoData.data.videoUrl;
       await supabase.from('dream_act_tasks').update({ status: 'animating' }).eq('id', taskId);
 
       // Step 3: Animate
@@ -171,7 +171,7 @@ const DreamActGenerationPage = () => {
       });
       const animateData = await animateResponse.json();
       if (!animateResponse.ok || animateData.error) throw new Error(animateData.error || 'Lỗi khi tạo video.');
-      const animateId = animateData.extraData.animateId;
+      const animateId = animateData.data.animateId;
       if (!animateId) throw new Error('API không trả về animateId.');
       await supabase.from('dream_act_tasks').update({ animate_id: animateId }).eq('id', taskId);
 
