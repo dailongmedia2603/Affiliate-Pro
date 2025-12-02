@@ -110,7 +110,6 @@ serve(async (req) => {
       userId = body.userId; // Get userId from JSON body if available
     }
 
-    // If userId is not in the body, fall back to auth header (for client-side calls)
     if (!userId) {
       const authHeader = req.headers.get('Authorization');
       if (!authHeader) {
@@ -150,47 +149,42 @@ serve(async (req) => {
     switch (action) {
       case 'upload_image':
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedUrl';
+        method = 'POST';
         bodyToSend = new FormData();
         Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
         bodyToSend.append('photo', file);
-        requestPayloadForLog = { ...baseParams, photo: file };
+        requestPayloadForLog = { ...baseParams, photo: `[File: ${file.name}]` };
         break;
       case 'upload_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/presignedAct';
+        method = 'POST';
         bodyToSend = new FormData();
         Object.entries(baseParams).forEach(([key, value]) => bodyToSend.append(key, value));
         bodyToSend.append('video', file);
-        requestPayloadForLog = { ...baseParams, video: file };
+        requestPayloadForLog = { ...baseParams, video: `[File: ${file.name}]` };
         break;
       case 'animate_video':
         targetPath = '/oapi/composite/v3/private/common/mgmt/animateVideo';
-        headers['Content-Type'] = 'application/x-www-form-urlencoded';
-        
-        const params = new URLSearchParams();
-        params.append('userId', baseParams.userId);
-        params.append('clientId', baseParams.clientId);
-        params.append('accountId', baseParams.accountId);
-        params.append('token', baseParams.token);
-        params.append('imageUrl', payload.imageUrl);
-        params.append('videoUrl', payload.videoUrl);
-
-        bodyToSend = params.toString();
-        
-        requestPayloadForLog = { ...baseParams, imageUrl: payload.imageUrl, videoUrl: payload.videoUrl };
-        break;
-      case 'fetch_status':
-      case 'test_connection':
-        targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
         method = 'POST';
         headers['Content-Type'] = 'application/x-www-form-urlencoded';
         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
+      case 'fetch_status':
+      case 'test_connection':
+        targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
+        method = 'GET';
+        const fetchParams = new URLSearchParams({ ...baseParams, ...payload }).toString();
+        targetUrl = `${domain}${targetPath}?${fetchParams}`;
+        bodyToSend = null;
+        requestPayloadForLog = { ...baseParams, ...payload };
+        break;
       case 'download_video':
          targetPath = '/oapi/composite/v3/private/common/mgmt/downloadVideo';
-         method = 'PATCH';
-         headers['Content-Type'] = 'application/x-www-form-urlencoded';
-         bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
+         method = 'GET';
+         const downloadParams = new URLSearchParams({ ...baseParams, ...payload }).toString();
+         targetUrl = `${domain}${targetPath}?${downloadParams}`;
+         bodyToSend = null;
          requestPayloadForLog = { ...baseParams, ...payload };
          break;
       default:
