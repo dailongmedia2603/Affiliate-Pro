@@ -502,6 +502,9 @@ serve(async (req) => {
                 if (downloadData.code !== 200) throw new Error(downloadData.message);
 
                 const finalUrl = downloadData.data.url;
+                if (!finalUrl) {
+                    throw new Error('Dream ACT task successful but final URL is missing.');
+                }
                 await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
             } else if (creation && creation.status === 3) { // Failed
                 await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT.' }).eq('id', task.id);

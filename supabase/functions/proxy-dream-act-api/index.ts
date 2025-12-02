@@ -177,10 +177,9 @@ serve(async (req) => {
       case 'fetch_status':
       case 'test_connection':
         targetPath = '/oapi/composite/v3/private/common/mgmt/fetchRecentCreation';
-        method = 'GET';
-        const fetchParams = new URLSearchParams({ ...baseParams, ...payload });
-        targetUrl = `${domain}${targetPath}?${fetchParams.toString()}`;
-        bodyToSend = null;
+        method = 'POST';
+        headers['Content-Type'] = 'application/x-www-form-urlencoded';
+        bodyToSend = new URLSearchParams({ ...baseParams, ...payload }).toString();
         requestPayloadForLog = { ...baseParams, ...payload };
         break;
       case 'download_video':
