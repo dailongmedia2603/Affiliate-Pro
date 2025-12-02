@@ -59,6 +59,24 @@ const handleStepFailure = async (supabaseAdmin, step, errorMessage) => {
     }
 };
 
+const logDreamActCall = async (supabaseAdmin, taskId, userId, stepName, requestPayload, responseData, error = null) => {
+  if (!userId) return;
+  const logEntry = {
+    task_id: taskId,
+    user_id: userId,
+    step_name: stepName,
+    request_payload: requestPayload,
+    response_data: responseData,
+    is_error: !!error,
+    error_message: error ? error.message : null,
+  };
+  try {
+    await supabaseAdmin.from('dream_act_logs').insert(logEntry);
+  } catch(e) {
+    console.error(`[check-task-status] Failed to write Dream ACT log to DB: ${e.message}`);
+  }
+};
+
 
 // --- Main Handler ---
 
@@ -484,66 +502,38 @@ serve(async (req) => {
     }
 
     // Process Manual Dream ACT Tasks
-    console.log("[INFO] Starting to process manual Dream ACT tasks.");
     const { data: manualDreamActTasks } = await supabaseAdmin.from('dream_act_tasks').select('id, user_id, animate_id').eq('status', 'animating').not('animate_id', 'is', null);
-    
-    if (!manualDreamActTasks || manualDreamActTasks.length === 0) {
-        console.log("[INFO] No pending Dream ACT tasks found.");
-    } else {
-        console.log(`[INFO] Found ${manualDreamActTasks.length} pending Dream ACT tasks to check.`);
-        for (const task of manualDreamActTasks) {
-            console.log(`[INFO] Processing Dream ACT task ID: ${task.id}, Animate ID: ${task.animate_id}`);
-            try {
-                const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
-                    body: { 
-                        action: 'fetch_status', 
-                        payload: { animateId: task.animate_id }, 
-                        userId: task.user_id,
-                        taskId: task.id
-                    }
-                });
-                if (statusError) throw statusError;
-                if (statusData.error) throw new Error(statusData.error);
-                if (statusData.code !== 200) throw new Error(statusData.message);
+    if (manualDreamActTasks) for (const task of manualDreamActTasks) {
+        try {
+            await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Initiating Status Check', { animateId: task.animate_id }, null, null);
+            const { data: statusData, error: statusError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
+                body: { action: 'fetch_status', payload: { animateId: task.animate_id }, userId: task.user_id, taskId: task.id }
+            });
+            if (statusError) throw statusError;
+            if (statusData.error) throw new Error(statusData.error);
+            if (statusData.code !== 200) throw new Error(statusData.message);
 
-                console.log(`[INFO] Task ${task.id}: Successfully fetched status from API.`);
-                const creation = statusData.data.find(d => d.animateId === task.animate_id);
+            const creation = statusData.data.find(d => d.animateId === task.animate_id);
+            if (creation) {
+                if (creation.status === 2) { // Completed
+                    const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
+                        body: { action: 'download_video', payload: { workId: creation.id }, userId: task.user_id, taskId: task.id }
+                    });
+                    if (downloadError) throw downloadError;
+                    if (downloadData.error) throw new Error(downloadData.error);
+                    if (downloadData.code !== 200) throw new Error(downloadData.message);
 
-                if (creation) {
-                    console.log(`[INFO] Task ${task.id}: Found matching creation in API response with status: ${creation.status}`);
-                    if (creation.status === 2) { // Completed
-                        console.log(`[INFO] Task ${task.id}: Status is COMPLETED. Attempting to download video.`);
-                        const { data: downloadData, error: downloadError } = await supabaseAdmin.functions.invoke('proxy-dream-act-api', {
-                            body: { 
-                                action: 'download_video', 
-                                payload: { workId: creation.id }, 
-                                userId: task.user_id,
-                                taskId: task.id
-                            }
-                        });
-                        if (downloadError) throw downloadError;
-                        if (downloadData.error) throw new Error(downloadData.error);
-                        if (downloadData.code !== 200) throw new Error(downloadData.message);
-
-                        const finalUrl = downloadData.data.url;
-                        if (!finalUrl) {
-                            throw new Error('Dream ACT task successful but final URL is missing.');
-                        }
-                        console.log(`[SUCCESS] Task ${task.id}: Video downloaded. Final URL: ${finalUrl}`);
-                        await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
-                    } else if (creation.status === 3) { // Failed
-                        console.log(`[FAILED] Task ${task.id}: API reported status as FAILED.`);
-                        await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT.' }).eq('id', task.id);
-                    } else {
-                        console.log(`[INFO] Task ${task.id}: Status is still processing (API status: ${creation.status}). Will check again later.`);
-                    }
-                } else {
-                    console.log(`[WARN] Task ${task.id}: No matching creation found in API status response for animateId ${task.animate_id}.`);
+                    const finalUrl = downloadData.data.url;
+                    if (!finalUrl) throw new Error('Dream ACT task successful but final URL is missing.');
+                    
+                    await supabaseAdmin.from('dream_act_tasks').update({ status: 'completed', result_url: finalUrl, work_id: creation.id }).eq('id', task.id);
+                } else if (creation.status === 3) { // Failed
+                    await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: 'Tác vụ thất bại trên API Dream ACT.' }).eq('id', task.id);
                 }
-            } catch (e) {
-                console.error(`[ERROR] Error processing Dream ACT task ${task.id}:`, e.message);
-                await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
             }
+        } catch (e) {
+            await logDreamActCall(supabaseAdmin, task.id, task.user_id, 'Status Check Failed', {}, { error: e.message }, e);
+            await supabaseAdmin.from('dream_act_tasks').update({ status: 'failed', error_message: e.message }).eq('id', task.id);
         }
     }
 
