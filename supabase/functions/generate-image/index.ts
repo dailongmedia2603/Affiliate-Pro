@@ -80,7 +80,7 @@ serve(async (req) => {
     if (!model || !prompt) throw new Error("Model và prompt là bắt buộc.");
     if (model !== 'banana') throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
 
-    let images_data = [];
+    let input_image = [];
     if (image_urls && image_urls.length > 0) {
       await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL.`, 'INFO', stepId);
       const uploadPayload = { token, url: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
@@ -104,7 +104,7 @@ serve(async (req) => {
       if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${uploadResponseText}`);
       
       if (uploadResponseData?.status === true && uploadResponseData.data) {
-        images_data = uploadResponseData.data;
+        input_image = uploadResponseData.data;
         await logToDb(supabaseAdmin, runId, 'Đăng ký media URL thành công.', 'SUCCESS', stepId);
       } else {
         throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadResponseData)}`);
@@ -124,7 +124,7 @@ serve(async (req) => {
     
     await logToDb(supabaseAdmin, runId, 'Đang gọi API Higgsfield để tạo ảnh...', 'INFO', stepId);
     const endpoint = `${API_BASE}/img/banana`;
-    const apiPayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
+    const apiPayload = { token, prompt, input_image, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
 
     await logToDb(supabaseAdmin, runId, `Calling banana API`, 'INFO', stepId, {
         endpoint: endpoint,
