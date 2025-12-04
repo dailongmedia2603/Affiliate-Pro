@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Sparkles, Film, Mic, CheckCircle, XCircle, Loader2, Cloud, Video, Info, Cpu, Camera } from "lucide-react";
-import SettingsLogViewer from '@/components/SettingsLogViewer';
 
 const SettingsPage = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
@@ -280,13 +279,13 @@ const SettingsPage = () => {
     setHiggsfieldConnectionStatus('idle');
     try {
       const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
-        body: { action: 'test_authentication' },
+        body: { action: 'test_connection' },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
       if (data.success) {
         setHiggsfieldConnectionStatus('success');
-        showSuccess('Kết nối và xác thực API Higgsfield thành công!');
+        showSuccess('Kết nối API Higgsfield thành công!');
       } else {
         throw new Error('Kiểm tra kết nối thất bại.');
       }
@@ -386,7 +385,7 @@ const SettingsPage = () => {
         body: { action: 'test_connection' },
       });
       if (error) throw error;
-      if (data.resultCode === 0) {
+      if (data.code === 200) {
         setDreamActConnectionStatus('success');
         showSuccess('Kết nối API Dream ACT thành công!');
       } else {
@@ -512,7 +511,7 @@ const SettingsPage = () => {
                 <Button onClick={() => handleSaveSettings('higgsfield')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
               </div>
             </div>
-            {higgsfieldConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối và xác thực API Higgsfield thành công.</AlertDescription></Alert>)}
+            {higgsfieldConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Higgsfield thành công.</AlertDescription></Alert>)}
             {higgsfieldConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Cookie và Clerk Context.</AlertDescription></Alert>)}
           </div>
         </TabsContent>
@@ -583,7 +582,6 @@ const SettingsPage = () => {
               <div className="flex items-center gap-4 mt-4">
                 <Button onClick={handleTestVeo3Connection} disabled={isTestingVeo3} variant="outline">{isTestingVeo3 ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
                 <Button onClick={() => handleSaveSettings('veo3')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
-                <SettingsLogViewer logType="veo3" buttonTitle="Xem Logs" />
               </div>
             </div>
             {veo3ConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Veo3 thành công.</AlertDescription></Alert>)}
@@ -605,7 +603,6 @@ const SettingsPage = () => {
               <div className="flex items-center gap-4 mt-4">
                 <Button onClick={handleTestDreamActConnection} disabled={isTestingDreamAct} variant="outline">{isTestingDreamAct ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Kiểm tra kết nối</Button>
                 <Button onClick={() => handleSaveSettings('dream_act')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
-                <SettingsLogViewer logType="dream_act" buttonTitle="Xem Logs" />
               </div>
             </div>
             {dreamActConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Dream ACT thành công.</AlertDescription></Alert>)}

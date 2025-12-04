@@ -57,17 +57,15 @@ serve(async (req) => {
     const { higgsfield_cookie, higgsfield_clerk_context } = settings;
     
     const { action, ...payload } = await req.json();
-    
+    const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
+
     switch (action) {
-      case 'test_authentication': {
-        // This action now actually tries to get a token.
-        await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-        return new Response(JSON.stringify({ success: true, message: 'Kết nối và xác thực thành công!' }), {
+      case 'test_connection': {
+        return new Response(JSON.stringify({ success: true, message: 'Kết nối thành công!' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        })
       }
       case 'generate_video': {
-        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
         const { model, prompt, imageUrls, videoData, options } = payload;
         if (!model) throw new Error("Model is required for video generation.");
 

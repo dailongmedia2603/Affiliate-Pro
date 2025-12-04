@@ -41,13 +41,12 @@ serve(async (req) => {
     if (!channelId) throw new Error("Thiếu tham số channelId.");
 
     let userId;
-    let authHeader;
     // If a userId is provided in the payload, this is likely a service-to-service call (e.g., from a cron job)
     if (payloadUserId) {
         userId = payloadUserId;
     } else {
         // Otherwise, get the user from the auth header for a client-side call
-        authHeader = req.headers.get('Authorization')!;
+        const authHeader = req.headers.get('Authorization')!;
         if (!authHeader) throw new Error("Thiếu thông tin xác thực (Authorization header).");
 
         const supabaseClient = createClient(
@@ -128,43 +127,11 @@ serve(async (req) => {
     }
     await logToDb(supabaseAdmin, runId, `Tải thành công kịch bản với ${promptPairs.length} cặp prompt.`);
 
-    // Get R2 public URL from settings to check against
-    const { data: settings } = await supabaseAdmin.from('user_settings').select('cloudflare_r2_public_url').eq('id', userId).single();
-    const r2PublicUrl = settings?.cloudflare_r2_public_url;
-
     let totalStepsCreated = 0;
     for (const subProduct of subProducts) {
       await logToDb(supabaseAdmin, runId, `Đang xử lý sản phẩm con: "${subProduct.name}".`);
 
-      const initialImageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
-      const finalImageUrls = [];
-
-      for (const url of initialImageUrls) {
-        if (r2PublicUrl && url.startsWith(r2PublicUrl)) {
-          finalImageUrls.push(url); // Already an R2 URL, use it directly
-        } else {
-          // Not an R2 URL, so we need to ingest it
-          await logToDb(supabaseAdmin, runId, `Phát hiện URL ngoài: ${url}. Đang nhập vào R2...`);
-          try {
-            const { data: ingestData, error: ingestError } = await supabaseAdmin.functions.invoke('ingest-external-image', {
-              // We must provide the auth header for the target function to authenticate the user
-              headers: { Authorization: authHeader },
-              body: { externalUrl: url },
-            });
-            if (ingestError) throw ingestError;
-            if (ingestData.error) throw new Error(ingestData.error);
-            if (ingestData.r2Url) {
-              finalImageUrls.push(ingestData.r2Url);
-              await logToDb(supabaseAdmin, runId, `Nhập ảnh thành công. URL mới: ${ingestData.r2Url}`);
-            } else {
-              throw new Error("Function ingest-external-image không trả về r2Url.");
-            }
-          } catch (err) {
-            await logToDb(supabaseAdmin, runId, `Lỗi khi nhập ảnh từ URL ${url}: ${err.message}. Bỏ qua ảnh này.`, 'ERROR');
-          }
-        }
-      }
-
+      const imageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
       const stepsToInsert = [];
 
       for (const [index, pair] of promptPairs.entries()) {
@@ -186,7 +153,7 @@ serve(async (req) => {
           video_prompt: finalVideoPrompt,
           model: 'banana',
           aspect_ratio: '9:16',
-          image_urls: finalImageUrls, // Use the stabilized URLs
+          image_urls: imageUrls,
           sequence_number: index
         };
         stepsToInsert.push({

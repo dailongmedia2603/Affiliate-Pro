@@ -9,16 +9,13 @@ const corsHeaders = {
 
 const API_BASE_URL = 'https://api.beautyapp.work';
 
-const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
-  // We need a userId to associate the log with an account.
-  if (!userId) {
-    console.error('[proxy-veo3-api] logApiCall was called without a userId. Skipping log insertion.');
-    return;
-  }
+const logApiCall = async (supabaseAdmin, taskId, stepName, requestPayload, responseData, error = null, targetUrl = null) => {
+  if (!taskId) return;
   
   const sanitizedRequest = { ...requestPayload };
+  // --- DEBUGGING: Temporarily disabled token redaction per user request ---
+  // if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
   if (sanitizedRequest.cookie) sanitizedRequest.cookie = '[REDACTED]';
-  if (sanitizedRequest.token) sanitizedRequest.token = '[REDACTED]';
   if (sanitizedRequest.base64) sanitizedRequest.base64 = '[BASE64_DATA]';
   if (sanitizedRequest.file_data) sanitizedRequest.file_data = '[BASE64_DATA]';
   if (targetUrl) {
@@ -26,8 +23,7 @@ const logApiCall = async (supabaseAdmin, taskId, userId, stepName, requestPayloa
   }
 
   const logEntry = {
-    task_id: taskId, // Can be null
-    user_id: userId, // Must be present
+    task_id: taskId,
     step_name: stepName,
     request_payload: sanitizedRequest,
     response_data: responseData,
@@ -56,25 +52,32 @@ async function getUserSettings(supabaseAdmin, userId) {
   return settings;
 }
 
-// Gets a token, with an option to force a refresh from the backend
-async function getVeo3Token(cookie, supabaseAdmin, taskId, userId, forceRefresh = false) {
+// Helper to get Veo3 token, with refresh logic and logging
+async function getVeo3Token(cookie, supabaseAdmin, taskId) {
   const url = new URL('veo3/get_token', API_BASE_URL).toString();
   let responseData, errorForLog = null;
-  
-  const requestBody: { cookie: string; refresh?: boolean } = { cookie };
-  if (forceRefresh) {
-    requestBody.refresh = true;
-  }
 
   try {
-    const response = await fetch(url, {
+    let response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({ cookie }),
     });
 
-    const responseText = await response.text();
+    let responseText = await response.text();
     try { responseData = JSON.parse(responseText); } catch (e) { responseData = { raw_response: responseText }; }
+
+    if (!response.ok && responseData && responseData.error === 'ACCESS_TOKEN_REFRESH_NEEDED') {
+      console.log('[proxy-veo3-api] INFO: Access token refresh needed. Retrying get_token with refresh flag.');
+      
+      response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cookie, refresh: true }),
+      });
+      responseText = await response.text();
+      try { responseData = JSON.parse(responseText); } catch (e) { responseData = { raw_response: responseText }; }
+    }
 
     if (!response.ok) {
       throw new Error(`Failed to get Veo3 token: ${responseText}`);
@@ -89,11 +92,7 @@ async function getVeo3Token(cookie, supabaseAdmin, taskId, userId, forceRefresh 
     errorForLog = e;
     throw e;
   } finally {
-    const logPayload = { cookie: '[REDACTED]' };
-    if (forceRefresh) {
-      (logPayload as any).refresh = true;
-    }
-    await logApiCall(supabaseAdmin, taskId, userId, `veo3/get_token (Internal, refresh=${forceRefresh})`, logPayload, responseData, errorForLog, url);
+    await logApiCall(supabaseAdmin, taskId, 'veo3/get_token (Internal)', { cookie: '[REDACTED]' }, responseData, errorForLog, url);
   }
 }
 
@@ -109,8 +108,9 @@ serve(async (req) => {
   );
   let taskId;
   let path;
-  let userId;
   let requestPayloadForLog;
+  let responseData;
+  let errorForLog = null;
   let targetUrl;
 
   try {
@@ -121,73 +121,63 @@ serve(async (req) => {
     taskId = body.taskId;
     let veo3_cookie = body.veo3_cookie;
 
-    // Determine userId: prioritize payload, then auth header
-    if (body.userId) {
-        userId = body.userId;
-    } else {
+    if (!veo3_cookie) {
         const supabaseClient = createClient(
           Deno.env.get('SUPABASE_URL') ?? '',
           Deno.env.get('SUPABASE_ANON_KEY') ?? '',
           { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
         );
         const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-        if (userError || !user) throw new Error("User not authenticated and no userId provided in payload.");
-        userId = user.id;
-    }
+        if (userError || !user) throw new Error("User not authenticated.");
 
-    if (!veo3_cookie) {
-        const settings = await getUserSettings(supabaseAdmin, userId);
+        const settings = await getUserSettings(supabaseAdmin, user.id);
         veo3_cookie = settings.veo3_cookie;
     }
 
-    const performApiCall = async (forceTokenRefresh = false) => {
+    if (path === 'veo3/get_token') {
+        // This is a connection test. We just need to get the token and return it.
+        const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
+        responseData = { access_token: accessToken };
+        // The log is already written inside getVeo3Token
+    } else {
+        // For all other endpoints, get the token and then call the endpoint.
+        targetUrl = new URL(path, API_BASE_URL).toString();
+        
         let finalPayload;
         const cookieEndpoints = ['veo3/re_promt'];
 
         if (cookieEndpoints.includes(path)) {
             finalPayload = { cookie: veo3_cookie, ...payload };
         } else {
-            const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId, userId, forceTokenRefresh);
+            const accessToken = await getVeo3Token(veo3_cookie, supabaseAdmin, taskId);
             finalPayload = { token: accessToken, ...payload };
         }
-        
-        requestPayloadForLog = finalPayload; // Store for logging
-        targetUrl = new URL(path, API_BASE_URL).toString();
 
-        const response = await fetch(targetUrl, {
-            method: method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(finalPayload),
-        });
-        
-        let apiResponseData;
-        const responseText = await response.text();
+        requestPayloadForLog = finalPayload;
+
         try {
-            apiResponseData = JSON.parse(responseText);
-        } catch(e) {
-            apiResponseData = { raw_response: responseText };
+            const response = await fetch(targetUrl, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(finalPayload),
+            });
+            
+            const responseText = await response.text();
+            try {
+                responseData = JSON.parse(responseText);
+            } catch(e) {
+                responseData = { raw_response: responseText };
+            }
+
+            if (!response.ok) {
+                throw new Error(`Lỗi từ API Veo3 (${response.status}): ${responseText}`);
+            }
+        } catch (e) {
+            errorForLog = e;
+            throw e;
+        } finally {
+            await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, responseData, errorForLog, targetUrl);
         }
-
-        await logApiCall(supabaseAdmin, taskId, userId, path, finalPayload, apiResponseData, response.ok ? null : new Error(responseText), targetUrl);
-
-        return { response, responseData: apiResponseData };
-    };
-
-    // First attempt
-    let { response, responseData } = await performApiCall(false);
-
-    // Check for authentication error
-    const isAuthError = !response.ok && JSON.stringify(responseData).includes("UNAUTHENTICATED");
-
-    if (isAuthError) {
-        console.log(`[proxy-veo3-api] INFO: Authentication error on first attempt for path ${path}. Retrying with forced token refresh.`);
-        const retryResult = await performApiCall(true);
-        response = retryResult.response;
-        responseData = retryResult.responseData;
-    }
-
-    if (!response.ok) {
-        throw new Error(`Lỗi từ API Veo3 (${response.status}): ${JSON.stringify(responseData)}`);
     }
 
     return new Response(JSON.stringify(responseData), {
@@ -196,8 +186,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error("[proxy-veo3-api] FATAL ERROR:", error.message);
-    // Log the final error if it hasn't been logged yet
-    await logApiCall(supabaseAdmin, taskId, userId, path, requestPayloadForLog || {}, { error: error.message }, error, targetUrl);
+    if (!errorForLog) {
+        await logApiCall(supabaseAdmin, taskId, path, requestPayloadForLog, { error: error.message }, error, targetUrl);
+    }
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

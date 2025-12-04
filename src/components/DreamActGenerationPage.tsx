@@ -19,20 +19,11 @@ const DreamActGenerationPage = () => {
 
   const fetchHistory = useCallback(async () => {
     setLoadingHistory(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      showError("Không thể xác thực người dùng để tải lịch sử.");
-      setLoadingHistory(false);
-      return;
-    }
-
     const { data, error } = await supabase
       .from('dream_act_tasks')
       .select('*')
-      .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(20);
-      
     if (error) {
       showError('Không thể tải lịch sử Dream ACT.');
     } else {
@@ -107,10 +98,8 @@ const DreamActGenerationPage = () => {
         .single();
       if (taskError) throw taskError;
       taskId = newTask.id;
-      
-      // No need to call fetchHistory() here, the real-time subscription will handle it.
-
       await supabase.from('dream_act_tasks').update({ status: 'uploading_image' }).eq('id', taskId);
+      fetchHistory();
 
       const functionUrl = `${SUPABASE_URL}/functions/v1/proxy-dream-act-api`;
       const baseHeaders = {
@@ -128,8 +117,7 @@ const DreamActGenerationPage = () => {
       const imageUploadResponse = await fetch(functionUrl, { method: 'POST', headers: baseHeaders, body: imageFormData });
       const imageData = await imageUploadResponse.json();
       if (!imageUploadResponse.ok || imageData.error) throw new Error(imageData.error || 'Lỗi tải ảnh nguồn.');
-      const imageUrl = imageData.extraData?.filePath;
-      if (!imageUrl) throw new Error('API không trả về filePath cho ảnh nguồn.');
+      const imageUrl = imageData.extraData.filePath;
       await supabase.from('dream_act_tasks').update({ status: 'uploading_video' }).eq('id', taskId);
 
       // Step 2: Upload Video
@@ -142,8 +130,7 @@ const DreamActGenerationPage = () => {
       const videoUploadResponse = await fetch(functionUrl, { method: 'POST', headers: baseHeaders, body: videoFormData });
       const videoData = await videoUploadResponse.json();
       if (!videoUploadResponse.ok || videoData.error) throw new Error(videoData.error || 'Lỗi tải video điều khiển.');
-      const videoUrl = videoData.extraData?.videoUrl;
-      if (!videoUrl) throw new Error('API không trả về videoUrl cho video điều khiển.');
+      const videoUrl = videoData.extraData.videoUrl;
       await supabase.from('dream_act_tasks').update({ status: 'animating' }).eq('id', taskId);
 
       // Step 3: Animate
@@ -160,8 +147,8 @@ const DreamActGenerationPage = () => {
       });
       const animateData = await animateResponse.json();
       if (!animateResponse.ok || animateData.error) throw new Error(animateData.error || 'Lỗi khi tạo video.');
-      const animateId = animateData.extraData?.animateId;
-      if (!animateId) throw new Error('API không trả về animateId trong extraData.');
+      const animateId = animateData.extraData.animateId;
+      if (!animateId) throw new Error('API không trả về animateId.');
       await supabase.from('dream_act_tasks').update({ animate_id: animateId }).eq('id', taskId);
 
       dismissToast(loadingToast);
