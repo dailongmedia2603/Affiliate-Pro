@@ -284,11 +284,13 @@ const SettingsPage = () => {
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
-      if (data.success) {
+      if (data.success && data.data) {
         setHiggsfieldConnectionStatus('success');
-        showSuccess('Kết nối và xác thực API Higgsfield thành công!');
+        const userDetail = data.data;
+        const successMessage = `Kết nối thành công! Xin chào ${userDetail.username || 'người dùng'}. Credits: ${userDetail.credits ?? 'N/A'}.`;
+        showSuccess(successMessage);
       } else {
-        throw new Error('Kiểm tra kết nối thất bại.');
+        throw new Error('Kiểm tra kết nối thất bại hoặc không nhận được dữ liệu người dùng.');
       }
     } catch (error) {
       setHiggsfieldConnectionStatus('error');
