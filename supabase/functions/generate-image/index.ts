@@ -86,7 +86,8 @@ serve(async (req) => {
       
       for (const imageUrl of image_urls) {
         await logToDb(supabaseAdmin, runId, `Đang đăng ký URL: ${imageUrl}`, 'INFO', stepId);
-        const uploadPayload = { token, url: imageUrl, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
+        // FIX: Ensure the 'url' key is always an array, even for a single URL.
+        const uploadPayload = { token, url: [imageUrl], cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
         const uploadEndpoint = `${API_BASE}/img/uploadmediav2`;
 
         const uploadResponse = await fetch(uploadEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
