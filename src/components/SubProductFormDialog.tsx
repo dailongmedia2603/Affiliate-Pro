@@ -43,6 +43,57 @@ const SubProductFormDialog = ({ subProduct, isOpen, onClose, onSave }) => {
     }
   }, [subProduct, isOpen]);
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSaving(true);
+
+    let finalImageUrl = imageUrl;
+
+    // Check if the URL needs to be ingested before saving
+    if (finalImageUrl && finalImageUrl.startsWith('http')) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: settings } = await supabase.from('user_settings').select('cloudflare_r2_public_url').eq('id', user.id).single();
+            const r2PublicUrl = settings?.cloudflare_r2_public_url;
+
+            // If it's not already an R2 URL, ingest it
+            if (!r2PublicUrl || !finalImageUrl.startsWith(r2PublicUrl)) {
+                setIsIngesting(true);
+                try {
+                    showSuccess('Phát hiện URL ngoài. Đang xử lý và lưu trữ ảnh...');
+                    const { data, error } = await supabase.functions.invoke('ingest-external-image', {
+                        body: { externalUrl: finalImageUrl },
+                    });
+                    if (error) throw error;
+                    if (data.error) throw new Error(data.error);
+                    if (data.r2Url) {
+                        finalImageUrl = data.r2Url;
+                        setImageUrl(data.r2Url); // Update state to show the new URL in the UI
+                        showSuccess('Đã nhập ảnh thành công!');
+                    }
+                } catch (err: any) {
+                    showError(`Lỗi nhập ảnh từ URL: ${err.message}. Vui lòng thử tải ảnh lên trực tiếp.`);
+                    setIsSaving(false);
+                    setIsIngesting(false);
+                    return; // Stop saving if ingestion fails
+                } finally {
+                    setIsIngesting(false);
+                }
+            }
+        }
+    }
+
+    await onSave({
+      ...subProduct,
+      name,
+      description,
+      image_url: finalImageUrl,
+      product_link: productLink,
+      price: parseFloat(price) || 0,
+    });
+    setIsSaving(false);
+  };
+
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -59,55 +110,6 @@ const SubProductFormDialog = ({ subProduct, isOpen, onClose, onSave }) => {
             fileInputRef.current.value = '';
         }
     }
-  };
-
-  const handleUrlBlur = async (event: React.FocusEvent<HTMLInputElement>) => {
-    const url = event.target.value;
-    if (!url || !url.startsWith('http') || isIngesting || isUploading) {
-      return;
-    }
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: settings } = await supabase.from('user_settings').select('cloudflare_r2_public_url').eq('id', user.id).single();
-    const r2PublicUrl = settings?.cloudflare_r2_public_url;
-
-    if (r2PublicUrl && url.startsWith(r2PublicUrl)) {
-      return; // It's already an R2 URL, do nothing.
-    }
-
-    setIsIngesting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('ingest-external-image', {
-        body: { externalUrl: url },
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
-
-      if (data.r2Url) {
-        setImageUrl(data.r2Url);
-        showSuccess('Đã nhập và lưu trữ ảnh thành công!');
-      }
-    } catch (err: any) {
-      showError(`Lỗi nhập ảnh từ URL: ${err.message}`);
-    } finally {
-      setIsIngesting(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSaving(true);
-    await onSave({
-      ...subProduct,
-      name,
-      description,
-      image_url: imageUrl,
-      product_link: productLink,
-      price: parseFloat(price) || 0,
-    });
-    setIsSaving(false);
   };
 
   return (
@@ -132,7 +134,7 @@ const SubProductFormDialog = ({ subProduct, isOpen, onClose, onSave }) => {
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="imageUrl" className="text-right">URL Hình ảnh</Label>
               <div className="col-span-3 flex items-center gap-2 relative">
-                <Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} onBlur={handleUrlBlur} className="flex-grow" placeholder="Dán URL hoặc tải lên" />
+                <Input id="imageUrl" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} className="flex-grow" placeholder="Dán URL hoặc tải lên" />
                 {isIngesting && <Loader2 className="absolute right-12 h-4 w-4 animate-spin text-gray-500" />}
                 <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                 <Button type="button" variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} disabled={isUploading || isIngesting}>
