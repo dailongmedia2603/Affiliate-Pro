@@ -280,13 +280,13 @@ const SettingsPage = () => {
     setHiggsfieldConnectionStatus('idle');
     try {
       const { data, error } = await supabase.functions.invoke('higgsfield-python-proxy', {
-        body: { action: 'test_connection' },
+        body: { action: 'test_authentication' },
       });
       if (error) throw error;
       if (data.error) throw new Error(data.error);
       if (data.success) {
         setHiggsfieldConnectionStatus('success');
-        showSuccess('Kết nối API Higgsfield thành công!');
+        showSuccess('Kết nối và xác thực API Higgsfield thành công!');
       } else {
         throw new Error('Kiểm tra kết nối thất bại.');
       }
@@ -512,7 +512,7 @@ const SettingsPage = () => {
                 <Button onClick={() => handleSaveSettings('higgsfield')} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600 text-white font-semibold">{isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} Lưu thay đổi</Button>
               </div>
             </div>
-            {higgsfieldConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối tới API Higgsfield thành công.</AlertDescription></Alert>)}
+            {higgsfieldConnectionStatus === 'success' && (<Alert variant="default" className="bg-green-50 border-green-200"><CheckCircle className="h-4 w-4 text-green-600" /><AlertTitle className="text-green-800">Thành công!</AlertTitle><AlertDescription className="text-green-700">Kết nối và xác thực API Higgsfield thành công.</AlertDescription></Alert>)}
             {higgsfieldConnectionStatus === 'error' && (<Alert variant="destructive" className="bg-red-50 border-red-200"><XCircle className="h-4 w-4 text-red-600" /><AlertTitle className="text-red-800">Thất bại!</AlertTitle><AlertDescription className="text-red-700">Không thể kết nối. Vui lòng kiểm tra lại Cookie và Clerk Context.</AlertDescription></Alert>)}
           </div>
         </TabsContent>
