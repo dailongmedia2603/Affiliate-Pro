@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess } from '@/utils/toast';
 import { Badge } from '@/components/ui/badge';
+import { uploadToR2 } from '@/utils/r2-upload';
 
 const StatCard = ({ icon, title, value, colorClass }) => (
   <Card className="shadow-sm">
@@ -83,14 +84,7 @@ const ChannelDetailPage = ({ channelId, onBack, onNavigate }) => {
 
     setIsUploadingCharacterImage(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Cần đăng nhập để thực hiện.");
-
-      const filePath = `public/character_images/${user.id}/${channelId}/${Date.now()}_${file.name}`;
-      const { error: uploadError } = await supabase.storage.from('images').upload(filePath, file);
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(filePath);
+      const publicUrl = await uploadToR2(file);
       
       const { error: updateError } = await supabase.from('channels').update({ character_image_url: publicUrl, avatar: publicUrl }).eq('id', channelId);
       if (updateError) throw updateError;

@@ -13,10 +13,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, PlusCircle, Edit, Trash2, Video, Mic, BookText } from 'lucide-react';
+import { Loader2, PlusCircle, Edit, Trash2, Video, Mic, BookText, Copy } from 'lucide-react';
 import { showError, showSuccess } from '@/utils/toast';
 import PromptFormDialog from '@/components/PromptFormDialog';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { User } from '@supabase/supabase-js';
 
 type Product = { id: string; name: string; };
 type Prompt = {
@@ -27,6 +29,8 @@ type Prompt = {
   created_at: string;
   product_id: string | null;
   product: { name: string } | null;
+  user_id: string;
+  is_public: boolean;
 };
 
 const PromptLibraryPage = () => {
@@ -34,6 +38,7 @@ const PromptLibraryPage = () => {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [promptToEdit, setPromptToEdit] = useState<Prompt | null>(null);
@@ -41,15 +46,18 @@ const PromptLibraryPage = () => {
   const [promptToDelete, setPromptToDelete] = useState<Prompt | null>(null);
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      const { data, error } = await supabase.from('products').select('id, name');
-      if (error) {
+    const fetchInitialData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+
+      const { data: productsData, error: productsError } = await supabase.from('products').select('id, name');
+      if (productsError) {
         showError('Không thể tải danh sách sản phẩm.');
       } else {
-        setProducts(data || []);
+        setProducts(productsData || []);
       }
     };
-    fetchProducts();
+    fetchInitialData();
   }, []);
 
   const fetchPrompts = useCallback(async (category) => {
@@ -70,8 +78,10 @@ const PromptLibraryPage = () => {
   }, []);
 
   useEffect(() => {
-    fetchPrompts(activeTab);
-  }, [activeTab, fetchPrompts]);
+    if (currentUser) {
+      fetchPrompts(activeTab);
+    }
+  }, [activeTab, fetchPrompts, currentUser]);
 
   const handleAddNew = () => {
     setPromptToEdit(null);
@@ -101,9 +111,8 @@ const PromptLibraryPage = () => {
     setPromptToDelete(null);
   };
 
-  const handleSave = async (promptData: { id?: string; name: string; content: string; product_id: string | null; category: string; }) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+  const handleSave = async (promptData: { id?: string; name: string; content: string; product_id: string | null; category: string; is_public: boolean; }) => {
+    if (!currentUser) {
       showError('Bạn cần đăng nhập để thực hiện.');
       return;
     }
@@ -113,7 +122,8 @@ const PromptLibraryPage = () => {
       content: promptData.content,
       product_id: promptData.product_id,
       category: activeTab,
-      user_id: user.id,
+      user_id: currentUser.id,
+      is_public: promptData.is_public,
     };
 
     const { error } = promptData.id
@@ -129,6 +139,46 @@ const PromptLibraryPage = () => {
     setIsFormOpen(false);
   };
 
+  const handleCopy = async (promptToCopy: Prompt) => {
+    if (!currentUser) {
+      showError('Bạn cần đăng nhập để thực hiện.');
+      return;
+    }
+
+    const newPromptData = {
+      name: `Bản sao của ${promptToCopy.name}`,
+      content: promptToCopy.content,
+      category: promptToCopy.category,
+      product_id: promptToCopy.product_id,
+      user_id: currentUser.id,
+      is_public: false, // Copies are private by default
+    };
+
+    const { error } = await supabase.from('prompts').insert(newPromptData);
+
+    if (error) {
+      showError(`Sao chép prompt thất bại: ${error.message}`);
+    } else {
+      showSuccess('Đã sao chép prompt thành công!');
+      fetchPrompts(activeTab);
+    }
+  };
+
+  const handleTogglePublic = async (prompt: Prompt) => {
+    const newIsPublic = !prompt.is_public;
+    const { error } = await supabase
+      .from('prompts')
+      .update({ is_public: newIsPublic })
+      .eq('id', prompt.id);
+
+    if (error) {
+      showError('Cập nhật trạng thái công khai thất bại.');
+    } else {
+      showSuccess(`Prompt đã được chuyển sang chế độ ${newIsPublic ? 'công khai' : 'riêng tư'}.`);
+      setPrompts(prompts.map(p => p.id === prompt.id ? { ...p, is_public: newIsPublic } : p));
+    }
+  };
+
   const renderContent = () => (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -141,46 +191,66 @@ const PromptLibraryPage = () => {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[200px]">Tên Prompt</TableHead>
+              <TableHead className="w-[250px]">Tên Prompt</TableHead>
               <TableHead className="w-[150px]">Sản phẩm</TableHead>
               <TableHead>Nội dung</TableHead>
+              <TableHead className="w-[120px]">Công khai</TableHead>
               <TableHead className="w-[150px]">Ngày tạo</TableHead>
-              <TableHead className="w-[120px] text-right">Thao tác</TableHead>
+              <TableHead className="w-[150px] text-right">Thao tác</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   <Loader2 className="mx-auto w-6 h-6 animate-spin text-orange-500" />
                 </TableCell>
               </TableRow>
             ) : prompts.length > 0 ? (
-              prompts.map((prompt) => (
-                <TableRow key={prompt.id}>
-                  <TableCell className="font-medium">{prompt.name}</TableCell>
-                  <TableCell>
-                    {prompt.product ? (
-                      <Badge variant="outline">{prompt.product.name}</Badge>
-                    ) : (
-                      <span className="text-gray-400">N/A</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="max-w-sm truncate" title={prompt.content}>{prompt.content}</TableCell>
-                  <TableCell>{new Date(prompt.created_at).toLocaleDateString()}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(prompt)}>
-                      <Edit className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(prompt)}>
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              prompts.map((prompt) => {
+                const isOwner = currentUser?.id === prompt.user_id;
+                return (
+                  <TableRow key={prompt.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        <span>{prompt.name}</span>
+                        {!isOwner && <Badge variant="secondary">Công khai</Badge>}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {prompt.product ? (
+                        <Badge variant="outline">{prompt.product.name}</Badge>
+                      ) : (
+                        <span className="text-gray-400">N/A</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-sm truncate" title={prompt.content}>{prompt.content}</TableCell>
+                    <TableCell>
+                      <Switch
+                        checked={prompt.is_public}
+                        onCheckedChange={() => handleTogglePublic(prompt)}
+                        disabled={!isOwner}
+                        aria-label="Toggle public status"
+                      />
+                    </TableCell>
+                    <TableCell>{new Date(prompt.created_at).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => handleEdit(prompt)} title="Chỉnh sửa" disabled={!isOwner}>
+                        <Edit className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleCopy(prompt)} title="Sao chép">
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(prompt)} title="Xóa" disabled={!isOwner}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   Chưa có prompt nào trong mục này.
                 </TableCell>
               </TableRow>

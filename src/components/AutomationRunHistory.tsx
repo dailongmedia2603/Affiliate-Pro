@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package, Layers } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Image as ImageIcon, Video as VideoIcon, Bot, Terminal, Play, StopCircle, RefreshCw, Trash2, FileText, Package, Layers, Download } from 'lucide-react';
 import { showError, showSuccess, showLoading, dismissToast } from '@/utils/toast';
 import { Button } from '@/components/ui/button';
 import AutomationLogViewer from './AutomationLogViewer';
@@ -24,7 +24,7 @@ type SubProductInfo = {
   name: string;
 };
 
-type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; };
+type AutomationRunLog = { id: string; timestamp: string; message: string; level: string; metadata?: any; };
 type AutomationRunStep = { 
   id: string; 
   step_type: string; 
@@ -82,12 +82,15 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [detailsStep, setDetailsStep] = useState<AutomationRunStep | null>(null);
+  const [stepLogs, setStepLogs] = useState<AutomationRunLog[]>([]);
+  const [loadingStepLogs, setLoadingStepLogs] = useState(false);
   const [aiPromptLog, setAiPromptLog] = useState<string | null>(null);
   const [voiceScriptLog, setVoiceScriptLog] = useState<{ prompt: string; script: string } | null>(null);
   const runIdsRef = useRef<string[]>([]);
   const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [retryingStepId, setRetryingStepId] = useState<string | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
@@ -106,6 +109,30 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     else { setRuns(data as any[] || []); }
     setLoading(false);
   }, [channelId]);
+
+  const fetchStepLogs = async (stepId: string) => {
+    if (!stepId) return;
+    setLoadingStepLogs(true);
+    setStepLogs([]);
+    const { data, error } = await supabase
+      .from('automation_run_logs')
+      .select('*')
+      .eq('step_id', stepId)
+      .order('timestamp', { ascending: true });
+    
+    if (error) {
+        showError("Không thể tải logs chi tiết cho bước này.");
+    } else {
+        setStepLogs(data as AutomationRunLog[]);
+    }
+    setLoadingStepLogs(false);
+  };
+
+  useEffect(() => {
+    if (detailsStep) {
+        fetchStepLogs(detailsStep.id);
+    }
+  }, [detailsStep]);
 
   useEffect(() => {
     runIdsRef.current = runs.map(r => r.id);
@@ -205,6 +232,38 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     } finally {
       dismissToast(loadingToast);
       setRetryingStepId(null);
+    }
+  };
+
+  const handleDownload = async (url: string, filename?: string) => {
+    if (!url || isDownloading) return;
+    setIsDownloading(true);
+    const loadingToast = showLoading('Đang chuẩn bị tệp để tải xuống...');
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Không thể tải dữ liệu video.');
+      
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      
+      const finalFilename = filename || url.split('/').pop()?.split('?')[0] || 'automation-video.mp4';
+      link.setAttribute('download', finalFilename);
+      
+      document.body.appendChild(link);
+      link.click();
+      
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(objectUrl);
+      
+      showSuccess('Đã bắt đầu tải video.', loadingToast);
+    } catch (error: any) {
+      console.error('Lỗi tải video:', error);
+      showError(`Tải video thất bại: ${error.message}`, loadingToast);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -347,6 +406,17 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                     {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (<video src={mergeStep.output_data.final_video_url} controls className="w-full max-h-96 rounded-md border" />)}
                                     <div className="flex items-center gap-2">
                                       <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                      {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (
+                                        <Button 
+                                          variant="outline" 
+                                          size="sm" 
+                                          onClick={() => handleDownload(mergeStep.output_data!.final_video_url!)}
+                                          disabled={isDownloading}
+                                        >
+                                          {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                          Tải xuống
+                                        </Button>
+                                      )}
                                       {mergeStep.status === 'failed' && (
                                         <Button variant="secondary" size="sm" onClick={() => handleRetryStep(mergeStep.id)} disabled={retryingStepId === mergeStep.id}>
                                           {retryingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
@@ -381,83 +451,135 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
             <DialogHeader>
                 <DialogTitle>Chi tiết bước: {detailsStep?.step_type.replace(/_/g, ' ')}</DialogTitle>
                 <DialogDescription>
-                    Thông tin đầu vào và kết quả của bước.
+                    Thông tin đầu vào, kết quả và logs API của bước.
                 </DialogDescription>
             </DialogHeader>
             {detailsStep && (
-                <div className="grid md:grid-cols-2 gap-6 pt-4 max-h-[70vh] overflow-y-auto">
-                    {detailsStep.step_type === 'merge_videos' ? (
-                      <>
-                        <div className="space-y-4">
-                          <h3 className="font-semibold mb-2 text-gray-800">Video đầu vào:</h3>
-                          {(detailsStep.input_data?.video_urls && detailsStep.input_data.video_urls.length > 0) ? (
-                            <div className="grid grid-cols-2 gap-2">
-                              {detailsStep.input_data.video_urls.map((url, index) => (
-                                <video key={index} src={url} controls className="rounded-md border w-full" />
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-gray-500">Không có video đầu vào.</p>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-semibold mb-2 text-gray-800">Video kết quả:</h3>
-                          {detailsStep.output_data?.final_video_url ? (
-                            <video src={detailsStep.output_data.final_video_url} controls className="rounded-md border w-full" />
-                          ) : (
-                            <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
-                              <p>Chưa có video kết quả.</p>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {/* Input Column */}
-                        <div className="space-y-4">
-                            <div>
-                                <h3 className="font-semibold mb-2 text-gray-800">Prompt đã sử dụng:</h3>
-                                <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt || "Không có prompt"}</p>
+                <div className="space-y-6 pt-4 max-h-[70vh] overflow-y-auto pr-2">
+                    <div className="grid md:grid-cols-2 gap-6">
+                        {detailsStep.step_type === 'merge_videos' ? (
+                          <>
+                            <div className="space-y-4">
+                              <h3 className="font-semibold mb-2 text-gray-800">Video đầu vào:</h3>
+                              {(detailsStep.input_data?.video_urls && detailsStep.input_data.video_urls.length > 0) ? (
+                                <div className="grid grid-cols-2 gap-2">
+                                  {detailsStep.input_data.video_urls.map((url, index) => (
+                                    <video key={index} src={url} controls className="rounded-md border w-full" />
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-500">Không có video đầu vào.</p>
+                              )}
                             </div>
                             <div>
-                                <h3 className="font-semibold mb-2 text-gray-800">Ảnh đầu vào:</h3>
-                                {detailsStep.step_type === 'generate_image' && (
-                                    (detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {detailsStep.input_data.image_urls.map((url, index) => (
-                                                <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
-                                    )
-                                )}
-                                {detailsStep.step_type === 'generate_video' && (
-                                    detailsStep.input_data?.imageUrl ? (
-                                        <img src={detailsStep.input_data.imageUrl} alt="Input" className="rounded-md border object-cover w-full" />
-                                    ) : (
-                                        <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
-                                    )
-                                )}
+                              <h3 className="font-semibold mb-2 text-gray-800">Video kết quả:</h3>
+                              {detailsStep.output_data?.final_video_url ? (
+                                <video src={detailsStep.output_data.final_video_url} controls className="rounded-md border w-full" />
+                              ) : (
+                                <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
+                                  <p>Chưa có video kết quả.</p>
+                                </div>
+                              )}
                             </div>
-                        </div>
-                        {/* Output Column */}
-                        <div>
-                            <h3 className="font-semibold mb-2 text-gray-800">Kết quả:</h3>
-                            {detailsStep.output_data?.url ? (
-                                detailsStep.step_type === 'generate_image' ? (
-                                    <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                          </>
+                        ) : (
+                          <>
+                            {/* Input Column */}
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="font-semibold mb-2 text-gray-800">Prompt đã sử dụng:</h3>
+                                    <p className="text-sm p-3 bg-gray-100 rounded-md border">{detailsStep.input_data?.prompt || "Không có prompt"}</p>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold mb-2 text-gray-800">Ảnh đầu vào:</h3>
+                                    {detailsStep.step_type === 'generate_image' && (
+                                        (detailsStep.input_data?.image_urls && detailsStep.input_data.image_urls.length > 0) ? (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {detailsStep.input_data.image_urls.map((url, index) => (
+                                                    <img key={index} src={url} alt={`Input ${index + 1}`} className="rounded-md border object-cover aspect-square" />
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                                        )
+                                    )}
+                                    {detailsStep.step_type === 'generate_video' && (
+                                        detailsStep.input_data?.imageUrl ? (
+                                            <img src={detailsStep.input_data.imageUrl} alt="Input" className="rounded-md border object-cover w-full" />
+                                        ) : (
+                                            <p className="text-sm text-gray-500">Không có ảnh đầu vào.</p>
+                                        )
+                                    )}
+                                </div>
+                            </div>
+                            {/* Output Column */}
+                            <div>
+                                <h3 className="font-semibold mb-2 text-gray-800">Kết quả:</h3>
+                                {detailsStep.output_data?.url ? (
+                                    detailsStep.step_type === 'generate_image' ? (
+                                        <img src={detailsStep.output_data.url} alt="Generated result" className="rounded-md border w-full object-contain" />
+                                    ) : (
+                                        <video src={detailsStep.output_data.url} controls className="rounded-md border w-full" />
+                                    )
                                 ) : (
-                                    <video src={detailsStep.output_data.url} controls className="rounded-md border w-full" />
-                                )
-                            ) : (
-                              <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
-                                <p>Bước này chưa hoàn thành hoặc đã thất bại, không có kết quả.</p>
-                              </div>
-                            )}
-                        </div>
-                      </>
-                    )}
+                                  <div className="h-64 flex items-center justify-center bg-gray-100 rounded-md border text-gray-500">
+                                    <p>Bước này chưa hoàn thành hoặc đã thất bại, không có kết quả.</p>
+                                  </div>
+                                )}
+                            </div>
+                          </>
+                        )}
+                    </div>
+                    {/* New Log Viewer Section */}
+                    <div className="border-t pt-4">
+                        <h3 className="font-semibold mb-2 text-gray-800">Logs API chi tiết:</h3>
+                        {loadingStepLogs ? (
+                            <div className="flex items-center justify-center h-24">
+                                <Loader2 className="w-6 h-6 animate-spin text-orange-500" />
+                            </div>
+                        ) : stepLogs.filter(log => log.metadata?.endpoint).length > 0 ? (
+                            <Accordion type="multiple" className="w-full space-y-2">
+                                {stepLogs.filter(log => log.metadata?.endpoint).map(log => (
+                                    <AccordionItem key={log.id} value={log.id} className="border rounded-md bg-gray-50/50">
+                                        <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                                            <div className="flex justify-between w-full items-center pr-4">
+                                                <span className="font-semibold text-sm text-gray-800">{log.message}</span>
+                                                <span className="text-xs font-normal text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                                            </div>
+                                        </AccordionTrigger>
+                                        <AccordionContent className="px-4 pt-0 pb-4">
+                                            <div className="space-y-2 border-t pt-4 mt-2">
+                                                <div>
+                                                    <p className="text-xs font-medium text-gray-600">Endpoint:</p>
+                                                    <pre className="text-xs bg-gray-800 text-gray-200 p-2 rounded-md overflow-auto mt-1">
+                                                        {log.metadata.endpoint}
+                                                    </pre>
+                                                </div>
+                                                {log.metadata.payload && (
+                                                    <div>
+                                                        <p className="text-xs font-medium text-gray-600">Request Payload:</p>
+                                                        <pre className="text-xs bg-gray-800 text-gray-200 p-2 rounded-md overflow-auto mt-1 h-48">
+                                                            {JSON.stringify(log.metadata.payload, null, 2)}
+                                                        </pre>
+                                                    </div>
+                                                )}
+                                                {log.metadata.response && (
+                                                    <div>
+                                                        <p className="text-xs font-medium text-gray-600">API Response:</p>
+                                                        <pre className={`text-xs p-2 rounded-md overflow-auto mt-1 h-48 ${log.level === 'ERROR' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}`}>
+                                                            {JSON.stringify(log.metadata.response, null, 2)}
+                                                        </pre>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </AccordionContent>
+                                    </AccordionItem>
+                                ))}
+                            </Accordion>
+                        ) : (
+                            <p className="text-center text-sm text-gray-500 py-8">Không có logs API chi tiết cho bước này.</p>
+                        )}
+                    </div>
                 </div>
             )}
         </DialogContent>

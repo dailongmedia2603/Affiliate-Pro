@@ -82,16 +82,32 @@ serve(async (req) => {
 
     let images_data = [];
     if (image_urls && image_urls.length > 0) {
-      await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL...`, 'INFO', stepId);
+      await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL.`, 'INFO', stepId);
       const uploadPayload = { token, url: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
-      const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
-      if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${await uploadResponse.text()}`);
-      const uploadData = await uploadResponse.json();
-      if (uploadData?.status === true && uploadData.data) {
-        images_data = uploadData.data;
+      const uploadEndpoint = `${API_BASE}/img/uploadmediav2`;
+
+      await logToDb(supabaseAdmin, runId, `Calling uploadmediav2 API`, 'INFO', stepId, {
+          endpoint: uploadEndpoint,
+          payload: { ...uploadPayload, token: '[REDACTED]', cookie: '[REDACTED]', clerk_active_context: '[REDACTED]' }
+      });
+
+      const uploadResponse = await fetch(uploadEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
+      
+      const uploadResponseText = await uploadResponse.text();
+      let uploadResponseData;
+      try { uploadResponseData = JSON.parse(uploadResponseText); } catch (e) { uploadResponseData = { raw_response: uploadResponseText }; }
+      
+      await logToDb(supabaseAdmin, runId, `Received response from uploadmediav2 API`, uploadResponse.ok ? 'INFO' : 'ERROR', stepId, {
+          response: uploadResponseData
+      });
+
+      if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${uploadResponseText}`);
+      
+      if (uploadResponseData?.status === true && uploadResponseData.data) {
+        images_data = uploadResponseData.data;
         await logToDb(supabaseAdmin, runId, 'Đăng ký media URL thành công.', 'SUCCESS', stepId);
       } else {
-        throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadData)}`);
+        throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadResponseData)}`);
       }
     }
 
@@ -109,21 +125,27 @@ serve(async (req) => {
     await logToDb(supabaseAdmin, runId, 'Đang gọi API Higgsfield để tạo ảnh...', 'INFO', stepId);
     const endpoint = `${API_BASE}/img/banana`;
     const apiPayload = { token, prompt, images_data, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
+
+    await logToDb(supabaseAdmin, runId, `Calling banana API`, 'INFO', stepId, {
+        endpoint: endpoint,
+        payload: { ...apiPayload, token: '[REDACTED]' }
+    });
+
     const generationResponse = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(apiPayload) });
     
     const responseText = await generationResponse.text();
+    let generationData;
+    try { generationData = JSON.parse(responseText); } catch (e) { generationData = { raw_response: responseText }; }
+
+    await logToDb(supabaseAdmin, runId, `Received response from banana API`, generationResponse.ok ? 'INFO' : 'ERROR', stepId, {
+        response: generationData
+    });
+
     if (!generationResponse.ok) {
       throw new Error(`Tạo ảnh thất bại (status ${generationResponse.status}): ${responseText}`);
     }
     if (!responseText) {
       throw new Error('API tạo ảnh trả về một phản hồi rỗng. Prompt có thể không hợp lệ hoặc có vấn đề với API.');
-    }
-
-    let generationData;
-    try {
-      generationData = JSON.parse(responseText);
-    } catch (e) {
-      throw new Error(`Không thể phân tích phản hồi JSON từ API tạo ảnh. Phản hồi: ${responseText}`);
     }
 
     if (!generationData || !generationData.job_sets || generationData.job_sets.length === 0) {
