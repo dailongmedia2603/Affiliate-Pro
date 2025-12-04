@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { Buffer } from "https://deno.land/std@0.171.0/node/buffer.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +27,23 @@ async function getHiggsfieldToken(cookie, clerk_active_context) {
   const tokenData = await tokenResponse.json();
   if (!tokenData.jwt) throw new Error('Phản hồi từ Higgsfield không chứa token (jwt).');
   return tokenData.jwt;
+}
+
+async function imageUrlToBase64(url) {
+  if (!url) return null;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`Failed to fetch image from URL: ${url}. Status: ${response.status}`);
+      return null;
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = new Buffer(arrayBuffer);
+    return buffer.toString('base64');
+  } catch (e) {
+    console.error(`Exception while fetching image from URL ${url}:`, e.message);
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -82,16 +100,30 @@ serve(async (req) => {
 
     let images_data = [];
     if (image_urls && image_urls.length > 0) {
-      await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL: ${JSON.stringify(image_urls)}`, 'INFO', stepId);
-      const uploadPayload = { token, url: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
-      const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
-      if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${await uploadResponse.text()}`);
-      const uploadData = await uploadResponse.json();
-      if (uploadData?.status === true && uploadData.data) {
-        images_data = uploadData.data;
-        await logToDb(supabaseAdmin, runId, 'Đăng ký media URL thành công.', 'SUCCESS', stepId);
-      } else {
-        throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadData)}`);
+      await logToDb(supabaseAdmin, runId, `Bắt đầu xử lý ${image_urls.length} ảnh tham chiếu...`, 'INFO', stepId);
+      const base64ToRegister = [];
+      for (const url of image_urls) {
+        const base64String = await imageUrlToBase64(url);
+        if (base64String) {
+          base64ToRegister.push(base64String);
+        } else {
+          await logToDb(supabaseAdmin, runId, `Không thể xử lý URL: ${url}. Bỏ qua ảnh này.`, 'WARN', stepId);
+        }
+      }
+
+      if (base64ToRegister.length > 0) {
+        await logToDb(supabaseAdmin, runId, `Đang đăng ký ${base64ToRegister.length} media từ dữ liệu base64...`, 'INFO', stepId);
+        const uploadPayload = { token, file_data: base64ToRegister };
+        const uploadResponse = await fetch(`${API_BASE}/video/uploadmedia`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
+        if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media base64: ${await uploadResponse.text()}`);
+        
+        const uploadData = await uploadResponse.json();
+        if (uploadData?.status === true && uploadData.data) {
+          images_data = uploadData.data;
+          await logToDb(supabaseAdmin, runId, 'Đăng ký media base64 thành công.', 'SUCCESS', stepId);
+        } else {
+          throw new Error(`Đăng ký media base64 thất bại: ${JSON.stringify(uploadData)}`);
+        }
       }
     }
 
