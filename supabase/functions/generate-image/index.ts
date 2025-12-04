@@ -83,7 +83,7 @@ serve(async (req) => {
     let input_image = [];
     if (image_urls && image_urls.length > 0) {
       await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL.`, 'INFO', stepId);
-      const uploadPayload = { token, url: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
+      const uploadPayload = { token, input_image: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
       const uploadEndpoint = `${API_BASE}/img/uploadmediav2`;
 
       await logToDb(supabaseAdmin, runId, `Calling uploadmediav2 API`, 'INFO', stepId, {
