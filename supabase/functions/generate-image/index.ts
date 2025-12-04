@@ -86,7 +86,6 @@ serve(async (req) => {
       
       for (const imageUrl of image_urls) {
         await logToDb(supabaseAdmin, runId, `Đang đăng ký URL: ${imageUrl}`, 'INFO', stepId);
-        // FIX: Ensure the 'url' key is always an array, even for a single URL.
         const uploadPayload = { token, url: [imageUrl], cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
         const uploadEndpoint = `${API_BASE}/img/uploadmediav2`;
 
@@ -102,7 +101,6 @@ serve(async (req) => {
         }
         
         if (uploadResponseData?.status === true && uploadResponseData.data) {
-          // The API returns an array even for a single URL, so we take the first element.
           registered_images.push(uploadResponseData.data[0]);
           await logToDb(supabaseAdmin, runId, `Đăng ký thành công URL: ${imageUrl}`, 'SUCCESS', stepId);
         } else {
@@ -125,7 +123,7 @@ serve(async (req) => {
     
     await logToDb(supabaseAdmin, runId, 'Đang gọi API Higgsfield để tạo ảnh...', 'INFO', stepId);
     const endpoint = `${API_BASE}/img/banana`;
-    const apiPayload = { token, prompt, input_image: registered_images, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
+    const apiPayload = { token, prompt, images_data: registered_images, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
 
     await logToDb(supabaseAdmin, runId, `Calling banana API`, 'INFO', stepId, {
         endpoint: endpoint,
