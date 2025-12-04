@@ -80,35 +80,35 @@ serve(async (req) => {
     if (!model || !prompt) throw new Error("Model và prompt là bắt buộc.");
     if (model !== 'banana') throw new Error(`Model ảnh không được hỗ trợ: ${model}`);
 
-    let input_image = [];
+    let registered_images = [];
     if (image_urls && image_urls.length > 0) {
-      await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL.`, 'INFO', stepId);
-      const uploadPayload = { token, input_image: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
-      const uploadEndpoint = `${API_BASE}/img/uploadmediav2`;
-
-      await logToDb(supabaseAdmin, runId, `Calling uploadmediav2 API`, 'INFO', stepId, {
-          endpoint: uploadEndpoint,
-          payload: { ...uploadPayload, token: '[REDACTED]', cookie: '[REDACTED]', clerk_active_context: '[REDACTED]' }
-      });
-
-      const uploadResponse = await fetch(uploadEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
+      await logToDb(supabaseAdmin, runId, `Bắt đầu đăng ký ${image_urls.length} media URL.`, 'INFO', stepId);
       
-      const uploadResponseText = await uploadResponse.text();
-      let uploadResponseData;
-      try { uploadResponseData = JSON.parse(uploadResponseText); } catch (e) { uploadResponseData = { raw_response: uploadResponseText }; }
-      
-      await logToDb(supabaseAdmin, runId, `Received response from uploadmediav2 API`, uploadResponse.ok ? 'INFO' : 'ERROR', stepId, {
-          response: uploadResponseData
-      });
+      for (const imageUrl of image_urls) {
+        await logToDb(supabaseAdmin, runId, `Đang đăng ký URL: ${imageUrl}`, 'INFO', stepId);
+        const uploadPayload = { token, url: imageUrl, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
+        const uploadEndpoint = `${API_BASE}/img/uploadmediav2`;
 
-      if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${uploadResponseText}`);
-      
-      if (uploadResponseData?.status === true && uploadResponseData.data) {
-        input_image = uploadResponseData.data;
-        await logToDb(supabaseAdmin, runId, 'Đăng ký media URL thành công.', 'SUCCESS', stepId);
-      } else {
-        throw new Error(`Đăng ký media thất bại: ${JSON.stringify(uploadResponseData)}`);
+        const uploadResponse = await fetch(uploadEndpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
+        
+        const uploadResponseText = await uploadResponse.text();
+        let uploadResponseData;
+        try { uploadResponseData = JSON.parse(uploadResponseText); } catch (e) { uploadResponseData = { raw_response: uploadResponseText }; }
+        
+        if (!uploadResponse.ok) {
+          await logToDb(supabaseAdmin, runId, `Lỗi khi đăng ký URL ${imageUrl}: ${uploadResponseText}`, 'ERROR', stepId, { response: uploadResponseData });
+          throw new Error(`Lỗi đăng ký media cho URL ${imageUrl}: ${uploadResponseText}`);
+        }
+        
+        if (uploadResponseData?.status === true && uploadResponseData.data) {
+          // The API returns an array even for a single URL, so we take the first element.
+          registered_images.push(uploadResponseData.data[0]);
+          await logToDb(supabaseAdmin, runId, `Đăng ký thành công URL: ${imageUrl}`, 'SUCCESS', stepId);
+        } else {
+          throw new Error(`Đăng ký media thất bại cho URL ${imageUrl}: ${JSON.stringify(uploadResponseData)}`);
+        }
       }
+      await logToDb(supabaseAdmin, runId, 'Hoàn tất đăng ký tất cả media URL.', 'SUCCESS', stepId);
     }
 
     let logId;
@@ -124,7 +124,7 @@ serve(async (req) => {
     
     await logToDb(supabaseAdmin, runId, 'Đang gọi API Higgsfield để tạo ảnh...', 'INFO', stepId);
     const endpoint = `${API_BASE}/img/banana`;
-    const apiPayload = { token, prompt, input_image, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
+    const apiPayload = { token, prompt, input_image: registered_images, width: 1024, height: 1024, aspect_ratio, batch_size: 1 };
 
     await logToDb(supabaseAdmin, runId, `Calling banana API`, 'INFO', stepId, {
         endpoint: endpoint,
