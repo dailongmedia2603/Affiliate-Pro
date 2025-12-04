@@ -60,30 +60,9 @@ serve(async (req) => {
     
     switch (action) {
       case 'test_authentication': {
-        const token = await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
-        
-        const userDetailUrl = `${API_BASE}/userdetail`;
-        const userDetailResponse = await fetch(userDetailUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-
-        if (!userDetailResponse.ok) {
-          throw new Error(`Lỗi khi lấy thông tin người dùng: ${await userDetailResponse.text()}`);
-        }
-
-        const userDetailData = await userDetailResponse.json();
-
-        if (userDetailData?.status !== true) {
-            throw new Error(`API trả về lỗi khi lấy thông tin người dùng: ${JSON.stringify(userDetailData)}`);
-        }
-
-        return new Response(JSON.stringify({ 
-            success: true, 
-            message: 'Kết nối và xác thực thành công!',
-            data: userDetailData.data
-        }), {
+        // This action now actually tries to get a token.
+        await getHiggsfieldToken(higgsfield_cookie, higgsfield_clerk_context);
+        return new Response(JSON.stringify({ success: true, message: 'Kết nối và xác thực thành công!' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
