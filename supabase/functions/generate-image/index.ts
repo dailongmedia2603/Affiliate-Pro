@@ -82,7 +82,7 @@ serve(async (req) => {
 
     let images_data = [];
     if (image_urls && image_urls.length > 0) {
-      await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL...`, 'INFO', stepId);
+      await logToDb(supabaseAdmin, runId, `Đang đăng ký ${image_urls.length} media URL: ${JSON.stringify(image_urls)}`, 'INFO', stepId);
       const uploadPayload = { token, url: image_urls, cookie: higgsfield_cookie, clerk_active_context: higgsfield_clerk_context };
       const uploadResponse = await fetch(`${API_BASE}/img/uploadmediav2`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(uploadPayload) });
       if (!uploadResponse.ok) throw new Error(`Lỗi đăng ký media: ${await uploadResponse.text()}`);
