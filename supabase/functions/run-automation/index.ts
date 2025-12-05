@@ -41,13 +41,12 @@ serve(async (req) => {
     if (!channelId) throw new Error("Thiếu tham số channelId.");
 
     let userId;
-    let authHeader;
     // If a userId is provided in the payload, this is likely a service-to-service call (e.g., from a cron job)
     if (payloadUserId) {
         userId = payloadUserId;
     } else {
         // Otherwise, get the user from the auth header for a client-side call
-        authHeader = req.headers.get('Authorization')!;
+        const authHeader = req.headers.get('Authorization')!;
         if (!authHeader) throw new Error("Thiếu thông tin xác thực (Authorization header).");
 
         const supabaseClient = createClient(
@@ -147,9 +146,7 @@ serve(async (req) => {
           await logToDb(supabaseAdmin, runId, `Phát hiện URL ngoài: ${url}. Đang nhập vào R2...`);
           try {
             const { data: ingestData, error: ingestError } = await supabaseAdmin.functions.invoke('ingest-external-image', {
-              // We must provide the auth header for the target function to authenticate the user
-              headers: { Authorization: authHeader },
-              body: { externalUrl: url },
+              body: { externalUrl: url, userId: userId },
             });
             if (ingestError) throw ingestError;
             if (ingestData.error) throw new Error(ingestData.error);
