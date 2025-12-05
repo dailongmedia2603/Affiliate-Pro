@@ -127,39 +127,14 @@ serve(async (req) => {
     }
     await logToDb(supabaseAdmin, runId, `Tải thành công kịch bản với ${promptPairs.length} cặp prompt.`);
 
-    // Get R2 public URL from settings to check against
-    const { data: settings } = await supabaseAdmin.from('user_settings').select('cloudflare_r2_public_url').eq('id', userId).single();
-    const r2PublicUrl = settings?.cloudflare_r2_public_url;
-
     let totalStepsCreated = 0;
     for (const subProduct of subProducts) {
       await logToDb(supabaseAdmin, runId, `Đang xử lý sản phẩm con: "${subProduct.name}".`);
 
-      const initialImageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
-      const finalImageUrls = [];
-
-      for (const url of initialImageUrls) {
-        if (r2PublicUrl && url.startsWith(r2PublicUrl)) {
-          finalImageUrls.push(url); // Already an R2 URL, use it directly
-        } else {
-          // Not an R2 URL, so we need to ingest it
-          await logToDb(supabaseAdmin, runId, `Phát hiện URL ngoài: ${url}. Đang nhập vào R2...`);
-          try {
-            const { data: ingestData, error: ingestError } = await supabaseAdmin.functions.invoke('ingest-external-image', {
-              body: { externalUrl: url, userId: userId },
-            });
-            if (ingestError) throw ingestError;
-            if (ingestData.error) throw new Error(ingestData.error);
-            if (ingestData.r2Url) {
-              finalImageUrls.push(ingestData.r2Url);
-              await logToDb(supabaseAdmin, runId, `Nhập ảnh thành công. URL mới: ${ingestData.r2Url}`);
-            } else {
-              throw new Error("Function ingest-external-image không trả về r2Url.");
-            }
-          } catch (err) {
-            await logToDb(supabaseAdmin, runId, `Lỗi khi nhập ảnh từ URL ${url}: ${err.message}. Bỏ qua ảnh này.`, 'ERROR');
-          }
-        }
+      const finalImageUrls = [channel.character_image_url, subProduct.image_url].filter(Boolean);
+      
+      if (finalImageUrls.length > 0) {
+        await logToDb(supabaseAdmin, runId, `Sử dụng ${finalImageUrls.length} ảnh đầu vào trực tiếp từ URL.`, 'INFO');
       }
 
       const stepsToInsert = [];
@@ -183,7 +158,7 @@ serve(async (req) => {
           video_prompt: finalVideoPrompt,
           model: 'banana',
           aspect_ratio: '9:16',
-          image_urls: finalImageUrls, // Use the stabilized URLs
+          image_urls: finalImageUrls, // Use the direct URLs
           sequence_number: index
         };
         stepsToInsert.push({
