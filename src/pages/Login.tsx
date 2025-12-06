@@ -47,6 +47,8 @@ const Login = () => {
           }}
           providers={[]}
           theme="light"
+          showLinks={false}
+          view="sign_in"
           localization={{
             variables: {
               sign_in: {
@@ -55,11 +57,6 @@ const Login = () => {
                 email_input_placeholder: 'Enter your Email',
                 password_input_placeholder: 'Enter Password',
                 button_label: 'Sign in',
-                social_provider_text: 'Sign in with {{provider}}',
-                link_text: "Don't have an account? Sign up",
-              },
-              forgotten_password: {
-                link_text: 'Forgot password?',
               },
             },
           }}
