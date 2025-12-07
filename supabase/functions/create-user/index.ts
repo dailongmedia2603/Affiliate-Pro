@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const SUPER_ADMIN_EMAIL = 'affpro@dailongmedia.io.vn';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -22,6 +24,11 @@ serve(async (req) => {
     const { data: { user: requestingUser } } = await supabaseClient.auth.getUser()
     if (!requestingUser) {
       throw new Error("User not authenticated to perform this action.");
+    }
+
+    // Check if the requesting user is the super admin
+    if (requestingUser.email !== SUPER_ADMIN_EMAIL) {
+      throw new Error("Permission denied. Only the super admin can create new users.");
     }
 
     const { email, password, name } = await req.json();

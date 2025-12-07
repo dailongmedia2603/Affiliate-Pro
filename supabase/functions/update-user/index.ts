@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const SUPER_ADMIN_EMAIL = 'affpro@dailongmedia.io.vn';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -27,6 +29,14 @@ serve(async (req) => {
     const { userId, name } = await req.json();
     if (!userId || !name) {
       throw new Error("User ID and name are required.");
+    }
+
+    // Check for permission
+    const isSuperAdmin = requestingUser.email === SUPER_ADMIN_EMAIL;
+    const isUpdatingSelf = requestingUser.id === userId;
+
+    if (!isSuperAdmin && !isUpdatingSelf) {
+      throw new Error("Permission denied. You can only update your own account.");
     }
 
     // Create the admin client to update the user

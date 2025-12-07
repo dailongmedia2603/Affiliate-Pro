@@ -27,9 +27,12 @@ type AppUser = {
   created_at: string;
 };
 
+const SUPER_ADMIN_EMAIL = 'affpro@dailongmedia.io.vn';
+
 const AccountsPage = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -54,6 +57,9 @@ const AccountsPage = () => {
     const getCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
+      if (user) {
+        setIsSuperAdmin(user.email === SUPER_ADMIN_EMAIL);
+      }
     }
     getCurrentUser();
     fetchUsers();
@@ -123,10 +129,12 @@ const AccountsPage = () => {
             <Users className="w-7 h-7 text-orange-500" />
             <h1 className="text-2xl font-bold text-gray-800">Quản lý Tài khoản</h1>
           </div>
-          <Button onClick={() => setIsAddDialogOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white">
-            <PlusCircle className="w-4 h-4 mr-2" />
-            Thêm tài khoản
-          </Button>
+          {isSuperAdmin && (
+            <Button onClick={() => setIsAddDialogOpen(true)} className="bg-orange-500 hover:bg-orange-600 text-white">
+              <PlusCircle className="w-4 h-4 mr-2" />
+              Thêm tài khoản
+            </Button>
+          )}
         </div>
         <div className="border rounded-lg bg-white">
           <Table>
@@ -146,21 +154,25 @@ const AccountsPage = () => {
                   </TableCell>
                 </TableRow>
               ) : users.length > 0 ? (
-                users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.user_metadata?.name || 'N/A'}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" onClick={() => handleEditRequest(user)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(user)} disabled={user.id === currentUser?.id}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
+                users.map((user) => {
+                  const canEdit = isSuperAdmin || user.id === currentUser?.id;
+                  const canDelete = isSuperAdmin && user.id !== currentUser?.id;
+                  return (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">{user.user_metadata?.name || 'N/A'}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{new Date(user.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="icon" onClick={() => handleEditRequest(user)} disabled={!canEdit}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDeleteRequest(user)} disabled={!canDelete}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell colSpan={4} className="h-24 text-center">
