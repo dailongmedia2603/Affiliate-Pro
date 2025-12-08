@@ -91,6 +91,7 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [retryingStepId, setRetryingStepId] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [exportingStepId, setExportingStepId] = useState<string | null>(null);
 
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
@@ -267,6 +268,46 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
     }
   };
 
+  const handleExportH264 = async (step: AutomationRunStep) => {
+    if (!step.output_data?.final_video_url) {
+      showError("Không tìm thấy video gốc để xuất.");
+      return;
+    }
+    setExportingStepId(step.id);
+    const loadingToast = showLoading('Đang gửi yêu cầu xuất video H.264... Quá trình này có thể mất vài phút.');
+
+    try {
+      const sourceUrl = step.output_data.final_video_url;
+      const originalFilename = sourceUrl.split('/').pop()?.split('?')[0] || 'automation-video.mp4';
+      const outputFilename = `${originalFilename.replace('.mp4', '')}_h264.mp4`;
+
+      const { data, error } = await supabase.functions.invoke('export-video-h264', {
+        body: { sourceUrl, outputFilename },
+      });
+
+      if (error) throw error;
+      if (data.error) throw new Error(data.error);
+
+      dismissToast(loadingToast);
+      showSuccess('Xuất video thành công! Đang bắt đầu tải xuống...');
+      
+      // Trigger download of the new file
+      const newUrl = data.h264Url;
+      const link = document.createElement('a');
+      link.href = newUrl;
+      link.setAttribute('download', outputFilename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+    } catch (error: any) {
+      dismissToast(loadingToast);
+      showError(`Xuất video thất bại: ${error.message}`);
+    } finally {
+      setExportingStepId(null);
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-full"><Loader2 className="w-10 h-10 animate-spin text-orange-500" /></div>;
   if (runs.length === 0) return <div className="flex flex-col items-center justify-center h-full text-center text-gray-500 border-2 border-dashed rounded-lg p-4"><Bot className="w-16 h-16 mb-4" /><h3 className="text-xl font-semibold">Chưa có lần chạy nào</h3><p>Nhấn nút "Chạy" để bắt đầu một luồng tự động hóa cho kênh này.</p></div>;
 
@@ -407,15 +448,26 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                                     <div className="flex items-center gap-2">
                                       <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
                                       {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (
-                                        <Button 
-                                          variant="outline" 
-                                          size="sm" 
-                                          onClick={() => handleDownload(mergeStep.output_data!.final_video_url!)}
-                                          disabled={isDownloading}
-                                        >
-                                          {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-                                          Tải xuống
-                                        </Button>
+                                        <>
+                                          <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => handleDownload(mergeStep.output_data!.final_video_url!)}
+                                            disabled={isDownloading}
+                                          >
+                                            {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                            Tải xuống
+                                          </Button>
+                                          <Button 
+                                            variant="secondary" 
+                                            size="sm" 
+                                            onClick={() => handleExportH264(mergeStep)}
+                                            disabled={exportingStepId === mergeStep.id}
+                                          >
+                                            {exportingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                            Xuất H.264
+                                          </Button>
+                                        </>
                                       )}
                                       {mergeStep.status === 'failed' && (
                                         <Button variant="secondary" size="sm" onClick={() => handleRetryStep(mergeStep.id)} disabled={retryingStepId === mergeStep.id}>
