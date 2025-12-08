@@ -78,13 +78,13 @@ serve(async (req) => {
     // 3. Construct Rendi API payload
     const payload = {
       input_files: {
-        'source_video': sourceUrl,
+        'in_source_video': sourceUrl,
       },
       output_files: {
         'out_video': outputFilename,
       },
       // Explicitly use libx264 for H.264 encoding and yuv420p for compatibility
-      ffmpeg_command: '-i {{source_video}} -c:v libx264 -pix_fmt yuv420p -c:a aac {{out_video}}',
+      ffmpeg_command: '-i {{in_source_video}} -c:v libx264 -pix_fmt yuv420p -c:a aac {{out_video}}',
     };
 
     // 4. Call Rendi API to start the command
