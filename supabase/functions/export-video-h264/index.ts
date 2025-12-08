@@ -81,10 +81,10 @@ serve(async (req) => {
         'source_video': sourceUrl,
       },
       output_files: {
-        'output_video': outputFilename,
+        'out_video': outputFilename,
       },
       // Explicitly use libx264 for H.264 encoding and yuv420p for compatibility
-      ffmpeg_command: '-i {{source_video}} -c:v libx264 -pix_fmt yuv420p -c:a aac {{output_video}}',
+      ffmpeg_command: '-i {{source_video}} -c:v libx264 -pix_fmt yuv420p -c:a aac {{out_video}}',
     };
 
     // 4. Call Rendi API to start the command
@@ -107,7 +107,7 @@ serve(async (req) => {
 
     // 5. Poll for the result
     const resultData = await pollRendiStatus(runData.command_id, rendiApiKey);
-    const finalVideoUrl = resultData.output_files?.output_video?.storage_url;
+    const finalVideoUrl = resultData.output_files?.out_video?.storage_url;
 
     if (!finalVideoUrl) {
       throw new Error('Rendi task succeeded but the final video URL is missing.');
