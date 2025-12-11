@@ -51,7 +51,6 @@ type AutomationRun = {
   status: 'starting' | 'running' | 'completed' | 'failed' | 'stopped' | 'cancelled'; 
   started_at: string; 
   finished_at: string | null; 
-  automation_run_steps: AutomationRunStep[]; 
   channel_id: string; 
 };
 
@@ -78,6 +77,11 @@ const StepIcon = ({ type }: { type: string }) => {
 const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRerun: (channelId: string) => void }) => {
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [loading, setLoading] = useState(true);
+  const [openRunId, setOpenRunId] = useState<string | undefined>();
+  const [fetchedSteps, setFetchedSteps] = useState<Record<string, AutomationRunStep[]>>({});
+  const [loadingSteps, setLoadingSteps] = useState<Set<string>>(new Set());
+  const [openSubProductGroups, setOpenSubProductGroups] = useState<Record<string, string[]>>({});
+
   const [logs, setLogs] = useState<Record<string, AutomationRunLog[]>>({});
   const [visibleLogs, setVisibleLogs] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -86,7 +90,6 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const [loadingStepLogs, setLoadingStepLogs] = useState(false);
   const [aiPromptLog, setAiPromptLog] = useState<string | null>(null);
   const [voiceScriptLog, setVoiceScriptLog] = useState<{ prompt: string; script: string } | null>(null);
-  const runIdsRef = useRef<string[]>([]);
   const [runToDelete, setRunToDelete] = useState<AutomationRun | null>(null);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [retryingStepId, setRetryingStepId] = useState<string | null>(null);
@@ -96,20 +99,35 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   const fetchRuns = useCallback(async () => {
     const { data, error } = await supabase
       .from('automation_runs')
-      .select(`
-        id, status, started_at, finished_at, channel_id,
-        automation_run_steps (
-          id, step_type, status, output_data, input_data, error_message, created_at, sub_product_id,
-          sub_product:sub_products!inner (id, name)
-        )
-      `)
+      .select('id, status, started_at, finished_at, channel_id')
       .eq('channel_id', channelId)
       .order('started_at', { ascending: false });
 
     if (error) { showError('Không thể tải lịch sử automation.'); } 
-    else { setRuns(data as any[] || []); }
+    else { setRuns(data || []); }
     setLoading(false);
   }, [channelId]);
+
+  const fetchStepsForRun = useCallback(async (runId: string, force = false) => {
+    if (fetchedSteps[runId] && !force) return;
+
+    setLoadingSteps(prev => new Set(prev).add(runId));
+    const { data, error } = await supabase
+      .from('automation_run_steps')
+      .select(`*, sub_product:sub_products!inner (id, name)`)
+      .eq('run_id', runId);
+    
+    if (error) {
+      showError(`Không thể tải các bước cho lần chạy #${runId.substring(0,6)}.`);
+    } else {
+      setFetchedSteps(prev => ({ ...prev, [runId]: data || [] }));
+    }
+    setLoadingSteps(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(runId);
+      return newSet;
+    });
+  }, [fetchedSteps]);
 
   const fetchStepLogs = async (stepId: string) => {
     if (!stepId) return;
@@ -136,26 +154,31 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
   }, [detailsStep]);
 
   useEffect(() => {
-    runIdsRef.current = runs.map(r => r.id);
-  }, [runs]);
-
-  useEffect(() => {
     setLoading(true);
     fetchRuns();
   }, [channelId, fetchRuns]);
 
   useEffect(() => {
-    const subscription = supabase
-      .channel(`automation-runs-and-steps-${channelId}`)
+    const handleStepChange = (payload: any) => {
+      const runId = (payload.new as any)?.run_id || (payload.old as any)?.run_id;
+      if (runId && fetchedSteps[runId]) {
+        fetchStepsForRun(runId, true);
+      }
+    };
+
+    const runChanges = supabase.channel(`automation-runs-${channelId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_runs', filter: `channel_id=eq.${channelId}` }, fetchRuns)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_run_steps' }, (payload) => {
-        const runId = (payload.new as any)?.run_id || (payload.old as any)?.run_id;
-        if (runId && runIdsRef.current.includes(runId)) {
-          fetchRuns();
-        }
-      }).subscribe();
-    return () => { supabase.removeChannel(subscription); };
-  }, [channelId, fetchRuns]);
+      .subscribe();
+    
+    const stepChanges = supabase.channel(`automation-steps-for-channel-${channelId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'automation_run_steps' }, handleStepChange)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(runChanges);
+      supabase.removeChannel(stepChanges);
+    };
+  }, [channelId, fetchRuns, fetchedSteps, fetchStepsForRun]);
 
   useEffect(() => {
     let logSubscription: any;
@@ -227,7 +250,6 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
       if (data.error) throw new Error(data.error);
 
       showSuccess('Đã gửi yêu cầu thử lại thành công. Vui lòng chờ hệ thống xử lý.');
-      // The real-time subscription will handle the UI update
     } catch (error) {
       showError(`Thử lại thất bại: ${error.message}`);
     } finally {
@@ -291,7 +313,6 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
       dismissToast(loadingToast);
       showSuccess('Xuất video thành công! Đang bắt đầu tải xuống...');
       
-      // Trigger download of the new file
       const newUrl = data.h264Url;
       const link = document.createElement('a');
       link.href = newUrl;
@@ -313,9 +334,10 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
 
   return (
     <>
-      <Accordion type="single" collapsible className="w-full space-y-2">
+      <Accordion type="single" collapsible className="w-full space-y-2" value={openRunId} onValueChange={(value) => { setOpenRunId(value); if (value) { fetchStepsForRun(value); } }}>
         {runs.map((run, index) => {
-          const stepsBySubProduct = run.automation_run_steps.reduce((acc, step) => {
+          const steps = fetchedSteps[run.id] || [];
+          const stepsBySubProduct = steps.reduce((acc, step) => {
             const subProductId = step.sub_product_id;
             if (!subProductId) return acc;
 
@@ -353,143 +375,152 @@ const AutomationRunHistory = ({ channelId, onRerun }: { channelId: string, onRer
                 </div>
               </AccordionTrigger>
               <AccordionContent className="p-4 bg-gray-50/70">
-                <div className="space-y-4">
-                  <Accordion type="multiple" defaultValue={Object.values(stepsBySubProduct).map(g => g.id)} className="space-y-3">
-                    {Object.values(stepsBySubProduct).map((group) => {
-                      const sortedSteps = group.steps.sort((a, b) => (a.input_data?.sequence_number ?? Infinity) - (b.input_data?.sequence_number ?? Infinity));
-                      const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
-                      const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
-                      const voiceStep = group.steps.find(step => step.step_type === 'generate_voice');
-                      const mergeStep = group.steps.find(step => step.step_type === 'merge_videos');
-                      const contentPairs = imageSteps.map((imageStep, pairIndex) => ({
-                        pairNumber: pairIndex + 1,
-                        imageStep,
-                        videoStep: videoSteps.find(videoStep => videoStep.input_data?.source_image_step_id === imageStep.id),
-                      }));
+                {loadingSteps.has(run.id) ? (
+                  <div className="flex items-center justify-center h-40"><Loader2 className="w-8 h-8 animate-spin text-orange-500" /></div>
+                ) : (
+                  <div className="space-y-4">
+                    <Accordion type="multiple" className="space-y-3" value={openSubProductGroups[run.id] || []} onValueChange={(value) => setOpenSubProductGroups(prev => ({ ...prev, [run.id]: value }))}>
+                      {Object.values(stepsBySubProduct).map((group) => {
+                        const isGroupOpen = (openSubProductGroups[run.id] || []).includes(group.id);
+                        const sortedSteps = group.steps.sort((a, b) => (a.input_data?.sequence_number ?? Infinity) - (b.input_data?.sequence_number ?? Infinity));
+                        const imageSteps = sortedSteps.filter(step => step.step_type === 'generate_image');
+                        const videoSteps = sortedSteps.filter(step => step.step_type === 'generate_video');
+                        const voiceStep = group.steps.find(step => step.step_type === 'generate_voice');
+                        const mergeStep = group.steps.find(step => step.step_type === 'merge_videos');
+                        const contentPairs = imageSteps.map((imageStep, pairIndex) => ({
+                          pairNumber: pairIndex + 1,
+                          imageStep,
+                          videoStep: videoSteps.find(videoStep => videoStep.input_data?.source_image_step_id === imageStep.id),
+                        }));
 
-                      return (
-                        <AccordionItem value={group.id} key={group.id} className="border rounded-lg bg-white shadow-sm">
-                          <AccordionTrigger className="px-4 py-3 text-lg font-semibold text-gray-800 hover:bg-gray-50 rounded-t-lg">
-                            <div className="flex items-center gap-2">
-                              <Package className="w-5 h-5 text-orange-500" />
-                              {group.name}
-                            </div>
-                          </AccordionTrigger>
-                          <AccordionContent className="p-4 border-t space-y-4">
-                            {contentPairs.map(({ pairNumber, imageStep, videoStep }) => (
-                              <div key={imageStep.id} className="p-4 border rounded-lg bg-gray-50/50">
-                                <h4 className="font-bold text-md text-gray-700 mb-3">Cặp nội dung {pairNumber}</h4>
-                                <div className="grid md:grid-cols-2 gap-4">
-                                  {/* Image Step */}
-                                  <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
-                                    <div>
-                                      <div className="flex items-start justify-between">
-                                        <div className="flex items-center gap-3"><StepIcon type={imageStep.step_type} /><div><p className="font-semibold capitalize">Generate Image {pairNumber}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(imageStep.created_at).toLocaleTimeString()}</p></div></div>
-                                        <StatusBadge status={imageStep.status} />
+                        return (
+                          <AccordionItem value={group.id} key={group.id} className="border rounded-lg bg-white shadow-sm">
+                            <AccordionTrigger className="px-4 py-3 text-lg font-semibold text-gray-800 hover:bg-gray-50 rounded-t-lg">
+                              <div className="flex items-center gap-2">
+                                <Package className="w-5 h-5 text-orange-500" />
+                                {group.name}
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="p-4 border-t space-y-4">
+                              {isGroupOpen && (
+                                <>
+                                  {contentPairs.map(({ pairNumber, imageStep, videoStep }) => (
+                                    <div key={imageStep.id} className="p-4 border rounded-lg bg-gray-50/50">
+                                      <h4 className="font-bold text-md text-gray-700 mb-3">Cặp nội dung {pairNumber}</h4>
+                                      <div className="grid md:grid-cols-2 gap-4">
+                                        {/* Image Step */}
+                                        <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                          <div>
+                                            <div className="flex items-start justify-between">
+                                              <div className="flex items-center gap-3"><StepIcon type={imageStep.step_type} /><div><p className="font-semibold capitalize">Generate Image {pairNumber}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(imageStep.created_at).toLocaleTimeString()}</p></div></div>
+                                              <StatusBadge status={imageStep.status} />
+                                            </div>
+                                            {imageStep.status === 'failed' && imageStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>)}
+                                          </div>
+                                          <div className="mt-3 flex flex-col items-start gap-4">
+                                            {imageStep.status === 'completed' && imageStep.output_data?.url && (<button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer w-full"><img src={imageStep.output_data.url} alt="Generated" className="w-full max-h-96 rounded-md border object-contain bg-gray-100" /></button>)}
+                                            <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                          </div>
+                                        </div>
+                                        {/* Video Step */}
+                                        <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                          {videoStep ? (<><div><div className="flex items-start justify-between"><div className="flex items-center gap-3"><StepIcon type={videoStep.step_type} /><div><p className="font-semibold capitalize">Generate Video {pairNumber}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(videoStep.created_at).toLocaleTimeString()}</p></div></div><StatusBadge status={videoStep.status} /></div>{videoStep.status === 'failed' && videoStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {videoStep.error_message}</div>)}</div><div className="mt-3 flex flex-col items-start gap-4">{videoStep.status === 'completed' && videoStep.output_data?.url && (<video src={videoStep.output_data.url} controls className="w-full max-h-96 rounded-md border" />)}<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>{videoStep.input_data?.gemini_prompt_for_video && (<Button variant="secondary" size="sm" onClick={() => setAiPromptLog(videoStep.input_data.gemini_prompt_for_video!)}><Bot className="w-4 h-4 mr-2" />Prompt AI Log</Button>)}</div></div></>) : (<div className="flex items-center justify-center h-full text-gray-400"><p className="text-sm">Chờ tạo video...</p></div>)}
+                                        </div>
                                       </div>
-                                      {imageStep.status === 'failed' && imageStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {imageStep.error_message}</div>)}
                                     </div>
-                                    <div className="mt-3 flex flex-col items-start gap-4">
-                                      {imageStep.status === 'completed' && imageStep.output_data?.url && (<button onClick={() => setSelectedImage(imageStep.output_data.url!)} className="cursor-pointer w-full"><img src={imageStep.output_data.url} alt="Generated" className="w-full max-h-96 rounded-md border object-contain bg-gray-100" /></button>)}
-                                      <Button variant="outline" size="sm" onClick={() => setDetailsStep(imageStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                  ))}
+                                  {voiceStep && (
+                                    <div key={voiceStep.id} className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                                      <h4 className="font-bold text-md text-blue-800 mb-3">Bước Tạo Voice</h4>
+                                      <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                        <div>
+                                          <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3"><StepIcon type={voiceStep.step_type} /><div><p className="font-semibold capitalize">Tạo Voice & Kịch bản</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(voiceStep.created_at).toLocaleTimeString()}</p></div></div>
+                                            <StatusBadge status={voiceStep.status} />
+                                          </div>
+                                          {voiceStep.status === 'failed' && voiceStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {voiceStep.error_message}</div>)}
+                                        </div>
+                                        <div className="mt-3 flex flex-col items-start gap-4">
+                                          {voiceStep.status === 'completed' && voiceStep.output_data?.url && (<CustomAudioPlayer src={voiceStep.output_data.url} />)}
+                                          <div className="flex items-center gap-2">
+                                            {voiceStep.input_data?.script_generation_prompt && voiceStep.input_data?.generated_script && (
+                                              <Button variant="secondary" size="sm" onClick={() => setVoiceScriptLog({ prompt: voiceStep.input_data!.script_generation_prompt!, script: voiceStep.input_data!.generated_script! })}>
+                                                <Bot className="w-4 h-4 mr-2" />
+                                                Kịch bản & Prompt
+                                              </Button>
+                                            )}
+                                            {voiceStep.status === 'failed' && (
+                                              <Button variant="secondary" size="sm" onClick={() => handleRetryStep(voiceStep.id)} disabled={retryingStepId === voiceStep.id}>
+                                                {retryingStepId === voiceStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                                Thử lại
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                  {/* Video Step */}
-                                  <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
-                                    {videoStep ? (<><div><div className="flex items-start justify-between"><div className="flex items-center gap-3"><StepIcon type={videoStep.step_type} /><div><p className="font-semibold capitalize">Generate Video {pairNumber}</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(videoStep.created_at).toLocaleTimeString()}</p></div></div><StatusBadge status={videoStep.status} /></div>{videoStep.status === 'failed' && videoStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {videoStep.error_message}</div>)}</div><div className="mt-3 flex flex-col items-start gap-4">{videoStep.status === 'completed' && videoStep.output_data?.url && (<video src={videoStep.output_data.url} controls className="w-full max-h-96 rounded-md border" />)}<div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => setDetailsStep(videoStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>{videoStep.input_data?.gemini_prompt_for_video && (<Button variant="secondary" size="sm" onClick={() => setAiPromptLog(videoStep.input_data.gemini_prompt_for_video!)}><Bot className="w-4 h-4 mr-2" />Prompt AI Log</Button>)}</div></div></>) : (<div className="flex items-center justify-center h-full text-gray-400"><p className="text-sm">Chờ tạo video...</p></div>)}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {voiceStep && (
-                              <div key={voiceStep.id} className="p-4 border rounded-lg bg-blue-50 border-blue-200">
-                                <h4 className="font-bold text-md text-blue-800 mb-3">Bước Tạo Voice</h4>
-                                <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
-                                  <div>
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex items-center gap-3"><StepIcon type={voiceStep.step_type} /><div><p className="font-semibold capitalize">Tạo Voice & Kịch bản</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(voiceStep.created_at).toLocaleTimeString()}</p></div></div>
-                                      <StatusBadge status={voiceStep.status} />
+                                  )}
+                                  {mergeStep && (
+                                    <div key={mergeStep.id} className="p-4 border rounded-lg bg-orange-50 border-orange-200">
+                                      <h4 className="font-bold text-md text-orange-800 mb-3">Bước Ghép Video</h4>
+                                      <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
+                                        <div>
+                                          <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3"><StepIcon type={mergeStep.step_type} /><div><p className="font-semibold capitalize">Ghép Video Tổng Hợp</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(mergeStep.created_at).toLocaleTimeString()}</p></div></div>
+                                            <StatusBadge status={mergeStep.status} />
+                                          </div>
+                                          {mergeStep.status === 'failed' && mergeStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {mergeStep.error_message}</div>)}
+                                        </div>
+                                        <div className="mt-3 flex flex-col items-start gap-4">
+                                          {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (<video src={mergeStep.output_data.final_video_url} controls className="w-full max-h-96 rounded-md border" />)}
+                                          <div className="flex items-center gap-2">
+                                            <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
+                                            {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (
+                                              <>
+                                                <Button 
+                                                  variant="outline" 
+                                                  size="sm" 
+                                                  onClick={() => handleDownload(mergeStep.output_data!.final_video_url!)}
+                                                  disabled={isDownloading}
+                                                >
+                                                  {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                                  Tải xuống
+                                                </Button>
+                                                <Button 
+                                                  variant="secondary" 
+                                                  size="sm" 
+                                                  onClick={() => handleExportH264(mergeStep)}
+                                                  disabled={exportingStepId === mergeStep.id}
+                                                >
+                                                  {exportingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                                                  Xuất H.264
+                                                </Button>
+                                              </>
+                                            )}
+                                            {mergeStep.status === 'failed' && (
+                                              <Button variant="secondary" size="sm" onClick={() => handleRetryStep(mergeStep.id)} disabled={retryingStepId === mergeStep.id}>
+                                                {retryingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                                                Thử lại
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
-                                    {voiceStep.status === 'failed' && voiceStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {voiceStep.error_message}</div>)}
-                                  </div>
-                                  <div className="mt-3 flex flex-col items-start gap-4">
-                                    {voiceStep.status === 'completed' && voiceStep.output_data?.url && (<CustomAudioPlayer src={voiceStep.output_data.url} />)}
-                                    <div className="flex items-center gap-2">
-                                      {voiceStep.input_data?.script_generation_prompt && voiceStep.input_data?.generated_script && (
-                                        <Button variant="secondary" size="sm" onClick={() => setVoiceScriptLog({ prompt: voiceStep.input_data!.script_generation_prompt!, script: voiceStep.input_data!.generated_script! })}>
-                                          <Bot className="w-4 h-4 mr-2" />
-                                          Kịch bản & Prompt
-                                        </Button>
-                                      )}
-                                      {voiceStep.status === 'failed' && (
-                                        <Button variant="secondary" size="sm" onClick={() => handleRetryStep(voiceStep.id)} disabled={retryingStepId === voiceStep.id}>
-                                          {retryingStepId === voiceStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                                          Thử lại
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            {mergeStep && (
-                              <div key={mergeStep.id} className="p-4 border rounded-lg bg-orange-50 border-orange-200">
-                                <h4 className="font-bold text-md text-orange-800 mb-3">Bước Ghép Video</h4>
-                                <div className="p-3 border rounded-md bg-white flex flex-col justify-between">
-                                  <div>
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex items-center gap-3"><StepIcon type={mergeStep.step_type} /><div><p className="font-semibold capitalize">Ghép Video Tổng Hợp</p><p className="text-xs text-gray-500">Tạo lúc: {new Date(mergeStep.created_at).toLocaleTimeString()}</p></div></div>
-                                      <StatusBadge status={mergeStep.status} />
-                                    </div>
-                                    {mergeStep.status === 'failed' && mergeStep.error_message && (<div className="mt-2 p-2 bg-red-50 text-red-700 text-xs rounded-md"><strong>Lỗi:</strong> {mergeStep.error_message}</div>)}
-                                  </div>
-                                  <div className="mt-3 flex flex-col items-start gap-4">
-                                    {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (<video src={mergeStep.output_data.final_video_url} controls className="w-full max-h-96 rounded-md border" />)}
-                                    <div className="flex items-center gap-2">
-                                      <Button variant="outline" size="sm" onClick={() => setDetailsStep(mergeStep)}><FileText className="w-4 h-4 mr-2" />Chi tiết</Button>
-                                      {mergeStep.status === 'completed' && mergeStep.output_data?.final_video_url && (
-                                        <>
-                                          <Button 
-                                            variant="outline" 
-                                            size="sm" 
-                                            onClick={() => handleDownload(mergeStep.output_data!.final_video_url!)}
-                                            disabled={isDownloading}
-                                          >
-                                            {isDownloading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-                                            Tải xuống
-                                          </Button>
-                                          <Button 
-                                            variant="secondary" 
-                                            size="sm" 
-                                            onClick={() => handleExportH264(mergeStep)}
-                                            disabled={exportingStepId === mergeStep.id}
-                                          >
-                                            {exportingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
-                                            Xuất H.264
-                                          </Button>
-                                        </>
-                                      )}
-                                      {mergeStep.status === 'failed' && (
-                                        <Button variant="secondary" size="sm" onClick={() => handleRetryStep(mergeStep.id)} disabled={retryingStepId === mergeStep.id}>
-                                          {retryingStepId === mergeStep.id ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-                                          Thử lại
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </AccordionContent>
-                        </AccordionItem>
-                      );
-                    })}
-                  </Accordion>
-                </div>
-                <div className="mt-4 border-t pt-4">
-                  <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}><Terminal className="w-4 h-4 mr-2" />{visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}</Button>
-                  {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
-                </div>
+                                  )}
+                                </>
+                              )}
+                            </AccordionContent>
+                          </AccordionItem>
+                        );
+                      })}
+                    </Accordion>
+                    <div className="mt-4 border-t pt-4">
+                      <Button variant="ghost" size="sm" onClick={() => toggleLogVisibility(run.id)}><Terminal className="w-4 h-4 mr-2" />{visibleLogs === run.id ? 'Ẩn Logs Chi Tiết' : 'Hiện Logs Chi Tiết'}</Button>
+                      {visibleLogs === run.id && <div className="mt-2"><AutomationLogViewer logs={logs[run.id] || []} /></div>}
+                    </div>
+                  </div>
+                )}
               </AccordionContent>
             </AccordionItem>
           );
