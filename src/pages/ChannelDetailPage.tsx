@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { showError, showSuccess } from '@/utils/toast';
 import { Badge } from '@/components/ui/badge';
 import { uploadToR2 } from '@/utils/r2-upload';
+import { useNavigate } from 'react-router-dom';
 
 const StatCard = ({ icon, title, value, colorClass }) => (
   <Card className="shadow-sm">
@@ -46,6 +47,7 @@ const VideoCard = ({ video }) => (
 );
 
 const ChannelDetailPage = ({ channelId, onBack, onNavigate }) => {
+  const navigate = useNavigate();
   const [channel, setChannel] = useState(null);
   const [videos, setVideos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ const ChannelDetailPage = ({ channelId, onBack, onNavigate }) => {
             <p className="text-sm text-gray-500">Quản lý kênh &gt; {channel.name}</p>
           </div>
         </div>
-        <Button onClick={() => onNavigate('Tạo Video', { channelId })} className="bg-orange-500 hover:bg-orange-600 text-white">
+        <Button onClick={() => navigate(`/video?channelId=${channelId}`)} className="bg-orange-500 hover:bg-orange-600 text-white">
           <PlusCircle className="w-4 h-4 mr-2" /> Tạo Video cho Kênh
         </Button>
       </header>

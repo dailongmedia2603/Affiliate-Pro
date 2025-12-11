@@ -9,6 +9,16 @@ import NotFound from "./pages/NotFound";
 import Login from './pages/Login';
 import { supabase } from './integrations/supabase/client';
 import { Session } from '@supabase/supabase-js';
+import ChannelManagement from './components/ChannelManagement';
+import ProductPage from './pages/ProductPage';
+import AutomationPage from './pages/AutomationPage';
+import PromptLibraryPage from './pages/PromptLibraryPage';
+import VoicePage from './pages/VoicePage';
+import VideoPage from './pages/VideoPage';
+import ImagePage from './pages/ImagePage';
+import RendiApiTestPage from './pages/RendiApiTestPage';
+import AccountsPage from './pages/AccountsPage';
+import SettingsPage from './pages/SettingsPage';
 
 const queryClient = new QueryClient();
 
@@ -50,7 +60,18 @@ const App = () => {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
-            <Route path="/" element={session ? <Index /> : <Navigate to="/login" />} />
+            <Route path="/" element={session ? <Index /> : <Navigate to="/login" />}>
+              <Route index element={<ChannelManagement onNavigate={() => {}} />} />
+              <Route path="products" element={<ProductPage />} />
+              <Route path="automation" element={<AutomationPage />} />
+              <Route path="prompts/:category?" element={<PromptLibraryPage />} />
+              <Route path="voice" element={<VoicePage />} />
+              <Route path="video/:model?" element={<VideoPage />} />
+              <Route path="image" element={<ImagePage />} />
+              <Route path="rendi" element={<RendiApiTestPage />} />
+              <Route path="accounts" element={<AccountsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
             <Route path="*" element={session ? <NotFound /> : <Navigate to="/login" />} />
           </Routes>
         </BrowserRouter>

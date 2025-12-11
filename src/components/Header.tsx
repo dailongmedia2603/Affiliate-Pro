@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import {
   Network,
   Bot,
@@ -22,34 +23,43 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { cn } from '@/lib/utils';
 
 const navItems = [
-  { label: "Quản lý kênh", Icon: Network },
-  { label: "Sản phẩm", Icon: Package },
-  { label: "Automation", Icon: Bot },
-  { label: "Thư Viện Prompt", Icon: BookText },
-  { label: "Tạo Voice", Icon: Mic },
+  { label: "Quản lý kênh", Icon: Network, path: "/" },
+  { label: "Sản phẩm", Icon: Package, path: "/products" },
+  { label: "Automation", Icon: Bot, path: "/automation" },
+  { label: "Thư Viện Prompt", Icon: BookText, path: "/prompts" },
+  { label: "Tạo Voice", Icon: Mic, path: "/voice" },
   {
     label: "Tạo Ảnh / Video",
     Icon: Clapperboard,
+    path: "/media",
     children: [
-      { label: "Tạo Video", Icon: Video },
-      { label: "Tạo Ảnh", Icon: Image },
-      { label: "Ffmpeg Rendi", Icon: Film },
+      { label: "Tạo Video", Icon: Video, path: "/video" },
+      { label: "Tạo Ảnh", Icon: Image, path: "/image" },
+      { label: "Ffmpeg Rendi", Icon: Film, path: "/rendi" },
     ],
   },
-  { label: "Tài khoản", Icon: Users },
-  { label: "Cài Đặt", Icon: Settings },
+  { label: "Tài khoản", Icon: Users, path: "/accounts" },
+  { label: "Cài Đặt", Icon: Settings, path: "/settings" },
 ];
 
-const Header = ({ activeItem, setActiveItem }) => {
+const Header = () => {
+  const location = useLocation();
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
 
-  const isGroupActive = (item) => {
-    if (!item.children) return false;
-    return item.children.some(child => child.label === activeItem);
+  const isItemActive = (item) => {
+    if (item.path === '/') {
+      return location.pathname === '/';
+    }
+    if (item.children) {
+      return location.pathname.startsWith(item.path);
+    }
+    return location.pathname.startsWith(item.path);
   };
 
   return (
@@ -64,35 +74,38 @@ const Header = ({ activeItem, setActiveItem }) => {
       <nav className="flex items-start">
         {navItems.map((item, index) => {
           if (item.children) {
-            const isActive = isGroupActive(item);
+            const isActive = isItemActive(item);
             return (
               <DropdownMenu key={index}>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className={`flex items-center py-2 px-3 gap-2 rounded-md transition-colors ${
+                    className={cn(
+                      "flex items-center py-2 px-3 gap-2 rounded-md transition-colors",
                       isActive ? 'bg-gray-100' : 'hover:bg-gray-100'
-                    }`}
+                    )}
                   >
                     <item.Icon
-                      className={`w-5 h-5 ${
+                      className={cn(
+                        "w-5 h-5",
                         isActive ? "text-orange-500" : "text-[#4E657F]"
-                      }`}
+                      )}
                     />
-                    <span className={`${isActive ? "text-black font-bold" : "text-[#4E657F]"} text-sm`}>
+                    <span className={cn(
+                      "text-sm",
+                      isActive ? "text-black font-bold" : "text-[#4E657F]"
+                    )}>
                       {item.label}
                     </span>
-                    <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${isActive ? "text-black" : "text-[#4E657F]"}`} />
+                    <ChevronDown className={cn("w-4 h-4 ml-1 transition-transform", isActive ? "text-black" : "text-[#4E657F]")} />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
                   {item.children.map((child, childIndex) => (
-                    <DropdownMenuItem
-                      key={childIndex}
-                      onClick={() => setActiveItem(child.label)}
-                      className="cursor-pointer"
-                    >
-                      <child.Icon className="w-4 h-4 mr-2" />
-                      <span>{child.label}</span>
+                    <DropdownMenuItem key={childIndex} asChild>
+                      <Link to={child.path} className="cursor-pointer">
+                        <child.Icon className="w-4 h-4 mr-2" />
+                        <span>{child.label}</span>
+                      </Link>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -101,22 +114,27 @@ const Header = ({ activeItem, setActiveItem }) => {
           }
 
           return (
-            <button
+            <Link
               key={index}
-              onClick={() => setActiveItem(item.label)}
-              className={`flex items-center py-2 px-3 gap-2 rounded-md transition-colors ${
-                activeItem === item.label ? 'bg-gray-100' : 'hover:bg-gray-100'
-              }`}
+              to={item.path}
+              className={cn(
+                "flex items-center py-2 px-3 gap-2 rounded-md transition-colors",
+                isItemActive(item) ? 'bg-gray-100' : 'hover:bg-gray-100'
+              )}
             >
               <item.Icon
-                className={`w-5 h-5 ${
-                  activeItem === item.label ? "text-orange-500" : "text-[#4E657F]"
-                }`}
+                className={cn(
+                  "w-5 h-5",
+                  isItemActive(item) ? "text-orange-500" : "text-[#4E657F]"
+                )}
               />
-              <span className={`${activeItem === item.label ? "text-black font-bold" : "text-[#4E657F]"} text-sm`}>
+              <span className={cn(
+                "text-sm",
+                isItemActive(item) ? "text-black font-bold" : "text-[#4E657F]"
+              )}>
                 {item.label}
               </span>
-            </button>
+            </Link>
           );
         })}
       </nav>

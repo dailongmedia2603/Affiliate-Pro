@@ -19,6 +19,7 @@ import PromptFormDialog from '@/components/PromptFormDialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { User } from '@supabase/supabase-js';
+import { useParams, useNavigate } from 'react-router-dom';
 
 type Product = { id: string; name: string; };
 type Prompt = {
@@ -34,7 +35,10 @@ type Prompt = {
 };
 
 const PromptLibraryPage = () => {
-  const [activeTab, setActiveTab] = useState('video');
+  const { category } = useParams();
+  const navigate = useNavigate();
+  const activeTab = category || 'video';
+
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -273,7 +277,7 @@ const PromptLibraryPage = () => {
           <BookText className="w-7 h-7 text-orange-500" />
           <h1 className="text-2xl font-bold text-gray-800">Thư Viện Prompt</h1>
         </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(value) => navigate(`/prompts/${value}`)}>
           <TabsList className="bg-gray-100 p-1 rounded-lg h-auto">
             {tabs.map(tab => (
               <TabsTrigger key={tab.value} value={tab.value} className="px-4 py-2 text-sm font-semibold text-gray-600 rounded-md data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow transition-colors">

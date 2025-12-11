@@ -9,12 +9,18 @@ import VideoTaskHistory from '@/components/VideoTaskHistory';
 import Veo3GenerationForm from '@/components/Veo3GenerationForm';
 import Veo3TaskHistory from '@/components/Veo3TaskHistory';
 import DreamActGenerationPage from '@/components/DreamActGenerationPage';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 
-const VideoPage = ({ channelId = null }) => {
+const VideoPage = () => {
+  const { model } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const channelId = new URLSearchParams(location.search).get('channelId');
+  const activeModel = model || 'sora';
+
   const [apiKeySet, setApiKeySet] = useState<boolean | null>(null);
   const [veo3ApiKeySet, setVeo3ApiKeySet] = useState<boolean | null>(null);
   const [dreamActApiKeySet, setDreamActApiKeySet] = useState<boolean | null>(null);
-  const [activeModel, setActiveModel] = useState('sora');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
@@ -53,6 +59,11 @@ const VideoPage = ({ channelId = null }) => {
 
   const handleTaskCreated = () => setRefreshTrigger(c => c + 1);
 
+  const handleTabChange = (newModel: string) => {
+    const searchParams = new URLSearchParams(location.search);
+    navigate(`/video/${newModel}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`);
+  };
+
   const renderApiKeyWarning = (serviceName: string) => (
     <div className="w-full h-full p-6 bg-gray-50/50 flex items-center justify-center">
       <Alert variant="destructive" className="max-w-lg">
@@ -82,7 +93,7 @@ const VideoPage = ({ channelId = null }) => {
           </AlertDescription>
         </Alert>
       )}
-      <Tabs value={activeModel} onValueChange={setActiveModel} className="w-full">
+      <Tabs value={activeModel} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-6 bg-gray-100 p-1 rounded-lg h-auto">
           {models.map(model => (
             <TabsTrigger key={model.id} value={model.id} className="data-[state=active]:bg-white data-[state=active]:shadow-md data-[state=active]:text-orange-600 font-semibold flex items-center justify-center">

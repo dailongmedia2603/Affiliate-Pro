@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useNavigate } from 'react-router-dom';
 
 type Product = {
   id: string;
@@ -38,6 +39,7 @@ type Channel = {
 };
 
 const ChannelManagement = ({ onNavigate }) => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,7 +192,7 @@ const ChannelManagement = ({ onNavigate }) => {
   const filters = [{ id: 'all', name: 'Tất cả' }, ...products];
 
   if (selectedChannelId) {
-    return <ChannelDetailPage channelId={selectedChannelId} onBack={() => setSelectedChannelId(null)} onNavigate={onNavigate} />;
+    return <ChannelDetailPage channelId={selectedChannelId} onBack={() => setSelectedChannelId(null)} onNavigate={(path, payload) => navigate(path, { state: payload })} />;
   }
 
   return (
